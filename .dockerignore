@@ -1,0 +1,8 @@
+node_modules
+dist
+dist-app
+build
+data
+.venv
+mac
+**/__pycache__

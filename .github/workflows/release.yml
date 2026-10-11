@@ -1,0 +1,37 @@
+# Builds the Mac app and publishes it as a GitHub Release (which the app's updater reads).
+#   git tag v0.2.0 && git push --tags     -> builds <Name>-0.2.0-arm64.dmg and attaches it to a release
+#   Actions tab -> "Build Mac app" -> Run  -> builds it and keeps it as a downloadable artifact only
+name: Build Mac app
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  mac:
+    runs-on: macos-15   # Apple silicon. Its Swift is older than a current Mac's: see ARCHITECTURE.md, "Gotchas".
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - name: Build the app and the disk image
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then export VERSION="${GITHUB_REF_NAME#v}"; fi
+          scripts/build-app.sh --dmg
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mac-app
+          path: |
+            dist-app/*.dmg
+            dist-app/*.sha256
+      - name: Publish the release
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release create "$GITHUB_REF_NAME" dist-app/*-arm64.dmg dist-app/*-arm64.dmg.sha256 --generate-notes
