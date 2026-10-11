@@ -71,8 +71,20 @@ def create_app() -> FastAPI:
             app.include_router(m.router, prefix=f"/api/{m.id}", tags=[m.name])
 
     if config.UI_DIR.joinpath("index.html").exists():  # the built web app (absent in development: Vite serves it)
-        app.mount("/", StaticFiles(directory=config.UI_DIR, html=True), name="ui")
+        app.mount("/", _WebApp(directory=config.UI_DIR, html=True), name="ui")
     return app
+
+
+class _WebApp(StaticFiles):
+    """The built web app. Files under /assets have a content hash in their name and never change; everything
+    else (index.html above all) must be re-checked on each load, or the app window keeps showing the page from
+    the version it had before an update (the server sends no expiry, so WebKit guesses a long one)."""
+
+    async def get_response(self, path, scope):
+        response = await super().get_response(path, scope)
+        immutable = path.startswith("assets/")
+        response.headers["Cache-Control"] = "public, max-age=31536000, immutable" if immutable else "no-cache"
+        return response
 
 
 # ── The host's own API ────────────────────────────────────────────────

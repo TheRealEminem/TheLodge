@@ -20,7 +20,9 @@ final class MainWindow: NSObject, NSWindowDelegate, WKUIDelegate, WKNavigationDe
         if let current = web.url, current.host == url.host, current.port == url.port {
             if let fragment = url.fragment { web.evaluateJavaScript("location.hash = \(Self.jsString("#" + fragment))") }
         } else {
-            web.load(URLRequest(url: url))
+            // Always fetch the page afresh: WebKit keeps its cache across launches, and after an update it would
+            // otherwise show the old version's page and scripts.
+            web.load(URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData))
         }
         if NSApp.activationPolicy() != .regular {
             NSApp.setActivationPolicy(.regular)
