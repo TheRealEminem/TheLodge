@@ -1,0 +1,353 @@
+# Family architecture
+
+How apps in the Trailmix family are built, so that each new app can start from this folder and, later, all
+of them can become **one app with each of them as an add-on module**.
+
+**If you are an agent:** read this file and `DESIGN.md` before changing anything. Then read
+`core/server/module.py` and `core/web/registry.ts`, which define the module contract. Then read `modules/notes`,
+the reference module that uses every part of the contract. Build new features the way notes does. The rules
+in [§3](#3-the-rules) keep modules combinable later, so don't trade them for a shortcut.
+
+---
+
+## 1. The idea: one host, many modules
+
+```
+              ┌──────────────── one app (app.json) ─────────────────┐
+              │  host (core/)            modules (modules/<id>/)     │
+              │  ─────────────           ────────────────────────    │
+  Mac app ──► │  server: db, settings,   notes:  tables, API, jobs,  │
+  (mac/)      │  jobs, AI, events,       pages, Home card, settings  │
+              │  links, search, auth     tasks:  …                   │
+              │  web: shell, sidebar,    meetings (Trailmix, later)  │
+              │  Home, Settings, kit     your next app …             │
+              └──────────────────────────────────────────────────────┘
+```
+
+- The **host** (`core/`) is everything apps share: the server, the database, settings, background jobs, AI
+  providers, sign-in, search, the web shell, the design kit and the Mac app.
+- A **module** (`modules/<id>/`) is one feature area: its own tables, API, background work, pages, Home card
+  and settings section. It's one folder with a server half, a web half and tests.
+- **`app.json`** says who the app is and which modules it's made of.
+
+So a **standalone family app** is the host plus one module (or a few), with its own name in `app.json`, and the
+**unified app** is the same host with every module turned on. Nothing gets rewritten when apps merge, because
+each module was always a module.
+
+This starter is an app called "Starter" with two modules. **Notes** is the reference module: write a note, an
+AI summary is made in the background, and its action items are announced. **Tasks** picks up action items from
+any module and links each one back to where it came from. The two never import each other; they cooperate
+through the host. That's the pattern every family module follows.
+
+## 2. How it runs
+
+```
+Starter.app (Swift, menu bar)                 Docker on a server
+ ├─ starts and supervises ─┐                   └─ runs the same server ─┐
+ └─ window (WebKit) ───────┤                                            │
+                           ▼                                            ▼
+            Python server (FastAPI, uvicorn) on 127.0.0.1:<port>
+              ├─ /api/…            the host's API + /api/<module>/… for each module
+              ├─ /                 the built web app (React)
+              └─ SQLite + files    ~/Library/Application Support/<Name>/ (or /data in Docker)
+```
+
+- **One process is the whole app.** The server serves both the API and the web app on one port.
+- **The Mac app is a thin host.** It ships its own Python, the server and the web app inside the `.app`, so
+  nothing needs installing. It starts the server, restarts it if it crashes, and shows the web app in its own
+  window. The window bridge (`window.webkit.messageHandlers.app`) lets the page ask it to quit or show a file
+  in Finder. The Dock icon is there only while the window is open; otherwise the app lives in the menu bar.
+- **The server stops itself if the Mac app dies.** It watches its parent process, so it never lingers on the port.
+- **The same server runs in Docker** for self-hosting. There, sign-in turns on when `APP_ACCESS_TOKEN` is set.
+- **Development:** `scripts/dev` runs the server with auto-reload, plus Vite on :5173 with hot reload.
+
+## 3. The rules
+
+These keep modules combinable. Breaking one now means a rewrite when the apps merge.
+
+1. **A module never imports another module** and never reads or writes another module's tables. It reaches
+   the rest of the app only through the host: events and contracts, links, search, jobs, settings and AI.
+2. **A module owns everything named after its id:** tables `<id>_*`, settings `<id>.*`, API `/api/<id>/…`,
+   pages `#/<id>/…`, events `<id>.*`, and files in `DATA_DIR/<id>/`.
+3. **Every row gets a random text id** (`db.new_id()`), never an autoincrement number, so databases from
+   separate apps can be merged without collisions. Things are referred to across modules as refs, `"<module>:<id>"`.
+4. **Schema changes are append-only.** Add a new step to the module's `MIGRATIONS` list; never edit or
+   reorder a step that has shipped.
+5. **Slow work is a job** (`jobs.enqueue`), never done inside a request or an event handler. Jobs must be safe to
+   run twice, because they're re-run after a restart.
+6. **State lives in the database.** If the server restarts at any moment, nothing is lost and everything picks
+   up where it left off.
+7. **Nothing is written inside the app bundle at runtime.** That would break its signature. All data goes in `DATA_DIR`.
+8. **Works offline and locally by default.** Cloud services are optional and chosen in Settings, and local AI
+   models are unloaded after use.
+
+## 4. Folder map
+
+```
+app.json                  who the app is and which modules it's made of
+VERSION                   the version number (release tags override it)
+core/
+  server/                 the host's server (Python package "core.server")
+    app.py                creates the FastAPI app, loads modules, the host's own API
+    config.py             app.json + environment, DATA_DIR, UI_DIR
+    module.py             ★ the module contract (server half)
+    db.py                 SQLite, migrations per module, new_id(), now()
+    settings.py           namespaced settings, secrets never sent back
+    jobs.py               resumable background jobs, approval and "wait" gates
+    ai.py                 AI providers (Ollama, Claude, OpenAI, Gemini, DeepSeek, OpenAI-compatible)
+    events.py             publish/subscribe between modules, plus the change counter
+    contracts.py          ★ shared events any module can publish or listen to
+    links.py              links between things in different modules
+    search.py             one search across every module
+    auth.py               optional token sign-in for server installs
+  web/                    the host's web app (React + Tailwind 3, built by Vite)
+    registry.ts           ★ the module contract (web half)
+    App.tsx, Sidebar.tsx  the shell: sidebar, narrow-window drawer, routing
+    router.ts             hash routes (#/notes/<id>), no router library
+    live.ts               useLive(): data that refreshes when anything changes
+    shell.tsx             useShell() (toast, confirm, theme, app info), useSettings()
+    api.ts                request(), json(), the host's API, the Mac bridge
+    components/           the design kit (ui, icons, illustrations) + blocks (Section, JobStatus, LinkedList…)
+    views/                Home, Settings, Login, NotFound
+  tests/                  the host's tests (they use a stand-in module, not the real ones)
+modules/
+  notes/                  the reference module: server/, web/, tests/
+  tasks/                  a second module that cooperates with notes through a contract
+mac/                      the Mac app (Swift): menu bar, server supervisor, window, updater
+scripts/
+  dev                     run for development
+  check                   everything CI checks (tests, types, build, style rules)
+  new-module              start a module from scripts/module-template
+  build-app.sh            build the .app (and --dmg)
+conftest.py, pytest.ini   test setup: throwaway data, fake AI, skips tests of modules that are off
+Dockerfile                the server for Linux
+.github/workflows/        tests on every push; build and release the Mac app on a version tag
+```
+
+## 5. Identity: app.json
+
+```json
+{
+  "name": "Starter",               // shown everywhere; also the .app's name and its data folder
+  "id": "starter",                 // lowercase; the database file, storage keys, cookie name
+  "tagline": "a new trail",        // lowercase, under the wordmark
+  "bundleId": "local.family.starter",
+  "envPrefix": "STARTER",          // environment overrides: STARTER_DATA_DIR, STARTER_AI_PROVIDER…
+  "port": 8790,                    // must differ between family apps that might run at the same time
+  "updateRepo": "",                // "owner/repo" on GitHub for self-updates; empty = no updates
+  "modules": ["notes", "tasks"]    // in sidebar order
+}
+```
+
+`build-app.sh`, the server, the web app and the Mac app all read this file. **Renaming an app means editing
+this one file** (plus its mark, below). Nothing else has the name hard-coded.
+
+**Ports:** Trailmix uses 8765 (and 8770 for its transcription worker). Give each family app its own port in
+the 8780–8799 range, and keep a list here:
+
+| App | Port |
+| --- | --- |
+| Trailmix | 8765 |
+| Starter (this template) | 8790 |
+| The Lodge | 8791 |
+
+## 6. The module contract
+
+### Server half: `modules/<id>/server/__init__.py` exposes `MODULE = Module(...)`
+
+| Field | What the host does with it |
+| --- | --- |
+| `id`, `name` | `id` must equal the folder name. `name` is shown in the app. |
+| `router` | A FastAPI `APIRouter`, mounted at `/api/<id>`. |
+| `migrations` | Append-only SQL steps for the `<id>_*` tables, applied once each on startup. |
+| `settings`, `choices` | Defaults stored as `<id>.<name>`, with allowed values. Edited on the Settings page. |
+| `jobs` | `{kind: handler(job)}`: background work this module knows how to do. |
+| `subscribe` | `{event or "prefix.*": handler(payload)}`: what it listens to. |
+| `search` | `(q, limit) -> [{id, title, snippet}]`: its part of the sidebar search. |
+| `describe` | `id -> {title, href}`: how its things appear in other modules' links and in search. |
+| `startup` | Runs once after every module is loaded. |
+
+### Web half: `modules/<id>/web/index.tsx` default-exports a `ModuleWeb`
+
+| Field | What the host does with it |
+| --- | --- |
+| `id`, `name` | Must match the server half. |
+| `nav` | Sidebar entries `{label, icon, path, badge?}`. A badge is a component that renders a count. |
+| `routes` | `{path: "notes/:id", view}`. Paths start with the module's id. |
+| `primary` | The sidebar's big button `{label, icon, run}`. The first enabled module with one gets it. |
+| `home` | A card on Home. In the unified app, Home is where every module shows what's new. |
+| `settings` | A section on the Settings page (use `Section` and `useSettings()`). |
+
+Modules import the host's web code as `@core/...` (`@core/components/ui`, `@core/live`, `@core/shell`…), never
+another module's.
+
+## 7. What the host gives modules
+
+| Need | Use | Notes |
+| --- | --- | --- |
+| Store data | `db.query/one/execute/connect`, `db.new_id()`, `db.now()` | One SQLite file; WAL; short connections. Use JSON text columns for nested data and FTS5 for search. |
+| Files | `config.DATA_DIR / "<id>"` | Never inside the app bundle. |
+| A setting | `Module.settings` + `settings.section("<id>")` | Secrets end in `_api_key`/`_token`; they're write-only and preset from `<PREFIX>_<ID>_<NAME>`. |
+| Slow work | `jobs.enqueue(id, kind, target, approve=…)` | One worker, resumable. `approve=True` parks it as "Needs you". A handler can `raise jobs.Wait("reason")` to park itself (low memory…), and the user can force past that. `job.stage("…")` shows progress. |
+| AI | `ai.complete(prompt, system)` → `(text, provider)` | Uses the app-wide provider and fallback from Settings → AI. Raises `ai.AIError` with readable reasons. `ai.local_first()` tells you whether it would run on this Mac. |
+| Tell others | `events.publish("<id>.thing.happened", {...})` | Handlers run immediately and must be quick. Every publish also refreshes open screens. |
+| A shared meaning | `contracts.py` (`ACTIONS_FOUND`, `ITEM_DELETED`) | Add a contract when a second module cares about the same kind of thing. |
+| Point at something elsewhere | `links.add(from_ref, to_ref, kind)`, `links.linked(ref)` | The host stores the pair; each side's module describes its own things. |
+| Be searchable | `Module.search` | Results are merged into the sidebar search. |
+| Fresh screens | `useLive(load, deps)` | Refetches whenever anything changes on the server: every 2s while visible, and at once after the app's own changes. |
+| Feedback | `useShell().toast / confirm`, `JobStatus`, `JobChip`, `LinkedList`, `Section` | See `DESIGN.md` for the visual rules. |
+
+## 8. How modules work together: a walkthrough
+
+What happens when you summarize a note:
+
+1. **notes** saves the note (`PATCH /api/notes/<id>`) and enqueues `summarize`. Because "Summarize automatically"
+   is off, the job parks as **Needs you**, and the note shows a yellow chip with a Summarize button.
+2. You press Summarize, which calls the host's `POST /api/jobs/<id>/go`. The single worker runs notes' handler,
+   which calls `ai.complete()` (your Ollama model, or your cloud provider).
+3. notes stores the summary and publishes the shared contract
+   `actions.found {source_ref: "notes:<id>", items: [...]}`. notes doesn't know or care who's listening.
+4. **tasks** listens for `actions.found`. It creates one task per item and adds a link `notes:<id> → tasks:<id>`.
+   tasks doesn't know what a note is.
+5. Every publish moves the change counter. Open screens refetch, so the note shows its summary and a "Linked"
+   list of the tasks (titles supplied by tasks' `describe`), and the sidebar's Tasks badge goes up.
+6. Delete the note and notes publishes `item.deleted`. tasks keeps the tasks but drops their source.
+
+**Which mechanism to use:**
+
+- **Event:** "this happened", for anyone who cares. Name it after your module (`notes.note.saved`).
+- **Contract:** an event with a shared meaning that more than one module publishes or consumes
+  (`actions.found`). Its shape is written down in `contracts.py`.
+- **Link:** a lasting relationship between two things, shown on both sides.
+- **Search/describe:** making your things findable and nameable elsewhere.
+- **Never:** importing another module, querying its tables, or calling its HTTP API from the server.
+
+## 9. Screens and navigation
+
+- **Routes** are the URL hash (`#/notes/<id>`), so a link anywhere (including from the Mac app's menu) can open any page.
+  `#/` is Home and `#/settings` is Settings. An app with one module and no Home card opens straight into that module.
+- **Sidebar:** the mark and name, the primary button, search across everything (⌘K), Home (when there's more
+  than one module), each module's nav items with badges, and Settings at the bottom. Below 1024px it becomes a
+  drawer behind a frosted top bar.
+- **Settings:** Appearance (Day/Dusk/System), your name, AI (provider, fallback, key, model picker, a connection
+  test), then one section per module, then Quit.
+- **Look and copy** follow `DESIGN.md`. `scripts/check` enforces the mechanical rules.
+
+## 10. The Mac app (`mac/`)
+
+- `HostApp.swift`: the menu bar item (Open, updates, Open at Login, Quit). It starts the server, then opens the window.
+- `BundledServer.swift`: runs `python -m uvicorn core.server.app:app` from `Resources/app` with `<PREFIX>_DATA_DIR`,
+  `_UI_DIR` and `_PARENT_PID` set, restarts it up to three times in two minutes, then explains the failure in the menu.
+- `MainWindow.swift`: the WebKit window, the `app` bridge, the Edit/View/Window menus, and external links opening in the browser.
+- `Updater.swift`: GitHub releases → checksum check → same bundle ID and valid signature → swap in place → relaunch.
+- `Mark.swift`: the menu bar icon. Each app draws its own motif there.
+- **Native features a module needs** (global hotkeys, recording audio, notifications) live in `mac/`. They talk to
+  the module through the server: the native side calls the module's API (Trailmix's recorder checks in once a second
+  at `/api/recorder/check-in` and picks up commands), and the page talks to the native side through the bridge.
+  Keep the module usable without them, from a browser or a server install.
+- It builds with the Command Line Tools alone (no Xcode). See Gotchas.
+
+## 11. Running, testing, shipping
+
+| | |
+| --- | --- |
+| Develop | `scripts/dev`, then open http://localhost:5173 |
+| Check everything | `scripts/check` (pytest, `tsc`, Vite build, style rules) |
+| New module | `scripts/new-module journal "Journal"` |
+| Build the Mac app | `scripts/build-app.sh` → `dist-app/<Name>.app`; add `--dmg` for the disk image and checksum |
+| Release | bump `VERSION`, `git tag v0.2.0 && git push --tags`. CI builds and publishes, and installed apps offer the update. |
+| Server install | `docker build -t app . && docker run -p 8790:8790 -v app-data:/data -e APP_ACCESS_TOKEN=… app` |
+| Try the built app without touching real data | `env -i HOME=$HOME PATH=/usr/bin:/bin STARTER_DATA_DIR=/tmp/x STARTER_NO_OPEN=1 dist-app/Starter.app/Contents/MacOS/Starter` (prints "Would open …"; the server answers on the port) |
+
+Tests: `conftest.py` gives every test a throwaway data folder, the whole app (`client`), a fake AI (`fake_ai`)
+and `jobs.drain()` to wait for background work. The host's tests use a stand-in "probe" module, so they pass
+whatever modules an app has. Tests of modules that `app.json` turns off are skipped.
+
+## 12. Recipes
+
+**Start a new family app**
+
+1. Copy this folder and run `git init`.
+2. Edit `app.json`: name, id, tagline, bundleId, envPrefix, a free port, updateRepo, and modules.
+3. Draw the app's mark: `Logo` in `core/web/components/illustrations.tsx`, `core/web/public/favicon.svg`,
+   `mac/Sources/AppHost/Mark.swift`, and optionally `mac/AppIcon.icns`. See `DESIGN.md` §2.
+4. Run `scripts/new-module <id> "<Name>"` for the app's main feature, and remove notes and tasks from
+   `app.json` if they don't belong. Keep their folders: they're the reference.
+5. Run `scripts/dev`, build the feature, then `scripts/check`.
+
+**Add a page:** add a view component, then a route `{path: "<id>/something", view}` in the module's
+`index.tsx`, plus a `nav` item if it belongs in the sidebar.
+
+**Add a setting:** add the default to `Module.settings` (and `choices` if it's a fixed list). Read it with
+`settings.section("<id>")`. Show it in the module's `settings` component with `useSettings()`, and write the
+hint as the consequence ("Off: …").
+
+**Add background work:** write `def handler(job)` that is safe to run twice, and register it in
+`Module.jobs`. Enqueue it with `approve=True` when the user should press a button first. `raise jobs.Wait("…")`
+for conditions they can override, `job.stage("…")` for progress, and `<JobStatus job={…} />` in the page.
+
+**React to another module:** if what you need is a shared idea, add or reuse a contract in `contracts.py` and
+subscribe to it in `Module.subscribe`. If it's specific, subscribe to that module's own event, knowing that it
+silently does nothing when that module is off.
+
+**Use AI:** `text, provider = ai.complete(prompt, system=...)` inside a job (never in a request). Show who
+wrote it (`provider`) next to the result.
+
+**Make a module work as its own app:** set `"modules": ["<id>"]` in `app.json`. If it has no `home` card, the
+app opens straight into it, and Home disappears from the sidebar.
+
+## 13. From separate apps to one app
+
+The plan, and how far this template gets you:
+
+1. **Now: build each new app on this template, as modules.** Each ships as its own app (its own `app.json`)
+   while staying a module.
+2. **Port Trailmix into a `meetings` module.** Trailmix predates this template, so here's how its parts map over:
+   - **Data:** the `meetings` table becomes `meetings_items`, keyed by the existing `uid` column (Trailmix already
+     gives every meeting one) instead of the integer id. Audio goes in `DATA_DIR/meetings/`.
+   - **Settings:** Trailmix's `summary_provider`, keys and models move to the shared `ai.*`; the rest become `meetings.*`.
+   - **Pipeline:** its stages become jobs. Transcribe and summarize use `approve=` for the two-step approval, and
+     `jobs.Wait` replaces the RAM gate (`waiting_confirm`).
+   - **Action items:** published as `actions.found`, so the tasks module takes over Trailmix's Tasks page.
+   - **Native recorder:** moves into `mac/`, unchanged (it already talks to the server over HTTP).
+   - **Pages and search:** routes `#meeting-12` become `#/meetings/<uid>`, and search moves to `Module.search`.
+3. **One app.** List every module in one `app.json`. To bring each user's existing data across, a merge script
+   copies each standalone app's `<id>_*` tables, `core_links` and `core_settings` into the unified database.
+   This works because tables are prefixed and ids are random text. *Not written yet.*
+4. **Later: switching modules on and off in Settings** instead of `app.json`. The registry already loads
+   modules by id; what's missing is storing the choice and restarting the server. *Not built yet.*
+
+Things a unified app will probably want, best added to the host when a second module needs them:
+
+- **Ask across modules:** each module gives the AI context for a question, the way `search` gives results.
+- **A shared people list:** Trailmix's speaker names and "You", plus mentions in notes.
+- **A shared activity feed on Home.**
+
+## 14. Why it's built this way
+
+- **Python server + web UI in a WebKit window:** one codebase for the Mac app, a browser and a server install.
+  Python is where the local AI and audio tooling is.
+- **SQLite, no ORM:** one file, easy to back up, merge and inspect, and plain SQL is easy for people and agents to read.
+- **One background worker:** heavy local models never compete for memory. Order is predictable.
+- **Polling a change counter instead of websockets:** survives restarts and sleep, works through any proxy, costs
+  almost nothing locally, and lets any module's change refresh any screen.
+- **Hash routes, no router or state library:** less to learn and nothing to upgrade. A page is a component and
+  its data is `useLive()`.
+- **Random text ids and prefixed tables:** separate apps can merge without collisions.
+- **No new dependency without a reason.** Each one is something every family app carries forever.
+
+## 15. Gotchas
+
+- **Swift:** build with the Command Line Tools only, so don't use `@State`, `@Entry` or `#Preview` (they're
+  macros whose plugin ships only with Xcode). Use an `ObservableObject` with `@StateObject` instead.
+- **CI's Swift is older than your Mac's:** avoid `BitwiseCopyable`, `AVCaptureDevice.wasDisconnectedNotification`,
+  and `[weak self]` captured inside `Task {}`.
+- **Signing:** builds are ad-hoc signed, so macOS asks again for any permissions (microphone…) after each update.
+  A Developer ID (`SIGN_IDENTITY`) fixes that. Dangling symlinks in the bundle make `codesign --verify` fail.
+- **Never write into the bundle:** `PYTHONDONTWRITEBYTECODE=1` is set and `.pyc` files are precompiled with
+  unchecked hashes for this reason.
+- **Tailwind:** editing `tailwind.config.js` needs a dev-server restart.
+- **A heavy Python package with unused dependencies** (Trailmix's `mlx-whisper` pulls in 600 MB of torch) can be
+  installed with `--no-deps` in a `scripts/bundle-<module>.sh`, listing what it really needs.
+- **Two family apps on one port:** the Mac app checks that the server answering is its own (`/api/app` id)
+  before using it, but give each app its own port anyway.

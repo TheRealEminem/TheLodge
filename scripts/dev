@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+# Development: the server (reloads when Python changes) on the app's port, and Vite on :5173 with hot reload.
+# Open http://localhost:5173. Restart this after editing tailwind.config.js (Vite doesn't reload it).
+set -euo pipefail
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$ROOT"
+PORT="$(python3 -c 'import json; print(json.load(open("app.json"))["port"])')"
+
+if [ ! -x .venv/bin/uvicorn ]; then
+  echo "› Setting up Python (first run only)…"
+  python3 -m venv .venv
+  .venv/bin/pip install -q -r requirements.txt pytest
+fi
+[ -d node_modules ] || { echo "› Installing web packages (first run only)…"; npm install --silent; }
+
+trap 'kill 0' EXIT
+.venv/bin/uvicorn core.server.app:app --host 127.0.0.1 --port "$PORT" --reload --reload-dir core --reload-dir modules &
+npm run dev
