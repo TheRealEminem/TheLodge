@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+# Everything CI checks: server tests, type checks, the web build, and the family's style rules.
+set -euo pipefail
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$ROOT"
+PY="${PY:-$([ -x .venv/bin/python ] && echo .venv/bin/python || echo python3)}"
+
+echo "› Server tests"
+"$PY" -m pytest
+echo "› Types and web build"
+npm run -s build >/dev/null
+echo "› Style rules (DESIGN.md §15)"
+fail=0
+rule() { if out="$(grep -rnE "$1" core/web modules --include='*.tsx' --include='*.ts' | grep -vE "$2" || true)"; [ -n "$out" ]; then echo "$3"; echo "$out"; fail=1; fi; }
+rule '#[0-9a-fA-F]{3,8}\b|rgba?\(' 'illustrations\.tsx|components/ui\.tsx|web/theme\.ts' "  Raw colors (use the tokens):"
+rule '\b(gray|slate|zinc|neutral|stone|red|blue|green|amber|emerald)-[0-9]{2,3}\b' '^$' "  Tailwind's default palette:"
+rule '\btext-(xs|sm|base|lg|xl|[2-9]xl)\b' '^$' "  Tailwind's default type sizes:"
+rule '\bfont-bold\b|\buppercase\b' '^$' "  Bold or uppercase:"
+rule '<select\b|window\.confirm\(' '^$' "  Native select or confirm:"
+[ $fail = 0 ] && echo "  All clear." || exit 1

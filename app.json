@@ -1,0 +1,13 @@
+{
+  "name": "The Lodge",
+  "id": "lodge",
+  "tagline": "who you know, and how well",
+  "bundleId": "local.family.lodge",
+  "envPrefix": "LODGE",
+  "port": 8791,
+  "updateRepo": "",
+  "modules": [
+    "crm",
+    "tasks"
+  ]
+}

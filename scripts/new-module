@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+# Starts a new module from scripts/module-template and turns it on in app.json.
+#   scripts/new-module journal "Journal"
+set -euo pipefail
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+ID="${1:-}"
+NAME="${2:-}"
+[[ "$ID" =~ ^[a-z][a-z0-9]*$ ]] || { echo "Usage: scripts/new-module <id> \"<Name>\"  (id: lowercase letters and digits, e.g. journal)"; exit 1; }
+[ -n "$NAME" ] || NAME="$(tr '[:lower:]' '[:upper:]' <<<"${ID:0:1}")${ID:1}"
+DEST="$ROOT/modules/$ID"
+[ -e "$DEST" ] && { echo "modules/$ID already exists"; exit 1; }
+
+cp -R "$ROOT/scripts/module-template" "$DEST"
+find "$DEST" -depth -name '*__id__*' | while read -r f; do mv "$f" "${f//__id__/$ID}"; done
+find "$DEST" -type f | while read -r f; do
+  sed -i.bak -e "s/__id__/$ID/g" -e "s/__Name__/$NAME/g" "$f" && rm "$f.bak"
+done
+python3 - "$ROOT/app.json" "$ID" <<'PY'
+import json, sys
+path, module_id = sys.argv[1], sys.argv[2]
+app = json.load(open(path))
+if module_id not in app["modules"]:
+    app["modules"].append(module_id)
+open(path, "w").write(json.dumps(app, indent=2) + "\n")
+PY
+echo "› Made modules/$ID and turned it on in app.json."
+echo "  Next: give it its real tables in server/store.py, its icon in web/index.tsx, and run scripts/check."
