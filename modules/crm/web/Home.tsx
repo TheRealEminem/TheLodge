@@ -61,7 +61,7 @@ function PersonRows({ rows, empty, detail }: { rows: PersonRow[]; empty: string;
 
 function TierTile({ tier, count }: { tier: Tier; count: number }) {
   return (
-    <a href={`#/crm/people?tier=${tier}`} className="panel block px-4 py-3.5 transition-[transform,box-shadow] duration-150 hover:-translate-y-px hover:shadow-md">
+    <a href={`#/crm/people?tier=${tier}`} className="panel block min-w-0 px-4 py-3.5 transition-[transform,box-shadow] duration-150 hover:-translate-y-px hover:shadow-md">
       <div className="flex items-center gap-1.5 text-ui text-ink-soft">
         <TierBars tier={tier} /> {TIER_META[tier].label}
       </div>
