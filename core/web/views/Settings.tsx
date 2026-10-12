@@ -91,10 +91,13 @@ export default function Settings() {
   const { app, theme } = useShell();
   const { values, hints, save } = useSettings();
   const { data: providers } = useLive<ProviderInfo[]>(api.providers);
+  const [setup, setSetup] = useState<ProviderId | null>(null);
   const modules = modulesFor(app.modules.map((m) => m.id)).filter((m) => m.settings);
   if (!values) return null;
   const options = (providers ?? []).map((p) => ({ value: p.id, label: p.label, hint: p.kind === "local" ? "Runs on this Mac" : "Cloud" }));
   const primary = values["ai.provider"] as ProviderId;
+  const setupId = setup ?? primary;
+  const setupOptions = (providers ?? []).map((p) => ({ value: p.id, label: p.label, hint: p.ready ? "Ready" : p.kind === "local" ? "Not running" : "Needs setup" }));
 
   return (
     <>
@@ -133,7 +136,10 @@ export default function Settings() {
             onChange={(x) => save({ "ai.fallback": x })}
           />
         </ControlRow>
-        <ProviderFields key={primary} id={primary} values={values} hints={hints} save={save} />
+        <ControlRow label="Set up" hint="Each provider keeps its own key and model, so the jobs below can use different ones.">
+          <Select label="Provider to set up" size="sm" className="w-full sm:w-64" value={setupId} options={setupOptions} onChange={(x) => setSetup(x as ProviderId)} />
+        </ControlRow>
+        <ProviderFields key={setupId} id={setupId} values={values} hints={hints} save={save} />
       </Section>
 
       {modules.map((m) => {

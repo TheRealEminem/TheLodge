@@ -1,28 +1,31 @@
-import { KIND_LABEL } from "./bits";
-import { KIND_SHAPE, ShapeGlyph } from "./graphShapes";
+import { GROUP_META, GROUP_ORDER, GroupGlyph } from "./groups";
 
-export function GraphLegend({ kinds }: { kinds?: string[] }) {
-  const shown = (["person", "organization", "meeting", "document", "topic"] as const).filter((k) => !kinds || kinds.includes(k));
+/** What the network's marks mean: how well you know someone (fill), what a line says, and what a group's outline is. */
+export function GraphLegend({ wells, events }: { wells: boolean; events: boolean }) {
   return (
     <div className="space-y-1 text-meta text-ink-soft">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-        {shown.map((k) => (
-          <span key={k} className="inline-flex items-center gap-1.5">
-            <ShapeKey kind={k} /> {KIND_LABEL[k].many}
-          </span>
-        ))}
+        <span>People:</span>
+        <span className="inline-flex items-center gap-1"><i className="inline-block h-2.5 w-2.5 rounded-full bg-forest" /> strong</span>
+        <span className="inline-flex items-center gap-1"><i className="inline-block h-2.5 w-2.5 rounded-full bg-forest/55" /> working</span>
+        <span className="inline-flex items-center gap-1"><i className="inline-block h-2.5 w-2.5 rounded-full border-[1.6px] border-forest" /> light</span>
+        <span className="inline-flex items-center gap-1"><i className="inline-block h-2.5 w-2.5 rounded-full border-[1.6px] border-dotted border-ink-soft" /> indirect or not linked</span>
       </div>
-      {shown.includes("person") && (
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+        <span>Lines:</span>
+        <span className="inline-flex items-center gap-1.5"><i className="inline-block h-0 w-5 border-t-2 border-line-strong" /> you recorded it</span>
+        <span className="inline-flex items-center gap-1.5"><i className="inline-block h-0 w-5 border-t border-line-strong" /> were at the same meeting</span>
+        <span className="inline-flex items-center gap-1.5"><i className="inline-block h-0 w-5 border-t border-dotted border-ink-soft" /> came up there</span>
+        {events && <span>Click a person to see their meetings and documents.</span>}
+      </div>
+      {wells && (
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-          <span>People:</span>
-          <span className="inline-flex items-center gap-1"><i className="inline-block h-2.5 w-2.5 rounded-full bg-forest" /> strong</span>
-          <span className="inline-flex items-center gap-1"><i className="inline-block h-2.5 w-2.5 rounded-full bg-forest/55" /> working</span>
-          <span className="inline-flex items-center gap-1"><i className="inline-block h-2.5 w-2.5 rounded-full border-[1.6px] border-forest" /> light</span>
-          <span className="inline-flex items-center gap-1"><i className="inline-block h-2.5 w-2.5 rounded-full border-[1.6px] border-dotted border-ink-soft" /> indirect or not linked</span>
+          <span>Groups:</span>
+          {GROUP_ORDER.map((k) => (
+            <span key={k} className="inline-flex items-center gap-1.5"><GroupGlyph kind={k} className="text-forest" /> {GROUP_META[k].one.toLowerCase()}</span>
+          ))}
         </div>
       )}
     </div>
   );
 }
-
-const ShapeKey = ({ kind }: { kind: keyof typeof KIND_SHAPE }) => <ShapeGlyph shape={KIND_SHAPE[kind]} className="text-ink-soft" />;

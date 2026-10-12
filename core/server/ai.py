@@ -1,14 +1,23 @@
 """Text generation for every module: a local Ollama model, or any cloud API you have a key for.
 
-Modules call complete(prompt, system) and get (text, provider used). Which provider answers, with which
-model, and the fallback when it fails are app-wide settings ("ai.*"), chosen once in Settings → AI.
+Modules call complete(prompt, system) and get (text, provider used), or structured(prompt, system, Schema) and
+get (a validated Schema object, provider used). Which provider answers, with which model, and the fallback
+when it fails are app-wide settings ("ai.*"), chosen once in Settings → AI. A module can name a provider for
+one of its jobs (choice="anthropic"); "auto" means the app-wide one.
 Local models are unloaded right after use (keep_alive 0) so they don't sit in memory.
+
+Failures come in two kinds (AIError.provider_down). A *provider* failure says nothing about the text: no credit,
+a wrong key or model, a rate limit, unreachable, any server error. Every other request would fail the same
+way, so a caller doing a batch should stop and wait rather than carry on. A *content* failure (the model
+refused, ran out of output, or answered in the wrong shape) is about this text only.
 """
 import os
 import re
+import time
 from urllib.parse import urlparse
 
 import httpx
+from pydantic import BaseModel
 
 from . import settings
 
@@ -56,7 +65,11 @@ def declare() -> None:
 
 
 class AIError(Exception):
-    pass
+    """provider_down: this isn't about the text asked about, so stop and retry later (see the module note)."""
+
+    def __init__(self, message: str, *, provider_down: bool = False):
+        super().__init__(message)
+        self.provider_down = provider_down
 
 
 # ── For modules ────────────────────────────────────────────────────────
@@ -65,6 +78,26 @@ def complete(prompt: str, system: str | None = None, choice: str = "auto") -> tu
     """(text, provider id). Tries your provider, then your fallback. Raises AIError with every reason."""
     cfg = settings.section("ai")
     return run_chain(choice, cfg, lambda pid: generate(pid, cfg, prompt, system))
+
+
+def structured(prompt: str, system: str | None, schema: type[BaseModel], choice: str = "auto",
+               max_tokens: int | None = None) -> tuple[BaseModel, str]:
+    """(an instance of schema, provider id). The reply is constrained to the schema where the provider can do
+    that, and checked either way. Optional fields may come back as None. max_tokens: the output budget
+    (default 32000 for Claude, 16000 elsewhere). Raises AIError; check .provider_down."""
+    from . import ai_adapters
+
+    cfg = settings.section("ai")
+    return run_chain(choice, cfg, lambda pid: ai_adapters.generate_structured(pid, cfg, prompt, system, schema, max_tokens))
+
+
+def describe(choice: str = "auto") -> dict:
+    """Which provider and model a job would use right now, and whether it's ready. For Settings screens."""
+    cfg = settings.section("ai")
+    pid = chain(choice, cfg)[0]
+    ready, reason = configured(pid, cfg)
+    return {"provider": pid, "label": label(pid, cfg), "model": model_for(pid, cfg) if ready else "",
+            "ready": ready, "reason": reason, "local": is_local(pid, cfg)}
 
 
 def local_first() -> bool:
@@ -138,13 +171,16 @@ def chain(choice: str, cfg: dict) -> list[str]:
 
 def run_chain(choice: str, cfg: dict, fn) -> tuple[object, str]:
     """Calls fn(provider) for each provider in the chain until one succeeds. Returns (result, provider)."""
-    errors = []
+    errors: list[AIError] = []
+    reasons = []
     for pid in chain(choice, cfg):
         try:
             return fn(pid), pid
         except AIError as e:
-            errors.append(f"{label(pid, cfg)}: {e}")
-    raise AIError("; ".join(errors))
+            errors.append(e)
+            reasons.append(f"{label(pid, cfg)}: {e}")
+    # Provider-down only if every provider tried failed for reasons that have nothing to do with the text.
+    raise AIError("; ".join(reasons), provider_down=all(e.provider_down for e in errors))
 
 
 # ── Calls ──────────────────────────────────────────────────────────────
@@ -152,7 +188,7 @@ def run_chain(choice: str, cfg: dict, fn) -> tuple[object, str]:
 def generate(pid: str, cfg: dict, prompt: str, system: str | None = None, keep_alive: str | None = None) -> str:
     ok, why = configured(pid, cfg)
     if not ok:
-        raise AIError(why)
+        raise AIError(why, provider_down=True)
     if pid == "ollama":
         text = _ollama(cfg, prompt, system, keep_alive or OLLAMA_KEEP_ALIVE)
     elif pid == "anthropic":
@@ -165,7 +201,7 @@ def generate(pid: str, cfg: dict, prompt: str, system: str | None = None, keep_a
         text = _openai_compatible(PROVIDERS[pid]["base"], cfg[f"{pid}_api_key"], cfg[f"{pid}_model"], prompt, system, pid)
     text = text.strip()
     if not text:
-        raise AIError(f"{label(pid, cfg)} returned an empty response")
+        raise AIError(f"{label(pid, cfg)} returned an empty response")  # about this text, not the provider
     return text
 
 
@@ -181,7 +217,7 @@ def _ollama_tags(cfg: dict) -> list[dict]:
 def _ollama(cfg: dict, prompt: str, system: str | None, keep_alive: str) -> str:
     model = model_for("ollama", cfg)
     if not model:
-        raise AIError(f"Ollama isn't reachable at {cfg['ollama_url']} (or has no models installed)")
+        raise AIError(f"Ollama isn't reachable at {cfg['ollama_url']} (or has no models installed)", provider_down=True)
     body = {"model": model, "prompt": prompt, "stream": False, "keep_alive": keep_alive,
             "options": {"num_ctx": OLLAMA_NUM_CTX, "temperature": 0.2}}
     if system:
@@ -193,10 +229,18 @@ def _post(url: str, **kw) -> httpx.Response:
     try:
         r = httpx.post(url, timeout=TIMEOUT, **kw)
     except httpx.HTTPError as e:
-        raise AIError(f"Couldn't reach {urlparse(url).netloc}: {e}") from e
+        raise AIError(f"Couldn't reach {urlparse(url).netloc}: {e}", provider_down=True) from e
     if r.status_code >= 400:
-        raise AIError(f"{urlparse(url).netloc} returned {r.status_code}: {_error_text(r)}")
+        text = _error_text(r)
+        raise AIError(f"{urlparse(url).netloc} returned {r.status_code}: {text}", provider_down=not too_long(text))
     return r
+
+
+def too_long(text: str) -> bool:
+    """An error that says this input was too big for the model: about the text, so not provider-down."""
+    t = text.lower()
+    return "prompt is too long" in t or "too many tokens" in t or ("context" in t and ("length" in t or "window" in t)) \
+        or "maximum context" in t
 
 
 def _error_text(r: httpx.Response) -> str:
@@ -206,6 +250,25 @@ def _error_text(r: httpx.Response) -> str:
         return str(err.get("message") if isinstance(err, dict) else err)[:300]
     except ValueError:
         return r.text[:300]
+
+
+def claude_error(e, model: str) -> AIError:
+    """An Anthropic SDK error as an AIError. Only an over-long input is specific to the text; any other request
+    error (bad key, model or schema, no credit, rate limit, outage) will hit every request."""
+    import anthropic
+
+    if isinstance(e, anthropic.AuthenticationError):
+        return AIError("Claude rejected the API key", provider_down=True)
+    if isinstance(e, anthropic.NotFoundError):
+        return AIError(f"Claude model '{model}' wasn't found", provider_down=True)
+    if isinstance(e, anthropic.RateLimitError):
+        return AIError("Claude rate limit hit; try again in a moment", provider_down=True)
+    if isinstance(e, anthropic.APIStatusError):
+        text = str(e.message)
+        if "credit balance" in text.lower():
+            return AIError("The Anthropic account is out of credit (Plans & Billing)", provider_down=True)
+        return AIError(f"Claude API error {e.status_code}: {text[:300]}", provider_down=not too_long(text))
+    return AIError(f"Couldn't reach the Claude API: {e}", provider_down=True)
 
 
 def _anthropic(cfg: dict, prompt: str, system: str | None) -> str:
@@ -222,16 +285,8 @@ def _anthropic(cfg: dict, prompt: str, system: str | None) -> str:
             msg = client.beta.messages.create(**params, betas=["server-side-fallback-2026-07-01"], fallbacks="default")
         else:
             msg = client.messages.create(**params)
-    except anthropic.AuthenticationError as e:
-        raise AIError("Claude rejected the API key") from e
-    except anthropic.NotFoundError as e:
-        raise AIError(f"Claude model '{model}' wasn't found") from e
-    except anthropic.RateLimitError as e:
-        raise AIError("Claude rate limit hit; try again in a moment") from e
-    except anthropic.APIStatusError as e:
-        raise AIError(f"Claude API error {e.status_code}: {e.message}") from e
-    except anthropic.APIConnectionError as e:
-        raise AIError(f"Couldn't reach the Claude API: {e}") from e
+    except anthropic.APIError as e:
+        raise claude_error(e, model) from e
     if msg.stop_reason == "refusal":
         raise AIError("Claude declined this request")
     return "".join(b.text for b in msg.content if b.type == "text")
@@ -271,7 +326,7 @@ def providers() -> list[dict]:
     cfg = settings.section("ai")
     out = []
     for pid, info in PROVIDERS.items():
-        ready, reason = configured(pid, cfg) if pid in chain("auto", cfg) else (None, "")
+        ready, reason = configured(pid, cfg)
         out.append({"id": pid, "label": label(pid, cfg), "kind": info["kind"], "ready": ready, "reason": reason})
     return out
 
@@ -281,20 +336,20 @@ def list_models(pid: str) -> list[str]:
     if pid == "ollama":
         tags = _ollama_tags(cfg)
         if not tags:
-            raise AIError(f"Ollama isn't reachable at {cfg['ollama_url']}")
+            raise AIError(f"Ollama isn't reachable at {cfg['ollama_url']}", provider_down=True)
         return [m["name"] for m in tags if "embed" not in m["name"].lower()]
     if pid == "anthropic":
         import anthropic
 
         if not cfg["anthropic_api_key"]:
-            raise AIError("Add an API key first")
+            raise AIError("Add an API key first", provider_down=True)
         try:
             return [m.id for m in anthropic.Anthropic(api_key=cfg["anthropic_api_key"], timeout=20).models.list()]
         except anthropic.APIError as e:
             raise AIError(f"Claude: {e}") from e
     if pid == "gemini":
         if not cfg["gemini_api_key"]:
-            raise AIError("Add an API key first")
+            raise AIError("Add an API key first", provider_down=True)
         r = httpx.get("https://generativelanguage.googleapis.com/v1beta/models?pageSize=200",
                       headers={"x-goog-api-key": cfg["gemini_api_key"]}, timeout=20)
         if r.status_code >= 400:
@@ -316,7 +371,19 @@ def list_models(pid: str) -> list[str]:
     return sorted(m["id"] for m in r.json().get("data", []))
 
 
+class _Probe(BaseModel):
+    answer: str
+    number: int
+
+
 def test(pid: str) -> str:
+    """A real structured round trip with a tiny schema: proves the key, the model and the way jobs will call it."""
+    from . import ai_adapters
+
     cfg = settings.section("ai")
-    reply = generate(pid, cfg, "Reply with exactly: OK")
-    return f"{label(pid, cfg)} · {model_for(pid, cfg)} replied “{reply[:40]}”"
+    started = time.perf_counter()
+    got = ai_adapters.generate_structured(pid, cfg, "Set answer to the word OK and number to 7.",
+                                          "You answer in the JSON format you are given.", _Probe, None)
+    seconds = time.perf_counter() - started
+    return (f"{label(pid, cfg)} · {model_for(pid, cfg)} answered in {seconds:.1f} s "
+            f"({'structured output works' if got.number == 7 else 'it replied, but not exactly as asked'})")
