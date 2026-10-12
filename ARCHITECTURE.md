@@ -163,6 +163,7 @@ the 8780–8799 range, and keep a list here:
 | `settings`, `choices` | Defaults stored as `<id>.<name>`, with allowed values. Edited on the Settings page. |
 | `jobs` | `{kind: handler(job)}`: background work this module knows how to do. `lanes` (optional): `{kind: "cloud" or a function of the target}` to let a kind run four at a time when it only waits on a web API. |
 | `recurring` | `{kind: seconds}` (or a function returning seconds, `0` = paused): the host queues that job on a schedule (`core/server/schedule.py`), so it runs on the job runner like any other. The target is always `"scheduled"`; finished rows are cleared as the next is queued. Handlers must be safe to run twice. |
+| `export` | `() -> {name: [records…]}`: what the module holds as plain data. The host's Settings, Your data, Export writes every module's into one JSON file in the data folder's `exports/` (no settings, so no keys). |
 | `subscribe` | `{event or "prefix.*": handler(payload)}`: what it listens to. |
 | `search` | `(q, limit) -> [{id, title, snippet}]`: its part of the sidebar search. |
 | `describe` | `id -> {title, href}`: how its things appear in other modules' links and in search. |
@@ -197,6 +198,11 @@ another module's.
 | Be searchable | `Module.search` | Results are merged into the sidebar search. |
 | Fresh screens | `useLive(load, deps)` | Refetches whenever anything changes on the server: every 2s while visible, and at once after the app's own changes. |
 | Feedback | `useShell().toast / confirm`, `JobStatus`, `JobChip`, `LinkedList`, `Section` | See `DESIGN.md` for the visual rules. |
+
+Backups (`core/server/backup.py`) are the host's: a daily SQLite online backup in `<data folder>/backups/` (kept 14),
+"Back up now", and restore, which makes a backup of what it replaces, copies the chosen one over the live database,
+brings an older one up to date with the current migrations and publishes `core.restored` (a module that caches
+anything built from its tables listens and drops it; the CRM does).
 
 ## 8. How modules work together: a walkthrough
 

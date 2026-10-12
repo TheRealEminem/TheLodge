@@ -87,6 +87,13 @@ export const inApp = !!bridge;
 export const quitApp = () => bridge?.postMessage("quit");
 export const revealInFinder = (path: string) => bridge?.postMessage(`reveal:${path}`);
 
+export interface BackupItem {
+  name: string;
+  kind: "auto" | "manual" | "before-restore";
+  created_at: string;
+  bytes: number;
+}
+
 export const api = {
   app: () => request<AppInfo>("/app"),
   auth: () => request<{ required: boolean; ok: boolean }>("/auth"),
@@ -94,6 +101,12 @@ export const api = {
   logout: () => request<{ ok: true }>("/logout", json("POST")),
   shutdown: () => request<{ ok: true }>("/shutdown", json("POST")),
   changes: (since: number) => request<{ seq: number; names: string[] }>(`/changes?since=${since}`),
+
+  backups: () => request<{ items: BackupItem[]; folder: string }>("/backups"),
+  backUpNow: () => request<BackupItem>("/backups", json("POST")),
+  restoreBackup: (name: string) => request<{ restored: string; kept: string; people: number | null }>(`/backups/${name}/restore`, json("POST")),
+  deleteBackup: (name: string) => request<void>(`/backups/${name}`, { method: "DELETE" }),
+  exportAll: () => request<{ name: string; folder: string; bytes: number; counts: Record<string, Record<string, number>> }>("/export", json("POST")),
 
   settings: () => request<SettingsState>("/settings"),
   putSettings: (changes: Record<string, SettingValue>) => request<SettingsState>("/settings", json("PUT", changes)),

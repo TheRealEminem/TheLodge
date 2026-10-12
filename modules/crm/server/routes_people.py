@@ -27,53 +27,51 @@ def list_people(
     offset: int = Query(0, ge=0)
 ):
     v = views.get()
+    ents, conns = v.snap.entities, v.conns
     flags = research.states(v)
-    rows = [v.person_row(pid) for pid in v.conns]
-    for r in rows:
-        r.needs_research = flags.get(r.person.id) == research.NEEDED
-    book_needs = sum(1 for r in rows if r.needs_research)
+    # Work with ids and the connection numbers, and build full rows only for the page asked for: at tens of thousands
+    # of people, building a row for each is most of the time.
+    ids = list(conns)
+    book_needs = sum(1 for pid in ids if flags.get(pid) == research.NEEDED)
     if needs_research:
-        rows = [r for r in rows if r.needs_research]
+        ids = [pid for pid in ids if flags.get(pid) == research.NEEDED]
     if org:
         s = v.orgs.get(org)
         members = s.people if s else set()
-        rows = [r for r in rows if r.person.id in members]
+        ids = [pid for pid in ids if pid in members]
     if tag:
-        rows = [r for r in rows if tag.lower() in r.tags]
+        ids = [pid for pid in ids if tag.lower() in (ents[pid].tags or [])]
     if q and q.strip():
         needle = q.strip().lower()
-        rows = [
-            r
-            for r in rows
-            if _matches(
-                needle,
-                r.person.name,
-                r.title,
-                r.org.name if r.org else None,
-                r.location,
-                " ".join(r.tags),
-                " ".join(v.snap.entities[r.person.id].attributes.get("aliases") or []),
-            )
-        ]
+
+        def hit(pid: str) -> bool:
+            p, a = ents[pid], ents[pid].attributes or {}
+            employer = v.employer(pid)
+            return _matches(needle, p.name, a.get("title"), employer.name if employer else None, a.get("location"),
+                            " ".join(p.tags or []), " ".join(a.get("aliases") or []))
+        ids = [pid for pid in ids if hit(pid)]
     tiers = {t: 0 for t in TIER_RANK}
-    for r in rows:
-        tiers[r.connection.tier] += 1
+    for pid in ids:
+        tiers[conns[pid].tier] += 1
     if tier:
         wanted = set(tier.split(","))
-        rows = [r for r in rows if r.connection.tier in wanted]
+        ids = [pid for pid in ids if conns[pid].tier in wanted]
 
-    conns = v.conns
+    name = lambda pid: ents[pid].name.lower()  # noqa: E731
     if sort == "strength":
-        rows.sort(key=lambda r: sort_key(conns[r.person.id], r.person.name))
+        ids.sort(key=lambda pid: sort_key(conns[pid], ents[pid].name))
     elif sort == "recent":
-        rows.sort(key=lambda r: (conns[r.person.id].last_signal_at is None, -(conns[r.person.id].last_signal_at.timestamp() if conns[r.person.id].last_signal_at else 0), r.person.name.lower()))
+        ids.sort(key=lambda pid: (conns[pid].last_signal_at is None, -(conns[pid].last_signal_at.timestamp() if conns[pid].last_signal_at else 0), name(pid)))
     elif sort == "meetings":
-        rows.sort(key=lambda r: (-r.connection.meetings, *sort_key(conns[r.person.id], r.person.name)))
+        ids.sort(key=lambda pid: (-conns[pid].meetings, *sort_key(conns[pid], ents[pid].name)))
     elif sort == "added":
-        rows.sort(key=lambda r: r.created_at, reverse=True)
+        ids.sort(key=lambda pid: ents[pid].created_at, reverse=True)
     else:
-        rows.sort(key=lambda r: r.person.name.lower())
-    return PeoplePage(items=rows[offset : offset + limit], total=len(rows), tiers=tiers, needs_research=book_needs)
+        ids.sort(key=name)
+    rows = [v.person_row(pid) for pid in ids[offset : offset + limit]]
+    for r in rows:
+        r.needs_research = flags.get(r.person.id) == research.NEEDED
+    return PeoplePage(items=rows, total=len(ids), tiers=tiers, needs_research=book_needs)
 
 
 @router.put("/people/{person_id}/connection")
