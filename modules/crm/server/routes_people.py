@@ -4,7 +4,7 @@ from typing import Literal
 
 from fastapi import APIRouter, HTTPException, Query
 
-from . import store, views
+from . import research, store, views
 from .connections import TIER_RANK, sort_key
 from .schemas import ConnectionOut, ConnectionUpdate, EntityContext, OrgPage, PeoplePage
 
@@ -21,12 +21,19 @@ def list_people(
     org: str | None = None,
     tag: str | None = None,
     q: str | None = None,
+    needs_research: bool = False,
     sort: Literal["strength", "recent", "name", "added", "meetings"] = "strength",
     limit: int = Query(50, ge=1, le=1000),
     offset: int = Query(0, ge=0)
 ):
     v = views.get()
+    flags = research.states(v)
     rows = [v.person_row(pid) for pid in v.conns]
+    for r in rows:
+        r.needs_research = flags.get(r.person.id) == research.NEEDED
+    book_needs = sum(1 for r in rows if r.needs_research)
+    if needs_research:
+        rows = [r for r in rows if r.needs_research]
     if org:
         s = v.orgs.get(org)
         members = s.people if s else set()
@@ -66,7 +73,7 @@ def list_people(
         rows.sort(key=lambda r: r.created_at, reverse=True)
     else:
         rows.sort(key=lambda r: r.person.name.lower())
-    return PeoplePage(items=rows[offset : offset + limit], total=len(rows), tiers=tiers)
+    return PeoplePage(items=rows[offset : offset + limit], total=len(rows), tiers=tiers, needs_research=book_needs)
 
 
 @router.put("/people/{person_id}/connection")

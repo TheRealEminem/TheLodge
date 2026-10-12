@@ -7,6 +7,7 @@ import { crmApi } from "./api";
 import { EntityFormDialog } from "./forms";
 import type { PersonRow, Tier } from "./api";
 import { Avatar, Empty, Tags, roleLine, useDebounced } from "./bits";
+import { NEEDS_RESEARCH_CHIP } from "./Research";
 import { TIERS, TIER_META, TierBadge, TierBars, connectionLine } from "./tier";
 
 const PAGE = 100;
@@ -45,7 +46,7 @@ export function TierFilter({ value, counts, onChange }: { value: Tier | "all"; c
   );
 }
 
-export function PersonLine({ row }: { row: PersonRow }) {
+export function PersonLine({ row, showFlag = true }: { row: PersonRow; showFlag?: boolean }) {
   const c = row.connection;
   const sub = roleLine(row.title, row.org?.name) || row.location || "";
   return (
@@ -55,7 +56,15 @@ export function PersonLine({ row }: { row: PersonRow }) {
     >
       <Avatar name={row.person.name} />
       <div className="min-w-0">
-        <div className="truncate text-label font-medium">{row.person.name}</div>
+        <div className="flex min-w-0 items-center gap-2">
+          <span className="truncate text-label font-medium">{row.person.name}</span>
+          {showFlag && row.needs_research && (
+            <>
+              <span className={`${NEEDS_RESEARCH_CHIP} hidden shrink-0 sm:inline-flex`}>needs research</span>
+              <span className="h-2 w-2 shrink-0 rounded-full bg-sun sm:hidden" role="img" aria-label="Needs research" />
+            </>
+          )}
+        </div>
         <div className="truncate text-hint text-ink-soft">{sub || " "}</div>
       </div>
       <TierBadge tier={c.tier} />
@@ -79,10 +88,11 @@ export default function People() {
   const sort = params.get("sort") ?? "strength";
   const tag = params.get("tag") ?? undefined;
   const org = params.get("org") ?? undefined;
+  const research = params.get("research") === "needed";
 
   const { data, error } = useLive(
-    () => crmApi.people({ q: dq, tier: tier === "all" ? undefined : tier, sort, tag, org, limit }),
-    [dq, tier, sort, tag, org, limit],
+    () => crmApi.people({ q: dq, tier: tier === "all" ? undefined : tier, sort, tag, org, limit, needs_research: research ? "true" : undefined }),
+    [dq, tier, sort, tag, org, limit, research],
   );
   const { data: orgEntity } = useLive(() => (org ? crmApi.entity(org) : Promise.resolve(null)), [org]);
   const c = data?.tiers;
@@ -107,6 +117,16 @@ export default function People() {
               at {orgEntity?.entity.name ?? "…"} <CloseIcon size={12} />
             </button>
           )}
+          {(research || (data?.needs_research ?? 0) > 0) && (
+            <button
+              className={research ? "chip bg-forest-soft text-forest-deep" : "chip bg-surface-subtle text-ink-soft hover:bg-forest/10"}
+              aria-pressed={research}
+              onClick={() => { setLimit(PAGE); setParams({ research: research ? null : "needed" }); }}
+            >
+              Needs research <span className="tabular-nums">{data?.needs_research ?? 0}</span>
+              {research && <CloseIcon size={12} />}
+            </button>
+          )}
           {tag && (
             <button className="chip bg-forest-soft text-forest-deep" onClick={() => setParams({ tag: null })} aria-label={`Remove the ${tag} filter`}>
               #{tag} <CloseIcon size={12} />
@@ -118,14 +138,14 @@ export default function People() {
         {error && <p className="text-ui text-trail-deep">Couldn’t load people: {error}</p>}
         {!data && !error && <Skeleton className="h-64 w-full rounded-xl" />}
         {data && data.items.length === 0 && (
-          <Empty icon={<UsersIcon size={20} />} title={dq || tier !== "all" || tag || org ? "No one matches" : "No people yet"}>
-            {dq || tier !== "all" || tag || org ? "Try a different search or filter." : "People appear here as you add them or import notes."}
+          <Empty icon={<UsersIcon size={20} />} title={dq || tier !== "all" || tag || org || research ? "No one matches" : "No people yet"}>
+            {dq || tier !== "all" || tag || org || research ? "Try a different search or filter." : "People appear here as you add them or import notes."}
           </Empty>
         )}
         {data && data.items.length > 0 && (
           <div className="panel divide-y divide-line overflow-hidden">
             {data.items.map((row) => (
-              <PersonLine key={row.person.id} row={row} />
+              <PersonLine key={row.person.id} row={row} showFlag={!research} />
             ))}
             {data.items.length < data.total && (
               <div className="p-2 text-center">

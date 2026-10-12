@@ -136,6 +136,7 @@ class DocContext:
     known_tags: list[str] = field(default_factory=list)
     attendees: list[str] = field(default_factory=list)
     brief: bool = False
+    subject: str | None = None   # a person the owner says this text is about (from a research flag)
 
 
 def extraction_prompt(ctx: DocContext, today: date | None = None) -> str:
@@ -173,6 +174,12 @@ def extraction_prompt(ctx: DocContext, today: date | None = None) -> str:
         parts.append("Known entities already in the CRM (reuse exact spelling):\n" + "\n".join(f"- {n}" for n in ctx.known_entities))
     if ctx.known_tags:
         parts.append("Existing tags (reuse when they fit): " + ", ".join(ctx.known_tags))
+    if ctx.subject:
+        parts.append(
+            f"The owner says this text is research about {ctx.subject}. Treat it as a person_profile: set subject_ref "
+            "to that person, put their background in summary and facts, and give their current and past employers "
+            "as works_at relationships."
+        )
     if ctx.brief:
         parts.append(
             "This file is long reference material. Record it as a document with a summary and key points; "

@@ -19,6 +19,7 @@ class NoteIn(BaseModel):
     text: str = Field(min_length=1)
     title: str | None = None
     occurred_at: datetime | None = None
+    subject_id: str | None = None   # the person this is research on (from a research flag)
 
 
 class ApplyIn(BaseModel):
@@ -61,11 +62,15 @@ def _get(row_id: str) -> dict:
 @router.post("/notes", status_code=202)
 def add_note(body: NoteIn):
     """Paste meeting notes; they're read in the background, then wait for your review."""
-    return _detail(ingest.create_note_job(body.text, body.title, body.occurred_at.isoformat() if body.occurred_at else None))
+    try:
+        return _detail(ingest.create_note_job(body.text, body.title, body.occurred_at.isoformat() if body.occurred_at else None,
+                                              body.subject_id))
+    except ingest.ProposalError as e:
+        raise HTTPException(422, str(e)) from e
 
 
 @router.post("/files", status_code=202)
-def add_files(files: list[UploadFile] = File(...), auto_apply: bool = Form(True)):
+def add_files(files: list[UploadFile] = File(...), auto_apply: bool = Form(True), subject_id: str | None = Form(None)):
     """Documents (.docx .pdf .pptx .txt .md). A file name may carry a folder ("Clients/Acme/notes.docx"): folders and
     neighbouring file names give the AI useful context."""
     blobs: list[tuple[str, bytes]] = []
@@ -78,7 +83,10 @@ def add_files(files: list[UploadFile] = File(...), auto_apply: bool = Form(True)
         if total > MAX_BATCH_BYTES:
             raise HTTPException(413, "That's more than 200 MB; add it in smaller batches")
         blobs.append(((f.filename or "untitled").lstrip("/"), data))
-    rows = ingest.create_file_jobs(blobs, auto_apply=auto_apply)
+    try:
+        rows = ingest.create_file_jobs(blobs, auto_apply=auto_apply and not subject_id, subject_id=subject_id or None)
+    except ingest.ProposalError as e:
+        raise HTTPException(422, str(e)) from e
     work = _work(rows)
     return [{k: v for k, v in r.items() if k not in ("raw_text", "proposal")}
             | {"filename": r["payload"].get("filename"), "work": work.get(r["id"])} for r in rows]
