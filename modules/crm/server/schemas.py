@@ -167,12 +167,14 @@ class PersonRow(BaseModel):
     tags: list[str] = []
     connection: ConnectionOut
     created_at: datetime
+    needs_research: bool = False
 
 
 class PeoplePage(BaseModel):
     items: list[PersonRow]
     total: int
     tiers: dict[str, int]
+    needs_research: int = 0   # how many people in the whole book have nothing on file
 
 
 class ContactRef(BaseModel):

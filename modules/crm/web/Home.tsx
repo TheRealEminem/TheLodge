@@ -1,7 +1,7 @@
 // The People block on Home: who you know, how well, and who your recent meetings brought into view.
 import { useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
-import { CalendarIcon, ClockIcon, CompassIcon, OrgIcon, PlusIcon, SparkleIcon, UsersIcon } from "@core/components/icons";
+import { CalendarIcon, ClockIcon, CompassIcon, OrgIcon, PlusIcon, SearchIcon, SparkleIcon, UsersIcon } from "@core/components/icons";
 import { Skeleton } from "@core/components/ui";
 import { useLive } from "@core/live";
 import { useShell } from "@core/shell";
@@ -140,6 +140,21 @@ export default function HomeBlock() {
       <HomeSection icon={<ClockIcon size={16} />} title="Reconnect" blurb="Strong and working connections you haven't met in 60 days or more." delay={150}>
         <PersonRows rows={data.reconnect} empty="No one close has gone quiet." detail={(r) => `last met ${relativeTime(r.connection.last_met_at)}`} />
       </HomeSection>
+
+      {data.research_needed > 0 && (
+        <HomeSection
+          icon={<SearchIcon size={16} />}
+          title="Needs research"
+          blurb={data.research_close > 0
+            ? `${data.research_close} ${data.research_close === 1 ? "person" : "people"} you know well ${data.research_close === 1 ? "has" : "have"} nothing on file. The ones who matter most are first.`
+            : "People with nothing on file. The ones who matter most are first."}
+          href="#/crm/people?research=needed"
+          more={`All ${data.research_needed}`}
+          delay={165}
+        >
+          <PersonRows rows={data.research} empty="" detail={(r) => connectionLine(r.connection) || "nothing on file"} />
+        </HomeSection>
+      )}
 
       <HomeSection icon={<OrgIcon size={16} />} title="Where you know people" href="#/crm/organizations" more="All organizations" delay={180}>
         {data.key_orgs.length === 0 ? (
