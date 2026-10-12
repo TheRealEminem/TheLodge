@@ -162,6 +162,7 @@ the 8780–8799 range, and keep a list here:
 | `migrations` | Append-only SQL steps for the `<id>_*` tables, applied once each on startup. |
 | `settings`, `choices` | Defaults stored as `<id>.<name>`, with allowed values. Edited on the Settings page. |
 | `jobs` | `{kind: handler(job)}`: background work this module knows how to do. `lanes` (optional): `{kind: "cloud" or a function of the target}` to let a kind run four at a time when it only waits on a web API. |
+| `recurring` | `{kind: seconds}` (or a function returning seconds, `0` = paused): the host queues that job on a schedule (`core/server/schedule.py`), so it runs on the job runner like any other. The target is always `"scheduled"`; finished rows are cleared as the next is queued. Handlers must be safe to run twice. |
 | `subscribe` | `{event or "prefix.*": handler(payload)}`: what it listens to. |
 | `search` | `(q, limit) -> [{id, title, snippet}]`: its part of the sidebar search. |
 | `describe` | `id -> {title, href}`: how its things appear in other modules' links and in search. |

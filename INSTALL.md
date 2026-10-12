@@ -29,6 +29,21 @@ Quit The Lodge, then (with the old project's database running):
 .venv/bin/python scripts/import-dynacrm.py --data-dir "$HOME/Library/Application Support/The Lodge"
 ```
 
+## Granola and calendars
+
+Both are optional and live in Settings, under People. Pasted keys and addresses are saved on this Mac like your AI keys.
+
+- **Granola:** in the Granola app, Settings, Connectors, API keys, make a key and paste it in. It needs a Granola
+  Business or Enterprise plan. New meetings are picked up every 15 minutes: Granola's summary and transcript are read,
+  the invitees are matched to your people by email, and the meeting is added (or waits in the Inbox, if you turn
+  automatic adding off). Put your own email on your own profile so The Lodge knows which attendee is you.
+- **Calendar:** in Google Calendar, Settings for the calendar, Integrate calendar, copy the "Secret address in iCal
+  format" and paste it in. Meetings from the last week and the next two with people you already know are put on your
+  book, so a Granola note taken later joins the same meeting. People you don't know on an invite aren't added.
+- **Taking it back:** everything either one adds is marked with where it came from. Under each section, "Remove what
+  came from…" deletes just that (it shows how many meetings and people first), and Granola meetings you remove are not
+  brought in again.
+
 ## Updating
 
 Quit the app and replace it with the new one from a new disk image. Your data stays where it is. (Automatic updates

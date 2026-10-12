@@ -4,7 +4,7 @@ Each module declares its own settings under its id as namespace ("notes.auto_sum
 "core.*" and "ai.*". A declared default can be preset from the environment as <PREFIX>_<NAMESPACE>_<NAME>
 (e.g. STARTER_AI_PROVIDER=anthropic), handy for a server install. Values saved in the app win.
 
-Secrets (names ending in _api_key or _token) are write-only from the web app's point of view: they're never
+Secrets (names ending in _api_key, _token or _secret) are write-only from the web app's point of view: they're never
 sent back, only a hint of what's stored ("…1234").
 """
 import json
@@ -29,7 +29,7 @@ def declare(namespace: str, defaults: dict, choices: dict | None = None, env: di
 
 
 def is_secret(key: str) -> bool:
-    return key.endswith(("_api_key", "_token"))
+    return key.endswith(("_api_key", "_token", "_secret"))
 
 
 def _env_default(key: str, default):

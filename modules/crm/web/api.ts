@@ -48,6 +48,31 @@ export interface PeoplePage {
   needs_research: number;
 }
 
+export interface CaptureStatus {
+  configured: boolean;
+  last_run_at: string | null;
+  last_ok_at: string | null;
+  last_counts: Record<string, number> | null;
+  error: string | null;
+  key_problem: boolean | null;
+  calendars: string[] | null;
+}
+
+export interface CaptureSource {
+  origin: "granola" | "calendar";
+  label: string;
+  meetings: number;
+  people: number;
+  kept: number;
+  lines: number;
+}
+
+export interface CaptureOverview {
+  granola: CaptureStatus;
+  calendar: CaptureStatus;
+  sources: CaptureSource[];
+}
+
 export type ResearchState = "needed" | "snoozed" | "dismissed" | "name_needed" | "has_context";
 
 export interface ResearchStatus {
@@ -443,6 +468,12 @@ export const crmApi = {
   dashboard: () => request<Dashboard>("/crm/dashboard"),
   people: (p: { tier?: string; org?: string; tag?: string; q?: string; sort?: string; limit?: number; needs_research?: string }) =>
     request<PeoplePage>(`/crm/people${qs(p)}`),
+  capture: () => request<CaptureOverview>("/crm/capture"),
+  captureTest: (which: "granola" | "calendar") =>
+    request<Record<string, unknown>>(`/crm/capture/${which}/test`, json("POST")),
+  captureSync: () => request<{ queued: number }>("/crm/capture/sync", json("POST")),
+  captureRemove: (origin: string) =>
+    request<{ meetings: number; people: number; lines: number; kept: number }>(`/crm/capture/${origin}/remove`, json("POST")),
   researchStatus: (id: string) => request<ResearchStatus>(`/crm/people/${id}/research`),
   setResearch: (id: string, action: "snooze" | "dismiss" | "restore") =>
     request<ResearchStatus>(`/crm/people/${id}/research`, json("POST", { action })),

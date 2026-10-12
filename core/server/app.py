@@ -16,7 +16,7 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import ai, auth, config, db, events, jobs, links, module, search, settings
+from . import ai, auth, config, db, events, jobs, links, module, schedule, search, settings
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 log = logging.getLogger("core")
@@ -51,6 +51,7 @@ def setup() -> list[module.Module]:
 async def lifespan(_: FastAPI):
     _exit_with_parent()
     jobs.recover()
+    schedule.start()
     yield
 
 

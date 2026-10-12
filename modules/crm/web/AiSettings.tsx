@@ -8,6 +8,7 @@ import { ControlRow, Select, Spinner, SwitchRow } from "@core/components/ui";
 import { useLive } from "@core/live";
 import { useSettings, useShell } from "@core/shell";
 import { crmApi } from "./api";
+import CaptureSettings from "./Capture";
 import type { AiRole } from "./api";
 
 function Job({ job, providers }: { job: AiRole; providers: ProviderInfo[] }) {
@@ -80,6 +81,7 @@ export default function AiSettings() {
         onChange={(v) => void save({ "crm.webhook_auto_apply": v })}
       />
     </Section>
+    <CaptureSettings />
     </>
   );
 }

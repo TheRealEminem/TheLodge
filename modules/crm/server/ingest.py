@@ -648,7 +648,9 @@ def _apply(row_id: str, proposal: dict) -> tuple[dict, list[str], str | None]:
         raise ProposalError(f"This item is {row['status']}; only items awaiting review can be applied")
     _validate(proposal)
 
-    source_label = "ai" if _is_ai(row["extractor"]) else "ingest"
+    # Everything an automatic sync brings in is stamped with where it came from ("granola"), so it can be found
+    # and removed together (capture.remove_source).
+    source_label = row["payload"].get("origin") or ("ai" if _is_ai(row["extractor"]) else "ingest")
     payload = row["payload"]
     ids: dict[str, str] = {}
     kinds: dict[str, str] = {}
