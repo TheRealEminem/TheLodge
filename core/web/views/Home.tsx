@@ -1,6 +1,6 @@
 // Home: the place where every module shows what's new. In the unified app this is the front door.
 import type { CSSProperties } from "react";
-import { TrailScene } from "../components/illustrations";
+import { LodgeScene } from "../components/illustrations";
 import { useShell } from "../shell";
 import { modulesFor } from "../registry";
 
@@ -17,7 +17,7 @@ export default function Home() {
       <div className="relative animate-enter">
         <div aria-hidden="true" className="absolute inset-x-[10%] bottom-0 top-1/3 rounded-hero bg-forest/10 blur-3xl" />
         <div className="art-frame h-[clamp(150px,18vw+40px,220px)]">
-          <TrailScene parallax dusk={theme.dusk} className="absolute inset-0 h-full w-full" />
+          <LodgeScene parallax dusk={theme.dusk} className="absolute inset-0 h-full w-full" />
         </div>
       </div>
       <div className="mt-8 animate-enter" style={{ animationDelay: "60ms" } as CSSProperties}>
@@ -25,7 +25,7 @@ export default function Home() {
         <h1 className="hero-title">{greeting()}</h1>
         {app.tagline && <p className="hero-sub mt-3">{app.name}: {app.tagline}.</p>}
       </div>
-      <div className="mt-10 grid gap-4 sm:grid-cols-2">
+      <div className="mt-10 grid grid-cols-1 gap-4 sm:grid-cols-2">
         {cards.map((m, i) => {
           const Card = m.home!;
           const delay = { animationDelay: `${120 + i * 60}ms` } as CSSProperties;

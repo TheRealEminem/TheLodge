@@ -76,11 +76,12 @@
   --shadow-chrome: 8px 0 40px -12px rgba(22, 40, 30, 0.06);
   --ring-focus: 0 0 0 3px color-mix(in srgb, var(--forest) 14%, transparent);
 
-  /* atmosphere */
-  --contour: rgba(35, 99, 71, 0.05);
+  /* atmosphere: The Lodge's own. Growth rings in warm cedar instead of Trailmix's contour lines, and a
+     hearth glow low on the left where Trailmix has its sunrise */
+  --grain: rgba(120, 86, 46, 0.06);
   --glow-green: rgba(35, 99, 71, 0.07);
-  --glow-warm: rgba(245, 184, 58, 0.13);
-  --glow-orange: rgba(232, 102, 54, 0.05);
+  --glow-warm: rgba(245, 184, 58, 0.12);
+  --glow-hearth: rgba(240, 166, 64, 0.09);
   --skeleton-a: #efede6;
   --skeleton-b: #f8f7f2;
   --tooltip-bg: rgba(28, 41, 34, 0.94);
@@ -139,10 +140,10 @@
   --shadow-panel: 0 1px 2px rgba(0, 0, 0, 0.25), 0 14px 40px rgba(0, 0, 0, 0.22);
   --shadow-chrome: 8px 0 40px -12px rgba(0, 0, 0, 0.4);
 
-  --contour: rgba(200, 230, 210, 0.045);
-  --glow-green: rgba(79, 162, 122, 0.1);
-  --glow-warm: rgba(242, 190, 78, 0.05);
-  --glow-orange: rgba(238, 116, 69, 0.05);
+  --grain: rgba(236, 220, 190, 0.04);
+  --glow-green: rgba(79, 162, 122, 0.08);
+  --glow-warm: rgba(242, 190, 78, 0.04);
+  --glow-hearth: rgba(240, 140, 60, 0.08);
   --skeleton-a: #172019;
   --skeleton-b: #1f2a24;
   --tooltip-bg: rgba(233, 237, 232, 0.96);

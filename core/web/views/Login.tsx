@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { api } from "../api";
 import { KeyIcon } from "../components/icons";
-import { Ambient, TrailScene } from "../components/illustrations";
+import { Ambient, LodgeScene } from "../components/illustrations";
 
 /** Only for installs that set an access token (a server); local apps never see this. */
 export default function Login({ onDone, dusk }: { onDone: () => void; dusk: boolean }) {
@@ -25,9 +25,9 @@ export default function Login({ onDone, dusk }: { onDone: () => void; dusk: bool
       <Ambient />
       <div className="relative w-full max-w-[440px] animate-enter">
         <div className="art-frame h-44">
-          <TrailScene dusk={dusk} className="h-full w-full" />
+          <LodgeScene dusk={dusk} className="h-full w-full" />
         </div>
-        <h1 className="page-title mt-6">See you on the trail</h1>
+        <h1 className="page-title mt-6">Come on in</h1>
         <p className="mt-2 text-body leading-relaxed text-ink-soft">Enter the access token for this server.</p>
         <form
           className="mt-6 flex gap-2"
