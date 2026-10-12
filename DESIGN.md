@@ -9,6 +9,9 @@ related, each with its own name and mark. It is written for a person or an AI ag
 check the screenshots in `assets/screenshots/` against what you build. The rules in
 [Section 14](#14-do-and-dont) are not suggestions.
 
+**In this repository:** The Lodge is one of those siblings. What it does differently from Trailmix is in
+[Section 17](#17-the-lodges-own-look); everything else here applies as written.
+
 ---
 
 ## 1. The idea
@@ -276,7 +279,7 @@ This is what makes an app a Trailmix sibling rather than a generic Tailwind app.
 
 - **`Ambient`** sits behind every screen. It has a vertical `bg-top → bg` gradient, a faint green glow
   low-center, warm sun and orange glows top-right, and two sets of hand-wobbled topographic rings at about 5%
-  opacity, masked to fade out. Keep it exactly as it is.
+  opacity, masked to fade out. Keep its structure. (The Lodge swaps the motif and one glow; see Section 17.)
 - **Hero art** is layered flat-vector landscape in SVG: sky gradient, a sun (or a crescent moon with stars
   at dusk) ringed like an elevation map, mist, a far ridge with contour lines, middle hills with slender
   two-tier pines, near hills, a winding cream trail that narrows into the distance, and dark foreground
@@ -420,3 +423,26 @@ The kit differs from Trailmix's originals in four small ways:
 
 If the new project uses **Tailwind 4**, move the config's `theme` into an `@theme` block. The CSS variables
 in `index.css` carry over unchanged.
+
+## 17. The Lodge's own look
+
+The Lodge keeps every family token, component and rule above. It changes only the places Section 2 leaves to
+each app, plus the motif inside `Ambient`, so it reads as a sibling and not as a copy of Trailmix.
+
+**The idea:** *where the trail ends up.* Trailmix is out on the walk. The Lodge is the place you come back to,
+where your people are. By day it's a cabin by a mountain lake; at dusk the windows are lit and the fire is going.
+
+| | Trailmix | The Lodge |
+| --- | --- | --- |
+| Mark | Low sun and a cream trail | Low sun and a cream A-frame (`Logo`) |
+| Hero art | `TrailScene`: rolling hills and a winding trail | `LodgeScene`: snow-capped peaks, a lake with the far shore reflected, an A-frame tucked into pines, a fire with two log seats, a dock and a canoe. The cream path from Trailmix's scene leads up to the lodge door |
+| Dusk moment | Moon and stars | Moon and stars, plus every window lit and warm light spilling onto the ground around the lodge and the fire |
+| Motion | A hiker walks the trail while recording | Smoke from the stove sways slowly (Home only, and never with reduced motion) |
+| `Ambient` linework | Topographic contour rings in forest green | Growth rings: the end of a log, top right, with a smaller one bottom left. Rings are wide in the early years and narrow later, with runs of thin years, and a couple of drying checks. Drawn in warm cedar (`--grain`). They also echo the app's circles of closeness |
+| `Ambient` glows | Sun and orange glows top right | A sun glow top right and a hearth glow low on the left (`--glow-hearth`), where the room's firelight would be |
+| Empty-state badge | Contour rings around a summit | Growth rings around the heart of a log (`ContourBadge` keeps its name so family modules still import it) |
+| Brand copy | "See you on the trail" | "Come on in" |
+
+The lodge's own colors (cedar walls, a forest roof with cream trim, lit glass, the canoe) live in the `DAY` and
+`DUSK` palettes in `core/web/components/illustrations.tsx`, next to the family's landscape colors. They are
+artwork, so they stay out of the tokens.
