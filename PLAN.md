@@ -25,7 +25,7 @@ decided, and the order we build it in.
 | 10 | Importers: spreadsheets, LinkedIn, recorded meetings | M | ☑ 2026-10-12 |
 | 11 | Mac polish: mark, menu, signing, disk image | M | ☑ 2026-10-12 |
 | 12 | Capture automation: Granola and calendars | M | ☑ 2026-10-12 |
-| 13 | Cutover and hardening | S–M | ☐ |
+| 13 | Cutover and hardening | S–M | ◐ built 2026-10-12; waiting on a week of daily use |
 | 14 | **Research flags: people who need deep research** (asked for 2026-10-12) | M | ☑ 2026-10-12 |
 
 Milestones: **A** "it runs" = 0 · **B** "your data, natively" = 1–3 · **C** "browse and rate in the app" = 4–6
@@ -466,6 +466,41 @@ _Result: decisions D3 = `com.thelodge.app`, D10 = ad-hoc, D11 = manual disk imag
 **Done when:** a week of daily use without opening the old app, and a restore from backup has been tried.
 **Depends on:** everything. **Milestone E.**
 
+**Result (2026-10-12): built; the daily-use week is the owner's.**
+- **Backup and restore** (`core/server/backup.py`, Settings, Your data): SQLite online backup each day (skipped if one
+  under 20 hours old exists, because the app restarts often), "Back up now", kept 14 daily / 20 manual / 5 "before a
+  restore", in the data folder's `backups/` (0700 folder, 0600 files). Restore verifies the file (SQLite's check, and
+  refuses one from a newer app), keeps a backup of what it replaces, copies over the live database, brings an older
+  one up to date with the migrations (and puts the old state back if that fails), and publishes `core.restored` so the
+  CRM drops its caches. The restore can itself be restored. **Tried on a copy of the real data:** backup (10.3 MB),
+  five people deleted, restore, 129 people back, the lists serving.
+- **JSON export** (`Module.export`, the CRM's `exporting.py`): people, organizations, meetings, documents, topics,
+  relationships, notes and saved views as readable JSON in `exports/`, with no settings or keys. Real data: 381
+  records, 839 lines, 589 notes, 3.5 MB. (Written to the data folder rather than downloaded, because the app window
+  has no download handling.)
+- **Upgrade test** (`test_upgrade.py`): a database made with only the first release's schema and holding data is
+  brought to today's, nothing lost, and starting again changes nothing; backups from older schemas restore likewise.
+- **Performance** (`scripts/perf.py`, synthetic 50,000 records and 250,000 lines, 129 MB): warm reads are 20-200 ms
+  (people list 87, search 5, a person's page 41, Home 560, organizations 199); the first read after any write rebuilds
+  the in-memory graph, which took about 6 s and now takes about 3.5 s; the network view 2 s; the graph overview 1.2 s;
+  backup 3-5 s and export 10 s (background). Two fixes came out of it: the people list built a row for every person
+  before choosing the page (966 ms warm, now 87), and Python's cycle collector was running all through the graph build
+  (it is paused for the build). A real book is about 100 times smaller than this (the owner's is 381 records), where
+  everything is a few milliseconds. The remaining cost is that any write throws the whole cache away; if a book ever
+  gets this big, the next step is updating the snapshot in place instead.
+- **Keychain: not built.** Keys sit in the 0600 database in the 0700 data folder, the same exposure as the old `.env`,
+  and they are copied into every backup. Moving them to the Keychain from a Python server means either shelling out to
+  `security` (the secret appears on a command line) or a Swift bridge, and the backups would then not carry the keys. It
+  is a decision for the owner, not a default; it is a small chunk if wanted.
+- **Cutover prepared:** the old Postgres holds 381 entities and 839 relationships, last changed 2026-09-26, exactly
+  what was imported, so nothing is waiting to come across and the importer must not be run again (it would overwrite
+  edits made in The Lodge). A final dump is saved at `_reference/dynacrm-final-dump-20261012.sql.gz` (0600, git-ignored;
+  it includes the old app's settings table). The Postgres container is stopped.
+- **Still the owner's:** use The Lodge daily for a week, then archive the `DynaCRM (OLD)` folder and remove the old Docker
+  containers and volume (the dump is the way back). Install the current build first (`scripts/build-app.sh`, then the
+  disk image); the copy in `/Applications` is from chunk 11.
+- **Tests:** 9 new (`test_backup.py` 8, `test_upgrade.py` 1); `scripts/check` is green with 183.
+
 ---
 
 ### Chunk 14 · Research flags: people who need deep research (M) — DONE
@@ -540,7 +575,12 @@ matter most.
 ## 7. Not in this plan
 
 - **Merging with Trailmix** as a `meetings` module (`ARCHITECTURE.md` §13): the CRM would listen for a shared
-  "meeting recorded" contract. The `ingest/meeting` endpoint is built to be that seam.
+  "meeting recorded" contract. The `ingest/meeting` endpoint is built to be that seam. The owner (2026-10-12): Trailmix will
+  be a meeting source alongside Granola, and it imports from Granola too, so the same meeting can arrive by two routes.
+  That is already covered: a meeting is matched by its origin and id, and otherwise by time and shared people, so the
+  second arrival joins the first instead of making a second meeting, and each route stamps its own `source`
+  ("trailmix", "granola", "calendar") so any one can be taken back. When the apps become one, the Trailmix route is
+  the `meetings` module publishing the contract and Granola becomes its import, not the CRM's.
 - **Other people in the owner's organization:** the same server in Docker with real accounts and a per-user "me". The
   host has one shared token and SQLite today, so this needs host work: users, per-record visibility, and
   probably a different database. Chunk 2's `me` parameter is the only preparation we make now.

@@ -9,6 +9,7 @@ import { useLive } from "../live";
 import { modulesFor } from "../registry";
 import { useSettings, useShell } from "../shell";
 import type { ThemePref } from "../theme";
+import YourData from "./YourData";
 
 function ModelPicker({ provider, value, onSave }: { provider: ProviderId; value: string; onSave: (v: string) => void }) {
   const [models, setModels] = useState<string[] | null>(null);
@@ -146,6 +147,8 @@ export default function Settings() {
         const ModuleSettings = m.settings!;
         return <ModuleSettings key={m.id} />;
       })}
+
+      <YourData />
 
       <Section icon={<LeafIcon size={16} />} title={app.name} blurb={`Version ${app.version}`}>
         <ControlRow label={`Quit ${app.name}`} hint={inApp ? "Closes the window and the menu bar app." : "Stops the server; open the app again to come back."}>

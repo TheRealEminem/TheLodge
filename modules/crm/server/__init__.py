@@ -6,7 +6,7 @@ Everything is a node (crm_entities) or an edge (crm_relationships). See store.py
 from core.server import jobs, schedule
 from core.server.module import Module
 
-from . import calendar_sync, granola, ingest, roles, routes, store
+from . import calendar_sync, exporting, granola, ingest, roles, routes, store
 
 def on_settings_changed(payload: dict) -> None:
     """Pasting a key or an address is the cue to try it, so the first sync doesn't wait for its turn."""
@@ -29,7 +29,8 @@ MODULE = Module(
     jobs={"extract": ingest.handle_extract, "granola_sync": granola.handle_sync, "calendar_sync": calendar_sync.handle_sync},
     lanes={"extract": ingest.lane, "granola_sync": "cloud", "calendar_sync": "cloud"},
     recurring={"granola_sync": granola.seconds, "calendar_sync": calendar_sync.seconds},
-    subscribe={"core.settings.changed": on_settings_changed},
+    subscribe={"core.settings.changed": on_settings_changed, "core.restored": exporting.on_restored},
+    export=exporting.export,
     search=store.search,
     describe=store.describe,
 )

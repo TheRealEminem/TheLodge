@@ -44,6 +44,15 @@ Both are optional and live in Settings, under People. Pasted keys and addresses 
   came from…" deletes just that (it shows how many meetings and people first), and Granola meetings you remove are not
   brought in again.
 
+## Backups, restore and export
+
+Settings, Your data. A copy of everything is made each day and kept for two weeks (they sit in the data folder's
+`backups`, readable only by you, and include your keys, so treat that folder like the database). "Back up now" makes
+one whenever you like. **Restore** puts everything back as it was at that backup; first it keeps a backup of how
+things are now, so a restore can be undone. A backup from a newer version of the app is refused. **Export** writes a
+readable JSON file of your people, relationships and notes (no settings, no keys) to the data folder's `exports`;
+Show Data Folder in the menu bar opens it.
+
 ## Updating
 
 Quit the app and replace it with the new one from a new disk image. Your data stays where it is. (Automatic updates
