@@ -55,6 +55,8 @@ struct MenuContent: View {
     var body: some View {
         Button("Open \(AppConfig.name)") { host.openWindow() }
             .keyboardShortcut("o")
+        Button("Inbox") { host.openWindow(page: "crm/inbox") }  // what's waiting for you to look over
+            .disabled(!host.ready)
         if let failure = host.failure {
             Text(failure)
         } else if !host.ready {
@@ -79,6 +81,9 @@ struct MenuContent: View {
             }
         }
         Toggle("Open at Login", isOn: Binding(get: { host.openAtLogin }, set: { host.setOpenAtLogin($0) }))
+        Divider()
+        Button("Show Data Folder") { NSWorkspace.shared.activateFileViewerSelecting([Bundled.dataDirectory]) }
+        Button("Show Server Log") { NSWorkspace.shared.open(Bundled.logFile) }
         Divider()
         Button("Quit \(AppConfig.name)") { NSApp.terminate(nil) }
             .keyboardShortcut("q")

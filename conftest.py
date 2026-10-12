@@ -65,3 +65,27 @@ def fake_ai(monkeypatch):
     monkeypatch.setattr(ai, "complete", fake)
     yield fake
     jobs.drain()
+
+
+@pytest.fixture
+def fake_structured(monkeypatch):
+    """Stands in for ai.structured. Set `.reply` to an object of the schema asked for, an exception to raise, or a
+    function (prompt, system, schema) -> either. `.calls` records every call."""
+    class Fake:
+        reply: object = None
+
+        def __init__(self):
+            self.calls: list[dict] = []
+
+        def __call__(self, prompt, system, schema, choice="auto", max_tokens=None):
+            self.calls.append({"prompt": prompt, "system": system, "schema": schema, "choice": choice})
+            reply = self.reply(prompt, system, schema) if callable(self.reply) else self.reply
+            if isinstance(reply, Exception):
+                raise reply
+            assert isinstance(reply, schema), f"the test's reply is a {type(reply).__name__}, not a {schema.__name__}"
+            return reply, "anthropic"
+
+    fake = Fake()
+    monkeypatch.setattr(ai, "structured", fake)
+    yield fake
+    jobs.drain()

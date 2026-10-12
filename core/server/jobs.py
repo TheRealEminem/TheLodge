@@ -2,6 +2,9 @@
 
 A job is one step of work on one thing (module "notes", kind "summarize", target <note id>). Jobs run one at
 a time on a single worker thread, so heavy steps (a local model, a big export) never compete for memory.
+A kind can opt into the "cloud" lane (register(..., lane="cloud")): work that waits on a web API rather than
+this machine's memory, so a few run side by side (a folder of 90 documents in minutes, not an hour). The lane
+can also be chosen per job: lane=lambda target: "cloud" if the cloud is doing it, else "default".
 
   queued -> running -> done
                     -> error    (POST /api/jobs/<id>/retry puts it back in the queue)
@@ -12,6 +15,7 @@ State lives in the database, so after a restart unfinished jobs simply run again
 running twice is harmless (check what's already done, then do the rest).
 """
 import logging
+import threading
 from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass
 from typing import Callable
@@ -21,9 +25,11 @@ from . import db, events
 log = logging.getLogger("core.jobs")
 UNFINISHED = ("queued", "running", "waiting")
 
-_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="jobs")
-_handlers: dict[tuple[str, str], Callable] = {}
+LANES = {"default": 1, "cloud": 4}   # lane -> how many jobs run at once
+_executors = {name: ThreadPoolExecutor(max_workers=n, thread_name_prefix=f"jobs-{name}") for name, n in LANES.items()}
+_handlers: dict[tuple[str, str], tuple[Callable, "str | Callable[[str], str]"]] = {}
 _pending: list[Future] = []
+_pending_lock = threading.Lock()
 
 
 class Wait(Exception):
@@ -44,8 +50,9 @@ class Job:
         _set(self.id, stage=text)
 
 
-def register(module: str, kind: str, handler: Callable[[Job], None]) -> None:
-    _handlers[(module, kind)] = handler
+def register(module: str, kind: str, handler: Callable[[Job], None], lane: "str | Callable[[str], str]" = "default") -> None:
+    """lane: "default" (one at a time), "cloud" (a few at once), or a function of the target that returns one."""
+    _handlers[(module, kind)] = (handler, lane)
 
 
 def enqueue(module: str, kind: str, target: str, approve: bool = False, reason: str = "Needs you") -> str:
@@ -110,6 +117,12 @@ def latest(module: str, targets: list[str]) -> dict[str, dict]:
     return {r["target"]: r for r in rows}  # later rows win
 
 
+def waiting(module: str, kind: str) -> list[str]:
+    """Ids of this kind of job that are parked (for "resume everything")."""
+    return [r["id"] for r in db.query("SELECT id FROM core_jobs WHERE module = ? AND kind = ? AND status = 'waiting' ORDER BY created_at",
+                                      (module, kind))]
+
+
 def busy() -> bool:
     return db.one("SELECT 1 AS x FROM core_jobs WHERE status IN ('queued', 'running')") is not None
 
@@ -123,15 +136,35 @@ def recover() -> None:
 
 def drain(timeout: float = 30) -> None:
     """Tests: wait until everything submitted so far has run."""
-    while _pending:
-        _pending.pop(0).result(timeout=timeout)
+    while True:
+        with _pending_lock:
+            if not _pending:
+                return
+            future = _pending.pop(0)
+        future.result(timeout=timeout)
 
 
 # ── Running ───────────────────────────────────────────────────────────
 
+def _lane_of(job_id: str) -> str:
+    row = db.one("SELECT module, kind, target FROM core_jobs WHERE id = ?", (job_id,))
+    entry = _handlers.get((row["module"], row["kind"])) if row else None
+    if not entry:
+        return "default"
+    lane = entry[1]
+    try:
+        lane = lane(row["target"]) if callable(lane) else lane
+    except Exception:  # noqa: BLE001 - a lane that can't be worked out runs where it's safest
+        log.exception("Couldn't choose a lane for job %s", job_id)
+        lane = "default"
+    return lane if lane in _executors else "default"
+
+
 def _submit(job_id: str) -> None:
-    _pending.append(_executor.submit(_run, job_id))
-    _pending[:] = [f for f in _pending if not f.done()]
+    future = _executors[_lane_of(job_id)].submit(_run, job_id)
+    with _pending_lock:
+        _pending.append(future)
+        _pending[:] = [f for f in _pending if not f.done()]
 
 
 def _set(job_id: str, **fields) -> None:
@@ -150,7 +183,7 @@ def _run(job_id: str) -> None:
     row = db.one("SELECT * FROM core_jobs WHERE id = ?", (job_id,))
     if not row or row["status"] != "queued":
         return
-    handler = _handlers.get((row["module"], row["kind"]))
+    handler = (_handlers.get((row["module"], row["kind"])) or (None,))[0]
     if not handler:
         _set(job_id, status="error", error=f"Nothing handles {row['module']}/{row['kind']} (is the module turned off?)")
         return

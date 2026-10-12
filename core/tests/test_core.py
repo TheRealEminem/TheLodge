@@ -91,3 +91,66 @@ def test_links_are_described_by_their_own_module(client, probe_item):
 @pytest.mark.parametrize("path", ["/api/app", "/api/settings", "/api/search?q=x", "/api/links?ref=probe:x"])
 def test_everything_but_sign_in_is_open_locally(client, path):
     assert client.get(path).status_code == 200
+
+
+def test_cloud_jobs_run_side_by_side_and_everything_else_one_at_a_time():
+    import threading
+
+    together = threading.Barrier(3, timeout=5)   # three cloud jobs must be running at once to get past this
+    jobs.register("testmod", "web", lambda job: together.wait(), lane="cloud")
+    for i in range(3):
+        jobs.enqueue("testmod", "web", f"w{i}")
+    jobs.drain()
+    assert all(jobs.latest("testmod", [f"w{i}"])[f"w{i}"]["status"] == "done" for i in range(3))
+
+    running, most = 0, 0
+    lock = threading.Lock()
+
+    def local(job):
+        nonlocal running, most
+        with lock:
+            running += 1
+            most = max(most, running)
+        threading.Event().wait(0.05)
+        with lock:
+            running -= 1
+
+    jobs.register("testmod", "here", local)
+    for i in range(4):
+        jobs.enqueue("testmod", "here", f"h{i}")
+    jobs.drain()
+    assert most == 1
+
+
+def test_a_jobs_lane_can_depend_on_what_it_is_about():
+    import threading
+
+    names = []
+    jobs.register("testmod", "picky", lambda job: names.append(threading.current_thread().name),
+                  lane=lambda target: "cloud" if target.startswith("c") else "default")
+    jobs.enqueue("testmod", "picky", "cloudy")
+    jobs.enqueue("testmod", "picky", "local")
+    jobs.drain()
+    assert sorted(n.rsplit("_", 1)[0] for n in names) == ["jobs-cloud", "jobs-default"]
+
+
+def test_waiting_jobs_of_a_kind_can_be_listed_to_resume_them_all():
+    def parked(job):
+        if not job.forced:
+            raise jobs.Wait("Out of credit")
+
+    jobs.register("testmod", "parks", parked)
+    ids = [jobs.enqueue("testmod", "parks", f"p{i}") for i in range(2)]
+    jobs.drain()
+    assert sorted(jobs.waiting("testmod", "parks")) == sorted(ids)
+    for job_id in jobs.waiting("testmod", "parks"):
+        jobs.go(job_id, force=True)
+    jobs.drain()
+    assert jobs.waiting("testmod", "parks") == []
+
+
+def test_the_data_folder_and_database_are_readable_only_by_you():
+    import stat
+
+    assert stat.S_IMODE(config.DATA_DIR.stat().st_mode) == 0o700
+    assert stat.S_IMODE(db.DB_PATH.stat().st_mode) == 0o600

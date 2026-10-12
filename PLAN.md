@@ -18,13 +18,15 @@ decided, and the order we build it in.
 | 4 | Identity, shell, Home, People, Organizations | L | ☑ 2026-10-08 |
 | 5 | Profiles and manual editing | L | ☑ 2026-10-08 |
 | 6 | Network canvas and path finder | M | ☑ 2026-10-10 |
-| 7 | AI layer in the host (structured output, providers, settings) | M | ☐ |
-| 8 | Ingestion pipeline (documents, notes, review, jobs) | L | ☐ |
-| 9 | Inbox and review screens | L | ☐ |
-| 10 | Importers: spreadsheets, LinkedIn, recorded meetings | M | ☐ |
-| 11 | Mac polish: mark, menu, signing, disk image | M | ☐ |
+| 6b | **People-first network: groups as gravity wells** | M–L | ☑ 2026-10-11 |
+| 7 | AI layer in the host (structured output, providers, settings) | M | ☑ 2026-10-10 (Claude and Gemini paths wait on the owner's keys) |
+| 8 | Ingestion pipeline (documents, notes, review, jobs) | L | ☑ 2026-10-12 (real-Claude canary waits on the owner's key) |
+| 9 | Inbox and review screens | L | ☑ 2026-10-12 (spreadsheet mapping view moves to chunk 10) |
+| 10 | Importers: spreadsheets, LinkedIn, recorded meetings | M | ☑ 2026-10-12 |
+| 11 | Mac polish: mark, menu, signing, disk image | M | ☑ 2026-10-12 |
 | 12 | Capture automation: Granola and calendars | M | ☐ |
 | 13 | Cutover and hardening | S–M | ☐ |
+| 14 | **Research flags: people who need deep research** (asked for 2026-10-12, proposed) | M | ☐ |
 
 Milestones: **A** "it runs" = 0 · **B** "your data, natively" = 1–3 · **C** "browse and rate in the app" = 4–6
 (The owner can stop using Docker for reading; AI intake still needs the old app) · **D** "feature parity" = 7–10 ·
@@ -60,15 +62,15 @@ Defaults are what we'll do unless the owner says otherwise. "Revisit" says when 
 | --- | --- | --- | --- |
 | D1 | Architecture | Family starter: Python server + React in a WebKit window, Swift menu-bar host | Never, unless native-only features (widgets, Spotlight) become the point |
 | D2 | App identity | Name **The Lodge**, id `lodge`, env prefix `LODGE`, port **8791**, tagline lowercase (proposal: "who you know, and how well"). The owner: a family tile with an A-frame roofline in place of the trail | Chunk 4 |
-| D3 | Bundle ID | `local.family.lodge` while developing. **Pick a real reverse-DNS ID before the first signed release**: changing it later breaks updates and granted permissions | Chunk 11 |
+| D3 | Bundle ID | **`com.thelodge.app`** (chosen 2026-10-12). Permanent: changing it later breaks updates and granted permissions | Never |
 | D4 | Modules in `app.json` | `["crm", "tasks"]`. `notes` stays in the repo as the reference module but is switched off | Chunk 4 |
 | D5 | One module or several | One `crm` module (graph, tiers, inbox, importers). Splitting ingestion out would make it write another module's tables, which rule 1 forbids | When Trailmix merges in as `meetings` |
 | D6 | Meetings and documents | Stay CRM-owned *interaction records* (they are the evidence behind relationships). A future `meetings` module publishes an event and the CRM links to it | Merge with Trailmix |
 | D7 | Database | SQLite (WAL) + FTS5; fuzzy name matching in Python over an in-memory index | Chunk 1 (if matching quality regresses) |
 | D8 | API keys | Entered by the owner in Settings → AI (write-only in the UI; stored in the app's SQLite file under `~/Library/Application Support/The Lodge/`). Env presets still work. Agents never read or copy the old `.env` or `API Keys/` | Chunk 13 (Keychain option) |
 | D9 | AI roles | Extraction = Claude Opus 5.5, utility (column mapping, triage) = Gemini Flash, as chosen earlier. Local Ollama and others selectable | Chunk 7 |
-| D10 | Signing | Ad-hoc until teammates exist. Ad-hoc means Gatekeeper's first-launch dance and permissions asked again after each update. Developer ID + notarization needs a paid Apple Developer account | Chunk 11 |
-| D11 | Updates | The starter's updater reads **public** GitHub releases without credentials. Fine for later; private distribution needs a change or a manual DMG | Chunk 11 |
+| D10 | Signing | **Ad-hoc, chosen 2026-10-12**, until teammates exist. Ad-hoc means Gatekeeper's first-launch dance and permissions asked again after each update. Developer ID + notarization needs a paid Apple Developer account | Chunk 11 |
+| D11 | Updates | **Manual disk image** (chosen 2026-10-12): `updateRepo` stays empty, because the starter's updater reads **public** GitHub releases and this repo is private | If the repo is ever made public |
 | D12 | "Live action" colour | Trail orange is reserved for one live action. The Lodge's default: none (orange only for errors, destructive hovers, and a "syncing" dot if chunk 12 happens) | Chunk 4 |
 | D13 | Graph colours | Kind is carried by shape plus one tone; forest marks selection and your path; no new hues. Validate with the `dataviz` skill (colour-vision safe) | Chunk 6 |
 | D14 | Perspective | `me` is passed as a parameter through the tier code, never read from a global, so a second user's view is possible later | Now (chunk 2) |
@@ -261,73 +263,149 @@ _Result: `Network.tsx` (kind filters, focus + depth, "Find path to…", side pan
 
 ### Chunk 7 · AI layer in the host (M)
 
-- [ ] `ai.structured(prompt, system, schema, choice)`: adapters ported from DynaCRM: Claude (strict flat schema,
+- [x] `ai.structured(prompt, system, schema, choice)`: adapters ported from DynaCRM: Claude (strict flat schema,
   streaming, fallback beta; invariant 1), Ollama native (`format`, `num_ctx`), OpenAI-compatible (json_schema →
   json_object → plain, one repair retry). `AIError.provider_down` (invariant 2).
-- [ ] Module settings `crm.extraction_provider` and `crm.utility_provider` (auto or a provider id), a Settings
+- [x] Module settings `crm.extraction_provider` and `crm.utility_provider` (auto or a provider id), a Settings
   section that shows which model does which job, a "Test" per provider.
-- [ ] Keys via Settings (D8). `ANTHROPIC_API_KEY` / `GEMINI_API_KEY` env presets still work.
-- [ ] Host tests with fake transports: stream fakes, error classification (credit, auth, rate, too long, refusal,
+- [x] Keys via Settings (D8). `ANTHROPIC_API_KEY` / `GEMINI_API_KEY` env presets still work.
+- [x] Host tests with fake transports: stream fakes, error classification (credit, auth, rate, too long, refusal,
   max_tokens), the repair retry.
 
 **Done when:** "Test" passes for each provider the owner configures, and a structured call round-trips a sample schema.
 **Depends on:** 0 (can run in parallel with 4–6).
 
+_Result: `ai.structured(prompt, system, Schema, choice, max_tokens)` returns `(validated object, provider id)`; adapters are in `core/server/ai_adapters.py`, schema helpers in `ai_schema.py` (ported from DynaCRM). Claude: flat strict schema, streamed, `server-side-fallback-2026-07-01` beta on the models that take it, thinking never touched, 32000 tokens. Ollama: native `/api/chat` with `format` and a context window sized to the prompt (8k to 32k), kept loaded 5 min so a batch doesn't reload the model. OpenAI-compatible (OpenAI, Gemini through its compatibility endpoint, DeepSeek, custom): json_schema, then json_object, then plain with the shape in the prompt, plus one repair retry. `AIError.provider_down` is true for anything that says nothing about the text (no credit, bad key or model, rate limit, unreachable, any other request error) and false for refusal, out of output space, wrong shape and over-long input; a fallback chain is provider-down only if every provider tried was. Module jobs: `modules/crm/server/roles.py` (`crm.extraction_provider` defaults to Claude, `crm.utility_provider` to Gemini, either can be `auto` = the app-wide provider or any provider id; `roles.structured(role, …)` is what chunk 8 calls). Settings: the AI section can now set up any provider (key, model, Test), not just the first one, and a "People: AI jobs" section shows which provider and model does each job and whether it's ready, with a Test per job. "Test" is a real structured round trip, so it proves the way jobs will call it. Env presets (`ANTHROPIC_API_KEY`, `GEMINI_API_KEY`) still work. 41 new host tests with fake transports (`core/tests/test_ai.py`); `scripts/check` green with 85 tests. **Verified live:** the Ollama test against your local `qwen2.5:7b` (structured output works, 0.7 s warm) and the Settings screens. **Not verified:** the real Claude and Gemini calls, which need your keys; Claude's streaming and schema path is only tested against a fake of the SDK. The first real "Test" for Claude is the check. Also the `ai.complete` path (summaries) is unchanged apart from carrying `provider_down`._
+
+
+
+
+_Result: server `people_net.py` (derives the people-only graph and the groups from the snapshot, cached on `store.version()`), `routes_network.py` (`/network`, `/network/groups/{id}`, `/network/evidence/{person}`, `/network/paths`, `/network/tags` GET and POST, `/network/views`), `crm_views` table (migration 2). On the owner's real data: 129 people, 156 lines (96 direct, 54 mentioned together, 6 met; 92 of them go through the owner, so without "Your ties" the network is 64 lines among 48 people), and **73 groups** (22 organizations, 16 topics, 35 tags) with 75 people in more than one. Lines say why in words ("Both took part in X", "Y came up in Z"). Topics need a score of 2 (took part = 2, came up = 1), so one passing mention doesn't make someone part of a topic; hand-linked (`related_to`) counts. Same employer is a group, never a pile of lines; the owner himself is in no group. Web: new `NetworkCanvas.tsx` (people only; each switched-on group is an invisible anchor the members are pulled toward, so someone in two groups sits between them; soft labelled outline per group, solid ring organization / dashed topic / dotted tag, labels stack when groups share a top edge; people outside the groups fade; evidence satellites for the selected person), `Network.tsx` (group chips, "Biggest" suggestions, search picker, saved views, Your ties, focus, path finder over people, side panels), `NetworkPanels.tsx` (person, group, picked-people panels, tag editor), `GroupsPage.tsx` (Organizations, topics and tags in one list), profile card "Their circle" (person) or "Their people" (organization, drawn as its group). Sidebar is now People, Network, Groups, Tasks; organizations, meetings and documents, and topics are still there as routes, linked from the Groups page. 12 new server tests (`test_network.py`); `scripts/check` green with 97 tests. **Verified in a browser on the real-data copy:** groups switched on from the URL (BVC with mentor; Cinder Labs with vaccine cold chain with mentor), selecting a person (panel, why-lines, tags, satellites), adding a tag from the panel (saved), the Groups page, an organization profile card, Day theme and a 390 px phone with no horizontal overflow. **Not exercised by hand:** shift-click picking and the bulk tag panel, Save view and Delete view dialogs, focus mode and the path finder in this new view (the server side of all three is tested), keyboard-only use of the canvas (the List view is the accessible route). Known rough edges: when two groups share most of their people their outlines sit almost on top of each other (that's the overlap, but it can be hard to read), and a person with many groups gets a long chip list in the panel._
+
+### Chunk 7 · AI layer in the host (M)
+
+- [x] `ai.structured(prompt, system, schema, choice)`: adapters ported from DynaCRM: Claude (strict flat schema,
+  streaming, fallback beta; invariant 1), Ollama native (`format`, `num_ctx`), OpenAI-compatible (json_schema →
+  json_object → plain, one repair retry). `AIError.provider_down` (invariant 2).
+- [x] Module settings `crm.extraction_provider` and `crm.utility_provider` (auto or a provider id), a Settings
+  section that shows which model does which job, a "Test" per provider.
+- [x] Keys via Settings (D8). `ANTHROPIC_API_KEY` / `GEMINI_API_KEY` env presets still work.
+- [x] Host tests with fake transports: stream fakes, error classification (credit, auth, rate, too long, refusal,
+  max_tokens), the repair retry.
+
+**Done when:** "Test" passes for each provider the owner configures, and a structured call round-trips a sample schema.
+**Depends on:** 0 (can run in parallel with 4–6).
+
+_Result: `ai.structured(prompt, system, Schema, choice, max_tokens)` returns `(validated object, provider id)`; adapters are in `core/server/ai_adapters.py`, schema helpers in `ai_schema.py` (ported from DynaCRM). Claude: flat strict schema, streamed, `server-side-fallback-2026-07-01` beta on the models that take it, thinking never touched, 32000 tokens. Ollama: native `/api/chat` with `format` and a context window sized to the prompt (8k to 32k), kept loaded 5 min so a batch doesn't reload the model. OpenAI-compatible (OpenAI, Gemini through its compatibility endpoint, DeepSeek, custom): json_schema, then json_object, then plain with the shape in the prompt, plus one repair retry. `AIError.provider_down` is true for anything that says nothing about the text (no credit, bad key or model, rate limit, unreachable, any other request error) and false for refusal, out of output space, wrong shape and over-long input; a fallback chain is provider-down only if every provider tried was. Module jobs: `modules/crm/server/roles.py` (`crm.extraction_provider` defaults to Claude, `crm.utility_provider` to Gemini, either can be `auto` = the app-wide provider or any provider id; `roles.structured(role, …)` is what chunk 8 calls). Settings: the AI section can now set up any provider (key, model, Test), not just the first one, and a "People: AI jobs" section shows which provider and model does each job and whether it's ready, with a Test per job. "Test" is a real structured round trip, so it proves the way jobs will call it. Env presets (`ANTHROPIC_API_KEY`, `GEMINI_API_KEY`) still work. 41 new host tests with fake transports (`core/tests/test_ai.py`); `scripts/check` green with 85 tests. **Verified live:** the Ollama test against your local `qwen2.5:7b` (structured output works, 0.7 s warm) and the Settings screens. **Not verified:** the real Claude and Gemini calls, which need your keys; Claude's streaming and schema path is only tested against a fake of the SDK. The first real "Test" for Claude is the check. Also the `ai.complete` path (summaries) is unchanged apart from carrying `provider_down`._
+
+
+### Chunk 6b · People-first network: groups as gravity wells (M–L)
+
+The owner's direction (2026-10-11): the app is about **how people connect to people, and why**. Documents and meetings are
+the evidence underneath and show only when you click a person. Organizations are not nodes: they're **groups of
+people**, drawn as gravity wells. Topics (and free tags like hardware, customer, mentor) are another kind of well, so
+the network can be browsed by interest or profession.
+
+Proposed decisions (change any of them):
+
+- **D16 Only people are nodes.** Edges are person to person, each with a *why*. Direct ones are the 97 `knows`,
+  `introduced_by` and `reports_to` edges; derived ones come from shared meetings, the same organization and being
+  mentioned together, each carrying its evidence (click a line: "met in Northwest Innovation Showcase; both work at BVC").
+  Most of the connection today is indirect (233 `mentioned_in`, 182 `works_at`, 105 `discussed_in`, 60 `attended`),
+  so without derived links the people-only graph would be nearly empty.
+- **D17 A well is a named set of people.** One mechanism, three sources: an organization (works at / advises /
+  invested in), a topic (people linked to it through their meetings and documents, or directly), or a **tag** you put on
+  people (the 18 mentors, 18 founders, 15 prospects already in the data). Members are pulled toward a shared centre and
+  a soft outline with a label is drawn behind them. Identity is the label plus the outline style (solid = organization,
+  dashed = topic, dotted = tag), never a new colour (D13).
+- **D18 Someone in several wells stays one node**, placed at the weighted middle of the wells that are switched on, so
+  the overlap between two wells *is* the people who bridge them. Only the wells you switch on (chips above the canvas,
+  default none, suggested 3 to 6) pull and draw; clicking a person lights up every well they belong to. Nothing needs
+  duplicating or choosing a "primary" organization.
+- **D19 Documents and meetings hide until a person is selected,** then fan out as small satellites (and list in the side
+  panel). The "Meetings and documents" library stays but moves out of the main navigation.
+- **D20 Tagging is quick and bulk:** select people in the network or a list, add or remove a tag, save the current set of
+  switched-on wells as a named view. Tags are free text; nothing to set up first.
+
+Steps:
+
+- [ ] Server: `GET /graph/people` (nodes = people; edges with kind direct/derived, weight, reasons) and
+  `GET /groups` (organizations, topics, tags with members and why each is a member), computed from the snapshot.
+- [ ] Canvas: people only; well force (members attracted to their centre, bridging people to the weighted middle),
+  soft hulls with labels, chips to switch wells on and off, hover and click to light up a well or a person's wells,
+  selected person fans out their meetings and documents. Tier styling stays.
+- [ ] Tags: add and remove on a person, bulk from a selection, saved views.
+- [ ] Reframe the rest to match: Organizations page becomes Groups (organizations, topics, tags); profile neighbourhood
+  card uses the same people-only view; keep parity checks for anything the old app also computed.
+
+**Done when:** on your real data, switching on "BVC" and "mentor" shows two labelled clusters with the people in both sitting
+between them; clicking a person shows why each line to them exists and their documents; tagging three people "hardware"
+and switching that tag on pulls them together.
+**Depends on:** 2, 6. Independent of 7 to 13, so it can go before chunk 8.
+
 ### Chunk 8 · Ingestion pipeline (L)
 
-- [ ] `crm_inbox` lifecycle (pending → review → applied / discarded / failed / skipped) with host jobs
+- [x] `crm_inbox` lifecycle (pending → review → applied / discarded / failed / skipped) with host jobs
   `crm/extract`.
-- [ ] **Job lanes** (small host change): cloud providers run 4 at a time, a local model runs 1. The host's single
+- [x] **Job lanes** (small host change): cloud providers run 4 at a time, a local model runs 1. The host's single
   worker would turn DynaCRM's 3½-minute import into about an hour.
-- [ ] Port `documents.py` (docx incl. tables, pdf, pptx incl. notes, txt, md), triage, extraction schema and
+- [x] Port `documents.py` (docx incl. tables, pdf, pptx incl. notes, txt, md), triage, extraction schema and
   prompts, the proposal builder, `apply` (global lock, exact-match recheck), `needs_review`, content-hash dedupe
   (invariants 3–6), and the rules-based fallback.
-- [ ] Provider-down raises `jobs.Wait("Anthropic is out of credit…")`: the batch parks with a reason and resumes
+- [x] Provider-down raises `jobs.Wait("Anthropic is out of credit…")`: the batch parks with a reason and resumes
   on **Go** after the owner tops up, instead of failing everything.
-- [ ] Publish `actions.found` for a meeting's action items, so the existing `tasks` module creates follow-ups
+- [x] Publish `actions.found` for a meeting's action items, so the existing `tasks` module creates follow-ups
   linked back to the meeting.
-- [ ] Port `test_ingest.py`, `test_llm.py` and the file-batch tests.
+- [x] Port `test_ingest.py`, `test_llm.py` and the file-batch tests.
 
 **Done when:** tests are green with a fake AI; one real canary document (the owner's key, one FirstData file) yields
 the same shape of proposal as DynaCRM did; killing the server mid-batch and restarting resumes with no duplicates.
 **Depends on:** 2, 7.
 
+_Result: host: job **lanes** (`jobs.register(..., lane="cloud")` runs four at a time; a function of the target can choose per job; everything else stays one at a time; `jobs.waiting(module, kind)`; `Module.lanes`). CRM: `inbox.py` (the `crm_inbox` table's access), `documents.py` (docx incl. tables, pdf, pptx incl. speaker notes, txt, md, the content hash), `extraction.py` (the `Extraction` and `Triage` schemas, the prompts, the rules-based reader), `ingest.py` (job creation, triage, context, extraction, proposal, apply, the host job `crm/extract`), `routes_ingest.py` (`/api/crm/ingest/notes`, `/files`, `/jobs`, `/jobs/{id}` with `apply`, `discard`, `retry`, `/jobs/apply-ready`, `/summary`, `/resume`). Behaviour: the extraction job is in the cloud lane when a cloud model does it and in the one-at-a-time lane for a local model or rules; a provider-wide failure puts the item back in line, trips a 60 second breaker so the rest of the batch parks without being tried, and shows the reason ("AI provider unavailable: Claude (Anthropic): The Anthropic account is out of credit… Press Resume when it's fixed."); **Resume** (or changing any AI or People setting, which is usually the fix) sends everything parked on its way; a content failure falls back to rules with a warning and is never auto-applied; ambiguous names are never auto-linked; apply is one transaction under a lock with an exact-match re-check, so a failure changes nothing; discarded and already-imported content is skipped with a reason; an applied meeting publishes `actions.found` (its whole list, which is what the tasks module replaces a source's open tasks with) and the tasks module turns them into tasks. A new "Rules only (no AI)" choice for each People AI job. Spreadsheets are recorded as "not supported yet" (chunk 10), and the meeting and webhook routes also come in chunk 10 (the meeting pipeline itself is here and tested through `ingest.create_meeting_job`). 29 new tests (`test_ingest.py`, three more in `test_core.py`), run six times in a row without a flake; `scripts/check` green with 126 tests. **Verified live** with the local `qwen2.5:7b` on three of your real notes, in a scratch copy of the data: proposals have the same keys as DynaCRM's, link to your existing people (Stacey Hollis, Dan Rowe, Mickey Fairweather…) and read sensibly for a 7B model (10 and 7 entities where Opus found 16 and 9); the local lane ran them one at a time; killing the server with -9 mid-batch and starting it again finished all five items exactly once with no duplicate people; a missing Claude key parks the work with the reason shown. **Not verified:** the real Claude and Gemini calls (need your keys), so the "one FirstData file with Opus" canary is still open. Worth knowing: the 7B read "Zed Zulu" as an organization as well as a person on one auto-applied test note, so a small local model shouldn't be left on auto-apply for things you care about; Claude is the one to trust._
+
 ### Chunk 9 · Inbox and review screens (L)
 
-- [ ] Drop zone and folder picker (the Swift window already supports folders), paste notes ("Sort & review"), the
+- [x] Drop zone and folder picker (the Swift window already supports folders), paste notes ("Sort & review"), the
   queue with progress, filters and "Approve all ready", per-job review (match editing, relationships on/off,
   warnings), retry and discard, spreadsheet mapping view, "Needs you" chips via `JobStatus`.
-- [ ] Sidebar Inbox badge counts what needs the owner.
+- [x] Sidebar Inbox badge counts what needs the owner.
 
 **Done when:** a small folder imports end to end through the UI (fake AI, then one real run).
 **Depends on:** 8.
 
+_Result: `Inbox.tsx` (a drop zone that also reads whole folders with their paths, file and folder pickers, an "add to your people automatically" choice, paste notes with an optional title and date, "Read by …" showing who does the extraction job, the queue with filters and counts, a "Paused" banner with the reason and **Resume**, and "Add everything that's ready" behind a confirmation), `InboxItem.tsx` (the review: warnings, the record's title, date, summary, key points, action items and tags; each person, organization or topic as Same as / New / Skip with the candidate list, a search for another record and a link to open it; each relationship on or off; Discard behind a confirmation; "Add to your people" disabled until every "Same as" has a record; applied, failed, skipped and discarded states; the original text), `drop.ts`, `inboxBits.tsx`. Both screens are loaded only when opened. The sidebar's Inbox badge counts items waiting for review plus failed ones. Spreadsheet mapping view: nothing to show until chunk 10 makes spreadsheets importable. **Verified in a browser** on a scratch copy of your data: dropping three files (two queued, one skipped as too short), the queue and its filters, opening an item that the local model had read from one of your real notes, adding it (it opened the new meeting and the badge went down), a parked item showing the Paused banner and reason, and no horizontal overflow at 390 px. **Not exercised by hand:** dragging a real folder from Finder (the folder reading is written against WebKit's directory entries and untested here), the native file and folder pickers, Discard, Retry and "Add everything that's ready", editing a match with the search box, keyboard-only use, and the Dusk theme on these screens. The "one real run" of the Done-when was the local Ollama reading from chunk 8, reviewed and added here; a run with Claude waits on your key._
+
 ### Chunk 10 · Importers: spreadsheets, LinkedIn, recorded meetings (M)
 
-- [ ] Spreadsheet import (invariant 8): AI column mapping with a synonym fallback, org-row detection, `met_with` →
+- [x] Spreadsheet import (invariant 8): AI column mapping with a synonym fallback, org-row detection, `met_with` →
   `knows` from teammates, relationship strength.
-- [ ] LinkedIn `Connections.csv` (official export only; idempotent; dated by "Connected On").
-- [ ] `POST /api/crm/ingest/meeting` (title, start, attendees with emails, notes, transcript): matches invitees by
+- [x] LinkedIn `Connections.csv` (official export only; idempotent; dated by "Connected On").
+- [x] `POST /api/crm/ingest/meeting` (title, start, attendees with emails, notes, transcript): matches invitees by
   email, dedupes by `external_id` and content, attaches to an existing same-day meeting (`find_existing_meeting`).
-- [ ] The webhook endpoint (D15).
+- [x] The webhook endpoint (D15).
 
 **Done when:** the five FirstData spreadsheets import into a scratch database with the old app's counts (using
 recorded column mappings, since the AI step isn't deterministic); a replayed meeting does not duplicate.
 **Depends on:** 8. **Milestone D** after 9 and 10.
 
+_Result: `spreadsheets.py` (column mapping by the utility AI with a synonym fallback; a provider-wide failure parks the sheet instead of guessing; the importer, from DynaCRM, in the caller's transaction so a failure changes nothing; a recorded mapping can be replayed with `payload.mappings`), `linkedin.py`, and routes `POST /api/crm/ingest/linkedin`, `/meeting` (202, or 200 with the earlier item when it was seen before) and `/webhook` (payload shapes as before; added automatically only if the new setting `crm.webhook_auto_apply` is on). A spreadsheet is recorded as applied with the mapping used, shown on the item page ("Where each column went"). Webhook auth is the host's: D15 holds (only reachable from other machines in server mode, with the access token as `Authorization: Bearer …`); the old `X-Webhook-Token` header is gone. The inbox page has an "Other ways in" card (LinkedIn upload, the endpoints) and Settings has a switch for webhook auto-add. 14 new tests (`test_import.py`) and `scripts/parity-sheets.py`. **Parity, checked against the old code itself:** the old app's counts can't be reproduced from its recorded results alone, because the database it started from (what was already in it when the five sheets went in) is unknown. So `scripts/parity-sheets.py` runs DynaCRM's own importer (in its image, against a scratch Postgres database) and this one over the five recorded mappings from the same starting records in the same order, in two different setups: every per-sheet count is identical, and so are all 129 people and organizations and all 164 and 168 lines. `scripts/check` is green with 140 tests. **Verified in a browser** on a scratch copy of the data: a real spreadsheet imported, with its mapping shown; a LinkedIn file imported; the "Other ways in" card. **Not exercised by hand:** the LinkedIn file picker and a real Granola send (the endpoint is tested), the spreadsheet import with a real AI mapping (needs a key; the mapping used by the old app is what the parity run replays), and the Dusk theme on these screens._
+
 ### Chunk 11 · Mac polish (M)
 
-- [ ] Menu-bar template icon (`mac/Sources/AppHost/Mark.swift`, line art of the same mark, 18×18) and
+- [x] Menu-bar template icon (`mac/Sources/AppHost/Mark.swift`, line art of the same mark, 18×18) and
   `mac/AppIcon.icns`.
-- [ ] Menu items, window size, Open at Login, data folder permissions.
-- [ ] Decide D3, D10, D11. Build with `scripts/build-app.sh --dmg`.
-- [ ] This Mac has the Command Line Tools only (no Xcode): don't use `@State`, `@Entry` or `#Preview` in Swift.
-- [ ] Behaviour checks: kill the server → it restarts (up to 3 times in 2 minutes) then explains; quit leaves no
+- [x] Menu items, window size, Open at Login, data folder permissions.
+- [x] Decide D3, D10, D11. Build with `scripts/build-app.sh --dmg`.
+- [x] This Mac has the Command Line Tools only (no Xcode): don't use `@State`, `@Entry` or `#Preview` in Swift.
+- [x] Behaviour checks: kill the server → it restarts (up to 3 times in 2 minutes) then explains; quit leaves no
   stray process; two copies of the app don't fight over the port.
 
 **Done when:** the `.dmg` installs into `/Applications` on this Mac, the first-launch steps are written down, and
 CI builds it on a version tag.
 **Depends on:** 4 (earlier is fine).
+
+_Result: decisions D3 = `com.thelodge.app`, D10 = ad-hoc, D11 = manual disk image (see the table). The menu bar icon is now the A-frame lodge with its door and the low sun (`Mark.swift`), and the app icon is the same mark (`mac/AppIcon.icns`, drawn by `scripts/make-icon.swift`). Menu: Open The Lodge, Inbox, Open at Login, Show Data Folder, Show Server Log, Quit (and Check for Updates, only if an update repo is set). The data folder is readable only by you (0700, database 0600), fixed in the host (`db.init`) so it also holds for a development run and a server install, with a test; it was world-readable before and your real folder was tightened when the new app first ran. `scripts/build-app.sh --dmg` makes `The Lodge-0.1.0-arm64.dmg` (112 MB, with its `.sha256`); I mounted it, checked the checksum, that it holds the app and an Applications link, and that the ad-hoc signature verifies (macOS's Gatekeeper rejects it, as expected, hence the first-launch steps in `INSTALL.md`). **I installed it into `/Applications` on this Mac** from that image and ran it on your real data (129 people, as before); the old copy in `dist-app` is the same build. `scripts/check-app.py` checks the built app on a spare port with its own data folder (13 checks, all pass): the server starts as the app's child; a killed server is started again, and after three crashes in two minutes the app stops trying (the menu then explains from the log; I haven't read that menu text on screen); quitting leaves no server, and force-killing the app doesn't either; a second copy shares the first one's server and closing it doesn't stop it. The release workflow (`.github/workflows/release.yml`, on a `v*` tag) parses and builds with the same script, but **I haven't run it on GitHub**: a tag push would, and the first run may need small fixes (the runner's Swift is older than this Mac's). Not done: reading the menu text on screen, a signed or notarized build, automatic updates._
 
 ### Chunk 12 · Capture automation: Granola and calendars (spike, then M)
 
@@ -353,6 +431,36 @@ CI builds it on a version tag.
 **Depends on:** everything. **Milestone E.**
 
 ---
+
+### Chunk 14 · Research flags: people who need deep research (M) — PROPOSED
+
+The owner's request (2026-10-12): when a person's profile has no base context, flag them so he can run **deep research** on
+them in a deep-research tool and bring the result back in.
+
+Proposed shape (change any of it):
+
+- **What counts as "no base context":** no summary **and** no long-form research on them (a note from a document
+  that's a profile, or anything over about 1,500 characters). On the real data that is about 70 of the 128 people,
+  so the flag has to be easy to work through, not a wall: sort by how much the person matters (tier, meetings,
+  connections), and let him snooze or dismiss one ("not worth researching").
+- **Where it shows:** a "Needs research" chip on the person's profile, a filter and count on People, and a card on Home
+  ("12 strong or working contacts have no research"), most important first.
+- **The research brief:** one button on the profile, "Copy research brief", puts a ready-made prompt on the
+  clipboard for whichever deep-research tool he uses (Claude, ChatGPT, Gemini, Perplexity): who they are as far as we
+  know (name, title, organization, location, email domain, LinkedIn URL), where they came up in his meetings and
+  documents, what he wants to learn (background, current role, organizations, who they know, why they matter to Cold
+  Connect), and the output shape the importer reads best. Nothing is sent anywhere by the app; he pastes it himself.
+- **Bringing it back:** a "Paste or add the research" button on the same profile opens the inbox with the person
+  already chosen as the subject, so the existing `person_profile` path attaches the summary and facts to them, keeps
+  the full text as a note, and the flag clears. A document dropped into the inbox that's about someone who's flagged
+  clears the flag the same way.
+- **Honest limits:** the app can't run deep research itself (those tools are in other apps), and it won't guess a
+  profile from the open web. A person with only a first name can't be researched until they have a surname.
+
+**Done when:** a person with nothing on file shows the flag; "Copy research brief" gives a prompt that names what we
+know about them; pasting a research report back attaches it and clears the flag; the Home card lists the ones that
+matter most.
+**Depends on:** 8, 9 (the inbox and the `person_profile` path).
 
 ## 6. Risks and spikes
 

@@ -8,12 +8,20 @@ from pydantic import BaseModel, Field, field_validator
 
 from . import dashboard as dash
 from . import graph as graph_svc
-from . import listing, routes_people, store, timeline as timeline_svc, views
+from . import listing, roles, routes_ingest, routes_network, routes_people, store, timeline as timeline_svc, views
 from .kinds import ENTITY_KINDS, RELATIONSHIP_KINDS, validate_relationship
 from .model import Entity, Note, Relationship, iso
 
 router = APIRouter()
 router.include_router(routes_people.router)
+router.include_router(routes_network.router)
+router.include_router(routes_ingest.router)
+
+
+@router.get("/ai")
+def ai_roles():
+    """Which provider and model does each AI job, and is it ready? (For Settings.)"""
+    return roles.status()
 
 
 # ── Shapes ────────────────────────────────────────────────────────────

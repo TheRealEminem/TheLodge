@@ -5,13 +5,18 @@ Everything is a node (crm_entities) or an edge (crm_relationships). See store.py
 """
 from core.server.module import Module
 
-from . import routes, store
+from . import ingest, roles, routes, store
 
 MODULE = Module(
     id="crm",
     name="People",
     router=routes.router,
     migrations=store.MIGRATIONS,
+    settings={**roles.SETTINGS, "webhook_auto_apply": False},
+    choices=roles.CHOICES,
+    jobs={"extract": ingest.handle_extract},
+    lanes={"extract": ingest.lane},
+    subscribe={"core.settings.changed": ingest.on_settings_changed},
     search=store.search,
     describe=store.describe,
 )

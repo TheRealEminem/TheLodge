@@ -1,7 +1,7 @@
 import AppKit
 
-/// The menu bar icon: the family mark as line art (a low sun, a ridge, a trail winding up to it).
-/// Each family app swaps the trail for its own motif, keeping the sun and the ridge.
+/// The menu bar icon: the app's mark as line art (a low sun over an A-frame lodge, with a small door).
+/// It matches the app icon and the logo in the sidebar (core/web/components/illustrations.tsx).
 enum Mark {
     static let menuIcon = icon(dimmed: false)
     static let menuIconDimmed = icon(dimmed: true)
@@ -10,23 +10,25 @@ enum Mark {
         let image = NSImage(size: NSSize(width: 18, height: 18), flipped: false) { _ in
             NSColor.black.setStroke()
             NSColor.black.setFill()
-            NSBezierPath(ovalIn: NSRect(x: 11.2, y: 10.6, width: 4.6, height: 4.6)).fill()  // sun
+            NSBezierPath(ovalIn: NSRect(x: 11.1, y: 11.3, width: 4.8, height: 4.8)).fill()  // sun
 
-            let ridge = NSBezierPath()
-            ridge.move(to: NSPoint(x: 1.2, y: 7.2))
-            ridge.curve(to: NSPoint(x: 16.8, y: 7.6), controlPoint1: NSPoint(x: 5.5, y: 11.2), controlPoint2: NSPoint(x: 11, y: 10.6))
-            ridge.lineWidth = 1.3
-            ridge.lineCapStyle = .round
-            ridge.stroke()
+            let roof = NSBezierPath()  // the A-frame
+            roof.move(to: NSPoint(x: 2.4, y: 1.6))
+            roof.line(to: NSPoint(x: 8.6, y: 10.6))
+            roof.line(to: NSPoint(x: 14.8, y: 1.6))
+            roof.lineWidth = 1.9
+            roof.lineCapStyle = .round
+            roof.lineJoinStyle = .round
+            roof.stroke()
 
-            let trail = NSBezierPath()  // ← the part a sibling app replaces with its own motif
-            trail.move(to: NSPoint(x: 5.2, y: 1.2))
-            trail.curve(to: NSPoint(x: 8.6, y: 4.6), controlPoint1: NSPoint(x: 6.2, y: 3.4), controlPoint2: NSPoint(x: 9.8, y: 3.2))
-            trail.curve(to: NSPoint(x: 10.8, y: 7.6), controlPoint1: NSPoint(x: 7.4, y: 6), controlPoint2: NSPoint(x: 9.2, y: 7.2))
-            trail.lineWidth = 1.9
-            trail.lineCapStyle = .round
-            trail.lineJoinStyle = .round
-            trail.stroke()
+            let door = NSBezierPath()
+            door.move(to: NSPoint(x: 6.6, y: 1.6))
+            door.line(to: NSPoint(x: 8.6, y: 4.9))
+            door.line(to: NSPoint(x: 10.6, y: 1.6))
+            door.lineWidth = 1.3
+            door.lineCapStyle = .round
+            door.lineJoinStyle = .round
+            door.stroke()
             return true
         }
         image.isTemplate = true

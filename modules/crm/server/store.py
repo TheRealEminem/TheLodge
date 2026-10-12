@@ -89,6 +89,15 @@ MIGRATIONS = [
 
     CREATE VIRTUAL TABLE crm_fts USING fts5(id UNINDEXED, name, summary, aliases, details, tokenize='porter unicode61');
     """,
+    # Saved views of the network: a name and the groups (wells) that were switched on.
+    """
+    CREATE TABLE crm_views (
+        id         TEXT PRIMARY KEY,
+        name       TEXT NOT NULL,
+        wells      TEXT NOT NULL DEFAULT '[]',   -- JSON array of group ids ("org:…", "topic:…", "tag:…")
+        created_at TEXT NOT NULL
+    );
+    """,
 ]
 
 _version = 0

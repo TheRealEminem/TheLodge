@@ -76,7 +76,7 @@ export interface ProviderInfo {
   id: ProviderId;
   label: string;
   kind: "local" | "cloud" | "custom";
-  ready: boolean | null; // null: not in use, so not checked
+  ready: boolean; // keyed (or reachable, for Ollama) and configured
   reason: string;
 }
 
