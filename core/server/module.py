@@ -26,6 +26,7 @@ class Module:
     settings: dict = field(default_factory=dict)          # name -> default, stored as "<id>.<name>"
     choices: dict = field(default_factory=dict)           # name -> allowed values
     jobs: dict[str, Callable] = field(default_factory=dict)        # kind -> handler(job)
+    lanes: dict = field(default_factory=dict)                      # kind -> "cloud" or a function of the target (see jobs.py)
     subscribe: dict[str, Callable] = field(default_factory=dict)   # event name (or "prefix.*") -> handler(payload)
     search: Callable[[str, int], list[dict]] | None = None         # (q, limit) -> [{id, title, snippet}]
     describe: Callable[[str], dict | None] | None = None           # id -> {title, href} for links and search
@@ -52,7 +53,7 @@ def register(module: Module) -> None:
     db.migrate(module.id, module.migrations)
     settings.declare(module.id, module.settings, module.choices)
     for kind, handler in module.jobs.items():
-        jobs.register(module.id, kind, handler)
+        jobs.register(module.id, kind, handler, lane=module.lanes.get(kind, "default"))
     for name, handler in module.subscribe.items():
         events.subscribe(name, handler)
     _loaded[module.id] = module

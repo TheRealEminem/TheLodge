@@ -93,6 +93,19 @@ def init() -> None:
         conn.execute("PRAGMA journal_mode = WAL")
         conn.execute("CREATE TABLE IF NOT EXISTS core_migrations (module TEXT PRIMARY KEY, version INTEGER NOT NULL)")
     migrate("core", CORE_MIGRATIONS)
+    _keep_private()
+
+
+def _keep_private() -> None:
+    """The data folder holds everything the app knows, including API keys: only you may read it. (SQLite's
+    -wal and -shm files are made with the database's own permissions.)"""
+    try:
+        config.DATA_DIR.chmod(0o700)
+        for path in (DB_PATH, DB_PATH.with_name(DB_PATH.name + "-wal"), DB_PATH.with_name(DB_PATH.name + "-shm")):
+            if path.exists():
+                path.chmod(0o600)
+    except OSError:
+        pass  # e.g. a folder on a drive that has no permissions: nothing to protect there
 
 
 def migrate(module: str, steps: list[str]) -> None:

@@ -161,7 +161,7 @@ the 8780–8799 range, and keep a list here:
 | `router` | A FastAPI `APIRouter`, mounted at `/api/<id>`. |
 | `migrations` | Append-only SQL steps for the `<id>_*` tables, applied once each on startup. |
 | `settings`, `choices` | Defaults stored as `<id>.<name>`, with allowed values. Edited on the Settings page. |
-| `jobs` | `{kind: handler(job)}`: background work this module knows how to do. |
+| `jobs` | `{kind: handler(job)}`: background work this module knows how to do. `lanes` (optional): `{kind: "cloud" or a function of the target}` to let a kind run four at a time when it only waits on a web API. |
 | `subscribe` | `{event or "prefix.*": handler(payload)}`: what it listens to. |
 | `search` | `(q, limit) -> [{id, title, snippet}]`: its part of the sidebar search. |
 | `describe` | `id -> {title, href}`: how its things appear in other modules' links and in search. |
@@ -188,7 +188,7 @@ another module's.
 | Store data | `db.query/one/execute/connect`, `db.new_id()`, `db.now()` | One SQLite file; WAL; short connections. Use JSON text columns for nested data and FTS5 for search. |
 | Files | `config.DATA_DIR / "<id>"` | Never inside the app bundle. |
 | A setting | `Module.settings` + `settings.section("<id>")` | Secrets end in `_api_key`/`_token`; they're write-only and preset from `<PREFIX>_<ID>_<NAME>`. |
-| Slow work | `jobs.enqueue(id, kind, target, approve=…)` | One worker, resumable. `approve=True` parks it as "Needs you". A handler can `raise jobs.Wait("reason")` to park itself (low memory…), and the user can force past that. `job.stage("…")` shows progress. |
+| Slow work | `jobs.enqueue(id, kind, target, approve=…)` | One worker by default (a "cloud" lane runs four side by side), resumable. `approve=True` parks it as "Needs you". A handler can `raise jobs.Wait("reason")` to park itself (low memory…), and the user can force past that. `job.stage("…")` shows progress. |
 | AI | `ai.complete(prompt, system)` → `(text, provider)` | Uses the app-wide provider and fallback from Settings → AI. Raises `ai.AIError` with readable reasons. `ai.local_first()` tells you whether it would run on this Mac. |
 | Tell others | `events.publish("<id>.thing.happened", {...})` | Handlers run immediately and must be quick. Every publish also refreshes open screens. |
 | A shared meaning | `contracts.py` (`ACTIONS_FOUND`, `ITEM_DELETED`) | Add a contract when a second module cares about the same kind of thing. |

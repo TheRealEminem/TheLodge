@@ -1,111 +1,145 @@
-// The whole network, or one record's neighborhood, with a path finder ("how do I reach X?").
+// The network: how the people you know connect, and what groups them. Only people are nodes; organizations,
+// topics and tags are groups you switch on to pull their people together; meetings and documents show when you
+// select someone. Also a path finder ("how do I reach X?").
 import { Suspense, lazy, useMemo, useState } from "react";
 import { CloseIcon, NetworkIcon, SignpostIcon } from "@core/components/icons";
 import { PageHeader, Segmented, Select, Skeleton } from "@core/components/ui";
 import { useLive } from "@core/live";
-import { useQueryParams } from "@core/router";
+import { navigate, useQueryParams } from "@core/router";
 import { crmApi } from "./api";
-import type { EntityKind, Graph, GraphNode } from "./api";
-import { Avatar, Empty, KIND_LABEL } from "./bits";
+import type { NetNode } from "./api";
+import { Empty } from "./bits";
 import { PathChains } from "./cards";
 import { EntityPicker } from "./forms";
-import { KIND_ORDER, KIND_SHAPE, ShapeGlyph } from "./graphShapes";
 import { GraphLegend } from "./GraphLegend";
+import { GROUP_META, groupMap } from "./groups";
 import type { Highlight } from "./NetworkCanvas";
-import { TIER_META, TierBadge } from "./tier";
+import { GroupBar, GroupPanel, PersonPanel, PicksPanel } from "./NetworkPanels";
+import { TIER_META } from "./tier";
 
 const NetworkCanvas = lazy(() => import("./NetworkCanvas"));
-
-const DEFAULT_KINDS: EntityKind[] = ["person", "organization", "meeting", "topic"];
 
 export default function Network() {
   const [params, setParams] = useQueryParams();
   const focus = params.get("focus");
   const pathTo = params.get("to");
   const depth = Number(params.get("depth") ?? 2);
-  const kinds = (params.get("kinds")?.split(",").filter(Boolean) as EntityKind[] | undefined) ?? DEFAULT_KINDS;
+  const wellsParam = params.get("wells") ?? "";
   const [view, setView] = useState<"graph" | "list">("graph");
-  const [selected, setSelected] = useState<GraphNode | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [openGroup, setOpenGroup] = useState<string | null>(null);
+  const [hoverWell, setHoverWell] = useState<string | null>(null);
+  const [picked, setPicked] = useState<Set<string>>(new Set());
   const [pathIndex, setPathIndex] = useState(0);
-  const [peopleOnly, setPeopleOnly] = useState(false);
 
-  const { data: graph, error } = useLive(
-    () => crmApi.graph({ center: focus ?? undefined, depth, kinds: kinds.join(","), max_nodes: 600 }),
-    [focus, depth, kinds.join(",")],
-  );
+  const { data: net, error } = useLive(() => crmApi.network({ focus: focus ?? undefined, depth, max_nodes: 600 }), [focus, depth]);
   const { data: me } = useLive(crmApi.me);
-  const { data: paths } = useLive(() => (pathTo && me ? crmApi.paths({ target: pathTo, through: peopleOnly ? "person" : undefined }) : Promise.resolve(null)), [pathTo, peopleOnly, me?.id]);
+  const { data: paths } = useLive(() => (pathTo && me ? crmApi.netPaths({ target: pathTo }) : Promise.resolve(null)), [pathTo, me?.id]);
   const { data: focusEntity } = useLive(() => (focus ? crmApi.entity(focus) : Promise.resolve(null)), [focus]);
+  const { data: evidence } = useLive(() => (selectedId ? crmApi.evidence(selectedId) : Promise.resolve(null)), [selectedId]);
+
+  const groups = useMemo(() => groupMap(net?.groups), [net?.groups]);
+  const wells = useMemo(() => wellsParam.split(",").filter((g) => g && groups.has(g)), [wellsParam, groups]);
+  const showMe = params.get("me") === "1" || Boolean(pathTo) || Boolean(focus && focus === me?.id);
   const active = paths?.paths[pathIndex] ?? paths?.paths[0];
+  const highlight: Highlight | null = useMemo(() => (active ? { nodes: new Set(active.nodes.map((n) => n.id)), links: new Set(active.links.map((l) => l.id)) } : null), [active]);
+  const selected = net?.nodes.find((n) => n.id === selectedId) ?? null;
+  const pickedPeople = useMemo(() => (net?.nodes ?? []).filter((n) => picked.has(n.id)), [net?.nodes, picked]);
 
-  // Make sure every node on the highlighted path is drawn, even if its kind is filtered out.
-  const shown: Graph | undefined = useMemo(() => {
-    if (!graph || !active) return graph ?? undefined;
-    const ids = new Set(graph.nodes.map((n) => n.id));
-    const linkIds = new Set(graph.links.map((l) => l.id));
-    return { ...graph, nodes: [...graph.nodes, ...active.nodes.filter((n) => !ids.has(n.id))], links: [...graph.links, ...active.links.filter((l) => !linkIds.has(l.id))] };
-  }, [graph, active]);
-  const highlight: Highlight | null = active ? { nodes: new Set(active.nodes.map((n) => n.id)), links: new Set(active.links.map((l) => l.id)) } : null;
-
-  const toggleKind = (k: EntityKind) => {
-    const next = kinds.includes(k) ? kinds.filter((x) => x !== k) : [...kinds, k];
-    if (next.length) setParams({ kinds: KIND_ORDER.filter((x) => next.includes(x)).join(",") });
+  const setWells = (next: string[]) => setParams({ wells: next.join(",") || null });
+  const toggleWell = (gid: string) => setWells(wells.includes(gid) ? wells.filter((w) => w !== gid) : [...wells, gid]);
+  const select = (id: string | null) => { setSelectedId(id); if (id) setOpenGroup(null); };
+  const clickNode = (n: NetNode, e: MouseEvent) => {
+    if (e.shiftKey || e.metaKey || e.ctrlKey) {
+      setPicked((p) => { const next = new Set(p); if (next.has(n.id)) next.delete(n.id); else next.add(n.id); return next; });
+    } else select(n.id);
   };
-  const side = Boolean(selected || pathTo);
+  const side = Boolean(selected || pathTo || openGroup || picked.size);
+
+  const listed = useMemo(() => {
+    const inWell = (n: NetNode) => !wells.length || wells.some((w) => n.groups.includes(w));
+    return (net?.nodes ?? []).filter((n) => (showMe || !n.is_self) && inWell(n));
+  }, [net?.nodes, wells, showMe]);
 
   return (
     <>
       <PageHeader
         title="Network"
-        subtitle={focusEntity ? `Around ${focusEntity.entity.name}` : "Everyone and everything you've connected."}
+        subtitle={focusEntity ? `Around ${focusEntity.entity.name}` : "How the people you know connect, and what groups them."}
         actions={<Segmented label="View" value={view} onChange={setView} options={[{ id: "graph", label: "Graph" }, { id: "list", label: "List" }]} />}
       />
-      <div className="mb-3 flex animate-enter flex-wrap items-center gap-2">
-        <div className="flex flex-wrap gap-1.5" role="group" aria-label="Show kinds">
-          {KIND_ORDER.map((k) => (
-            <button
-              key={k}
-              aria-pressed={kinds.includes(k)}
-              onClick={() => toggleKind(k)}
-              className={`chip h-7 gap-1.5 px-2.5 ${kinds.includes(k) ? "bg-forest-soft text-forest-deep" : "bg-surface-subtle text-ink-soft"}`}
-            >
-              <ShapeGlyph shape={KIND_SHAPE[k]} /> {KIND_LABEL[k].many}
-            </button>
-          ))}
-        </div>
+
+      {net && (
+        <GroupBar
+          groups={net.groups}
+          active={wells}
+          hovered={hoverWell}
+          openGroup={openGroup}
+          onToggle={toggleWell}
+          onHover={setHoverWell}
+          onOpen={(gid) => { setOpenGroup(gid); setSelectedId(null); }}
+          onApply={setWells}
+        />
+      )}
+
+      <div className="mb-3 flex flex-wrap items-center gap-2">
+        <button
+          aria-pressed={showMe}
+          disabled={Boolean(pathTo)}
+          onClick={() => setParams({ me: params.get("me") === "1" ? null : "1" })}
+          className={`chip h-7 px-2.5 ${showMe ? "bg-forest-soft text-forest-deep" : "bg-surface-subtle text-ink-soft"}`}
+          data-tip="Draw the lines from you to everyone you know"
+        >
+          Your ties
+        </button>
         <div className="ml-auto flex flex-wrap items-center gap-2">
           {focus ? (
             <>
               <Select label="Depth" size="sm" value={String(depth)} onChange={(v) => setParams({ depth: v })} options={[1, 2, 3].map((d) => ({ value: String(d), label: `${d} hop${d > 1 ? "s" : ""}` }))} />
-              <button className="btn btn-sm btn-soft" onClick={() => setParams({ focus: null })}><CloseIcon size={16} /> Whole network</button>
+              <button className="btn btn-sm btn-soft" onClick={() => setParams({ focus: null })}><CloseIcon size={16} /> Everyone</button>
             </>
           ) : (
-            <div className="w-56"><EntityPicker placeholder="Focus on…" onSelect={(e) => setParams({ focus: e.id })} /></div>
+            <div className="w-56"><EntityPicker kinds={["person"]} placeholder="Focus on someone…" onSelect={(e) => { setParams({ focus: e.id }); select(e.id); }} /></div>
           )}
-          {me && <div className="w-56"><EntityPicker placeholder="Find path to…" exclude={[me.id]} onSelect={(e) => { setPathIndex(0); setParams({ to: e.id }); }} /></div>}
+          {me && <div className="w-56"><EntityPicker kinds={["person"]} placeholder="Find path to…" exclude={[me.id]} onSelect={(e) => { setPathIndex(0); setParams({ to: e.id }); }} /></div>}
         </div>
       </div>
 
-      <div className={`grid gap-4 ${side ? "lg:grid-cols-[minmax(0,1fr)_20rem]" : ""}`}>
-        <div className="panel relative overflow-hidden" style={{ height: "clamp(420px, 64vh, 720px)" }}>
+      <div className={`grid gap-4 ${side ? "lg:grid-cols-[minmax(0,1fr)_21rem]" : ""}`}>
+        <div className="panel relative overflow-hidden" style={{ height: "clamp(440px, 66vh, 760px)" }}>
           {error && <p className="p-5 text-ui text-trail-deep">{error}</p>}
-          {!graph && !error && <Skeleton className="h-full w-full" />}
-          {graph && graph.nodes.length === 0 && <div className="grid h-full place-items-center p-6"><Empty icon={<NetworkIcon size={20} />} title="Nothing to show yet">Add people and relationships and they appear here.</Empty></div>}
-          {shown && shown.nodes.length > 0 && view === "graph" && (
+          {!net && !error && <Skeleton className="h-full w-full" />}
+          {net && net.nodes.length === 0 && <div className="grid h-full place-items-center p-6"><Empty icon={<NetworkIcon size={20} />} title="Nothing to show yet">Add people and how they connect and they appear here.</Empty></div>}
+          {net && net.nodes.length > 0 && view === "graph" && (
             <Suspense fallback={<Skeleton className="h-full w-full" />}>
-              <NetworkCanvas graph={shown} focusId={focus} selectedId={selected?.id} highlight={highlight} onNodeClick={setSelected} onBackgroundClick={() => setSelected(null)} />
+              <NetworkCanvas
+                nodes={net.nodes}
+                links={net.links}
+                groups={groups}
+                wells={wells}
+                showMe={showMe}
+                evidence={selectedId ? evidence : null}
+                selectedId={selectedId}
+                picked={picked}
+                focusId={focus}
+                highlight={highlight}
+                hoverWell={hoverWell}
+                onNodeClick={clickNode}
+                onEventClick={(e) => navigate(`crm/e/${e.id}`)}
+                onBackgroundClick={() => select(null)}
+              />
             </Suspense>
           )}
-          {shown && shown.nodes.length > 0 && view === "list" && <NodeList graph={shown} onPick={setSelected} />}
+          {net && net.nodes.length > 0 && view === "list" && <PeopleList people={listed} groups={groups} onPick={(n) => select(n.id)} />}
           {view === "graph" && (
             <div className="pointer-events-none absolute bottom-3 left-3 right-3 flex flex-col items-start gap-1.5">
-              <div className="panel pointer-events-auto px-3 py-2"><GraphLegend kinds={kinds} /></div>
-              {graph?.truncated && <div className="panel bg-sun-soft px-3 py-1.5 text-meta text-sun-deep">Showing the most connected {graph.nodes.length} records. Focus on someone to see more.</div>}
+              <div className="panel pointer-events-auto px-3 py-2"><GraphLegend wells={wells.length > 0} events={Boolean(selectedId)} /></div>
+              {net?.truncated && <div className="panel bg-sun-soft px-3 py-1.5 text-meta text-sun-deep">Showing the most connected {net.nodes.length} people. Focus on someone to see more.</div>}
             </div>
           )}
         </div>
 
-        {side && (
+        {side && net && (
           <aside className="space-y-4">
             {pathTo && (
               <section className="panel p-4">
@@ -113,32 +147,39 @@ export default function Network() {
                   <h2 className="flex items-center gap-1.5 text-heading font-semibold"><SignpostIcon size={16} /> Paths to {paths?.target.name ?? "…"}</h2>
                   <button className="icon-btn" aria-label="Close paths" onClick={() => setParams({ to: null })}><CloseIcon size={16} /></button>
                 </div>
-                <label className="mb-2.5 flex items-center gap-1.5 text-hint text-ink-soft">
-                  <input type="checkbox" className="accent-forest" checked={peopleOnly} onChange={(e) => { setPeopleOnly(e.target.checked); setPathIndex(0); }} /> Only through people
-                </label>
                 {!paths ? <Skeleton className="h-12 w-full rounded-lg" /> : paths.paths.length ? <PathChains paths={paths.paths} activeIndex={pathIndex} onPick={setPathIndex} /> : <p className="text-ui text-ink-soft">No path within 4 hops.</p>}
               </section>
             )}
+            {picked.size > 0 && <PicksPanel people={pickedPeople} onClear={() => setPicked(new Set())} onDone={() => undefined} />}
+            {openGroup && groups.get(openGroup) && (
+              <GroupPanel
+                gid={openGroup}
+                group={groups.get(openGroup)!}
+                active={wells.includes(openGroup)}
+                onClose={() => setOpenGroup(null)}
+                onToggle={() => toggleWell(openGroup)}
+                onSelect={select}
+                onPickAll={(ids) => setPicked(new Set(ids))}
+              />
+            )}
             {selected && (
-              <section className="panel p-4">
-                <div className="flex items-start gap-3">
-                  <Avatar name={selected.name} kind={selected.kind} size={40} />
-                  <div className="min-w-0 flex-1">
-                    <div className="text-label font-semibold">{selected.name}</div>
-                    {selected.subtitle && <div className="text-ui text-ink-soft">{selected.subtitle}</div>}
-                    <div className="mt-0.5 flex items-center gap-2 text-meta text-ink-soft">
-                      {KIND_LABEL[selected.kind].one} · {selected.degree} connection{selected.degree === 1 ? "" : "s"}
-                      {selected.tier && <TierBadge tier={selected.tier} />}
-                    </div>
-                  </div>
-                  <button className="icon-btn" aria-label="Close" onClick={() => setSelected(null)}><CloseIcon size={16} /></button>
-                </div>
-                <div className="mt-3 flex flex-wrap gap-2">
-                  <a className="btn btn-sm btn-primary" href={`#/crm/e/${selected.id}`}>Open profile</a>
-                  <button className="btn btn-sm btn-soft" onClick={() => setParams({ focus: selected.id })}>Focus</button>
-                  {me && !selected.is_self && <button className="btn btn-sm btn-soft" onClick={() => { setPathIndex(0); setParams({ to: selected.id }); }}>Path from me</button>}
-                </div>
-              </section>
+              <PersonPanel
+                person={selected}
+                links={net.links}
+                nodes={net.nodes}
+                groups={groups}
+                active={wells}
+                evidence={evidence}
+                canPath={Boolean(me)}
+                picked={picked.has(selected.id)}
+                onClose={() => select(null)}
+                onFocus={() => setParams({ focus: selected.id })}
+                onPath={() => { setPathIndex(0); setParams({ to: selected.id }); }}
+                onToggleGroup={toggleWell}
+                onSelect={select}
+                onEvent={(e) => navigate(`crm/e/${e.id}`)}
+                onPick={() => setPicked((p) => { const next = new Set(p); if (next.has(selected.id)) next.delete(selected.id); else next.add(selected.id); return next; })}
+              />
             )}
           </aside>
         )}
@@ -147,22 +188,22 @@ export default function Network() {
   );
 }
 
-/** The same records as a list: readable by keyboard and screen reader, where the canvas isn't. */
-function NodeList({ graph, onPick }: { graph: Graph; onPick: (n: GraphNode) => void }) {
-  const rows = [...graph.nodes].sort((a, b) => b.degree - a.degree || a.name.localeCompare(b.name));
+/** The same people as a list: readable by keyboard and screen reader, where the canvas isn't. */
+function PeopleList({ people, groups, onPick }: { people: NetNode[]; groups: Map<string, { name: string; kind: keyof typeof GROUP_META }>; onPick: (n: NetNode) => void }) {
+  const rows = [...people].sort((a, b) => b.degree - a.degree || a.name.localeCompare(b.name));
   return (
     <div className="h-full overflow-auto">
-      <table className="w-full min-w-[480px] text-left text-ui">
-        <caption className="sr-only">Records in the network, most connected first</caption>
+      <table className="w-full min-w-[560px] text-left text-ui">
+        <caption className="sr-only">People in the network, most connected first</caption>
         <thead className="sticky top-0 bg-surface text-left text-ink-soft">
-          <tr><th className="px-5 py-2 font-medium">Name</th><th className="px-3 py-2 font-medium">Kind</th><th className="px-3 py-2 font-medium">You know them</th><th className="px-5 py-2 text-right font-medium">Connections</th></tr>
+          <tr><th className="px-5 py-2 font-medium">Name</th><th className="px-3 py-2 font-medium">You know them</th><th className="px-3 py-2 font-medium">Groups</th><th className="px-5 py-2 text-right font-medium">Connections</th></tr>
         </thead>
         <tbody>
           {rows.map((n) => (
             <tr key={n.id} className="border-t border-line hover:bg-forest/[.05]">
               <td className="px-5 py-2"><button className="text-left font-medium hover:underline" onClick={() => onPick(n)}>{n.is_self ? `${n.name} (you)` : n.name}</button></td>
-              <td className="px-3 py-2 text-ink-soft">{KIND_LABEL[n.kind].one}</td>
               <td className="px-3 py-2 text-ink-soft">{n.tier ? TIER_META[n.tier].label : "—"}</td>
+              <td className="px-3 py-2 text-ink-soft">{n.groups.map((g) => groups.get(g)?.name).filter(Boolean).slice(0, 4).join(", ") || "—"}</td>
               <td className="px-5 py-2 text-right tabular-nums">{n.degree}</td>
             </tr>
           ))}

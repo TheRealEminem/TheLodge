@@ -104,7 +104,9 @@ def _entities(kind: str) -> list[Entity]:
     return _index.by_kind.get(kind, [])
 
 
-def find_candidates(kind: str, name: str, email: str | None = None, limit: int = 3) -> list[Candidate]:
+def find_candidates(kind: str, name: str, email: str | None = None, limit: int = 3,
+                    extra: list[Entity] | None = None) -> list[Candidate]:
+    """`extra`: records not in the index yet (an import in progress that hasn't committed): considered as well."""
     found: dict[str, Candidate] = {}
 
     def add(entity: Entity, score: float, reason: str) -> None:
@@ -112,6 +114,9 @@ def find_candidates(kind: str, name: str, email: str | None = None, limit: int =
             found[entity.id] = Candidate(entity, score, reason)
 
     entities = _entities(kind)
+    if extra:
+        known = {e.id for e in entities}
+        entities = [*entities, *(e for e in extra if e.kind == kind and e.id not in known)]
     if email:
         wanted = email.strip().lower()
         for e in entities:

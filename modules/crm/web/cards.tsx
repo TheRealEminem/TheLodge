@@ -1,5 +1,5 @@
 // The cards a profile is made of.
-import { Suspense, lazy, useState } from "react";
+import { Suspense, lazy, useMemo, useState } from "react";
 import { CalendarIcon, ChevronRightIcon, NetworkIcon, CloseIcon, DocIcon, ExternalIcon, MailIcon, MapPinIcon, PhoneIcon, PlusIcon, TrashIcon } from "@core/components/icons";
 import { Segmented, Skeleton } from "@core/components/ui";
 import { navigate } from "@core/router";
@@ -8,6 +8,7 @@ import { useShell } from "@core/shell";
 import { crmApi } from "./api";
 import type { Affiliation, Connection, Entity, EventRef, GraphPath, OrgRow, PersonLink, RelationshipView, TimelineEvent } from "./api";
 import { AddRelationship } from "./forms";
+import { groupMap } from "./groups";
 import { Avatar, Card, EntityLink, StrengthDots } from "./bits";
 import { formatDate, monthKey, relativeTime } from "./format";
 import { TIER_META, TierBadge } from "./tier";
@@ -277,7 +278,7 @@ export function PathChains({ paths, activeIndex, onPick }: { paths: GraphPath[];
                   <span key={n.id} className="inline-flex items-center gap-1">
                     {j > 0 && (
                       <span className="inline-flex items-center text-meta text-ink-soft">
-                        <ChevronRightIcon size={12} />{rel(link.kind, link.source === p.nodes[j - 1].id)}<ChevronRightIcon size={12} />
+                        <ChevronRightIcon size={12} />{link.label ?? rel(link.kind, link.source === p.nodes[j - 1].id)}<ChevronRightIcon size={12} />
                       </span>
                     )}
                     <a href={`#/crm/e/${n.id}`} onClick={(e) => e.stopPropagation()} className="font-medium hover:underline">{n.is_self ? "You" : n.name}</a>
@@ -321,24 +322,47 @@ export function PathsCard({ entity }: { entity: Entity }) {
 }
 
 /** A small map of someone's neighborhood, with a way into the whole network. */
+/** A person's circle (the people around them), or an organization's people drawn as one group. */
 export function MiniNetwork({ entity }: { entity: Entity }) {
+  const person = entity.kind === "person";
   const [depth, setDepth] = useState(1);
-  const { data } = useLive(() => crmApi.graph({ center: entity.id, depth, max_nodes: 120 }), [entity.id, depth]);
+  const gid = `${entity.kind === "topic" ? "topic" : "org"}:${entity.id}`;
+  const { data } = useLive(() => crmApi.network(person ? { focus: entity.id, depth, max_nodes: 120 } : { max_nodes: 600 }), [entity.id, depth]);
+  const view = useMemo(() => {
+    if (!data) return null;
+    if (person) return data;
+    const nodes = data.nodes.filter((n) => n.groups.includes(gid));
+    const ids = new Set(nodes.map((n) => n.id));
+    return { ...data, nodes, links: data.links.filter((l) => ids.has(l.source) && ids.has(l.target)) };
+  }, [data, person, gid]);
+  const groups = useMemo(() => groupMap(data?.groups), [data?.groups]);
   return (
     <Card
-      title="Neighborhood"
+      title={person ? "Their circle" : "Their people"}
       flush
       action={
         <div className="flex items-center gap-2">
-          <Segmented size="sm" label="Hops" value={String(depth)} onChange={(v) => setDepth(Number(v))} options={[{ id: "1", label: "1 hop" }, { id: "2", label: "2 hops" }]} />
-          <a className="btn btn-sm btn-ghost" href={`#/crm/network?focus=${entity.id}`}><NetworkIcon size={16} /> Open</a>
+          {person && <Segmented size="sm" label="Hops" value={String(depth)} onChange={(v) => setDepth(Number(v))} options={[{ id: "1", label: "1 hop" }, { id: "2", label: "2 hops" }]} />}
+          <a className="btn btn-sm btn-ghost" href={person ? `#/crm/network?focus=${entity.id}` : `#/crm/network?wells=${encodeURIComponent(gid)}`}><NetworkIcon size={16} /> Open</a>
         </div>
       }
     >
-      {data && data.nodes.length > 1 ? (
-        <Suspense fallback={<Skeleton className="h-[300px] w-full" />}><NetworkCanvas graph={data} height={300} selectedId={entity.id} onNodeClick={(n) => n.id !== entity.id && navigate(`crm/e/${n.id}`)} labels={data.nodes.length <= 25 ? "all" : "auto"} /></Suspense>
+      {view && view.nodes.length > 1 ? (
+        <Suspense fallback={<Skeleton className="h-[300px] w-full" />}>
+          <NetworkCanvas
+            nodes={view.nodes}
+            links={view.links}
+            groups={groups}
+            wells={person ? [] : [gid]}
+            showMe={person}
+            height={300}
+            selectedId={person ? entity.id : null}
+            onNodeClick={(n) => n.id !== entity.id && navigate(`crm/e/${n.id}`)}
+            labels={view.nodes.length <= 25 ? "all" : "auto"}
+          />
+        </Suspense>
       ) : (
-        <p className="px-5 pb-4 text-ui text-ink-soft">{data ? "No connections yet." : "Loading…"}</p>
+        <p className="px-5 pb-4 text-ui text-ink-soft">{view ? (person ? "No connections yet." : "No people yet.") : "Loading…"}</p>
       )}
     </Card>
   );

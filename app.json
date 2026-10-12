@@ -2,7 +2,7 @@
   "name": "The Lodge",
   "id": "lodge",
   "tagline": "who you know, and how well",
-  "bundleId": "local.family.lodge",
+  "bundleId": "com.thelodge.app",
   "envPrefix": "LODGE",
   "port": 8791,
   "updateRepo": "",
