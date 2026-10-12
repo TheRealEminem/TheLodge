@@ -154,3 +154,42 @@ def test_the_data_folder_and_database_are_readable_only_by_you():
 
     assert stat.S_IMODE(config.DATA_DIR.stat().st_mode) == 0o700
     assert stat.S_IMODE(db.DB_PATH.stat().st_mode) == 0o600
+
+
+# ── Recurring work ────────────────────────────────────────────────────
+
+def test_recurring_work_is_queued_when_due_and_leaves_one_row():
+    from core.server import schedule
+
+    schedule.reset()
+    ran = []
+    jobs.register("testmod", "tidy", lambda job: ran.append(job.target))
+    schedule.register("testmod", "tidy", 900)
+    assert schedule.tick(now=1000.0) == ["testmod/tidy"]       # nothing has run yet, so it's due
+    jobs.drain()
+    assert schedule.tick(now=1100.0) == []                      # 100 s later: not yet
+    assert schedule.tick(now=1901.0) == ["testmod/tidy"]
+    jobs.drain()
+    assert ran == ["scheduled", "scheduled"]
+    assert db.one("SELECT count(*) AS n FROM core_jobs WHERE module = 'testmod' AND kind = 'tidy'")["n"] == 1
+
+
+def test_recurring_work_that_is_paused_is_not_queued_and_picks_up_when_it_is_not():
+    from core.server import schedule
+
+    schedule.reset()
+    on = {"seconds": 0}
+    jobs.register("testmod", "tidy", lambda job: None)
+    schedule.register("testmod", "tidy", lambda: on["seconds"])
+    assert schedule.tick(now=5000.0) == []
+    on["seconds"] = 60
+    assert schedule.tick(now=5001.0) == ["testmod/tidy"]
+
+
+def test_a_module_lists_its_recurring_work_and_the_host_wires_it():
+    from core.server import module, schedule
+
+    schedule.reset()
+    module.register(module.Module(id="testmod2", name="Test", jobs={"poll": lambda job: None}, recurring={"poll": 300}))
+    assert schedule.tick(now=9000.0) == ["testmod2/poll"]
+    jobs.drain()

@@ -98,6 +98,14 @@ MIGRATIONS = [
         created_at TEXT NOT NULL
     );
     """,
+    # What each automatic sync (Granola, calendars) did last and where it got to.
+    """
+    CREATE TABLE crm_sync (
+        name       TEXT PRIMARY KEY,
+        state      TEXT NOT NULL DEFAULT '{}',   -- JSON
+        updated_at TEXT NOT NULL
+    );
+    """,
 ]
 
 _version = 0

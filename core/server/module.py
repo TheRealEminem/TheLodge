@@ -12,7 +12,7 @@ from typing import Callable
 
 from fastapi import APIRouter
 
-from . import db, events, jobs, settings
+from . import db, events, jobs, schedule, settings
 
 log = logging.getLogger("core.modules")
 
@@ -27,6 +27,7 @@ class Module:
     choices: dict = field(default_factory=dict)           # name -> allowed values
     jobs: dict[str, Callable] = field(default_factory=dict)        # kind -> handler(job)
     lanes: dict = field(default_factory=dict)                      # kind -> "cloud" or a function of the target (see jobs.py)
+    recurring: dict = field(default_factory=dict)                  # job kind -> seconds between runs, or a function returning them (0 = paused); see schedule.py
     subscribe: dict[str, Callable] = field(default_factory=dict)   # event name (or "prefix.*") -> handler(payload)
     search: Callable[[str, int], list[dict]] | None = None         # (q, limit) -> [{id, title, snippet}]
     describe: Callable[[str], dict | None] | None = None           # id -> {title, href} for links and search
@@ -54,6 +55,8 @@ def register(module: Module) -> None:
     settings.declare(module.id, module.settings, module.choices)
     for kind, handler in module.jobs.items():
         jobs.register(module.id, kind, handler, lane=module.lanes.get(kind, "default"))
+    for kind, every in module.recurring.items():
+        schedule.register(module.id, kind, every)
     for name, handler in module.subscribe.items():
         events.subscribe(name, handler)
     _loaded[module.id] = module
@@ -80,3 +83,4 @@ def describe(ref: str) -> dict | None:
 def reset() -> None:
     """Tests only."""
     _loaded.clear()
+    schedule.reset()
