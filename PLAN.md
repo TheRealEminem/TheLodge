@@ -26,7 +26,7 @@ decided, and the order we build it in.
 | 11 | Mac polish: mark, menu, signing, disk image | M | ☑ 2026-10-12 |
 | 12 | Capture automation: Granola and calendars | M | ☐ |
 | 13 | Cutover and hardening | S–M | ☐ |
-| 14 | **Research flags: people who need deep research** (asked for 2026-10-12, proposed) | M | ☐ |
+| 14 | **Research flags: people who need deep research** (asked for 2026-10-12) | M | ☑ 2026-10-12 |
 
 Milestones: **A** "it runs" = 0 · **B** "your data, natively" = 1–3 · **C** "browse and rate in the app" = 4–6
 (The owner can stop using Docker for reading; AI intake still needs the old app) · **D** "feature parity" = 7–10 ·
@@ -432,7 +432,7 @@ _Result: decisions D3 = `com.thelodge.app`, D10 = ad-hoc, D11 = manual disk imag
 
 ---
 
-### Chunk 14 · Research flags: people who need deep research (M) — PROPOSED
+### Chunk 14 · Research flags: people who need deep research (M) — DONE
 
 The owner's request (2026-10-12): when a person's profile has no base context, flag them so he can run **deep research** on
 them in a deep-research tool and bring the result back in.
@@ -461,6 +461,32 @@ Proposed shape (change any of it):
 know about them; pasting a research report back attaches it and clears the flag; the Home card lists the ones that
 matter most.
 **Depends on:** 8, 9 (the inbox and the `person_profile` path).
+
+**Result (2026-10-12).** Built as proposed, with these particulars:
+- **The flag** (`modules/crm/server/research.py`): a person other than you with no summary, no note of 1,500+
+  characters, no document filed `about` them, and no earlier profile applied. A first name alone is held back
+  (`name_needed`) because a search would find the wrong person. Snooze (30 days), "Not worth it" and "Bring it back"
+  are stored on the person (`attributes.research`), so they survive edits and merges. On the owner's real data (a copy) 67
+  of 128 people are flagged, 5 of them strong or working contacts, and 3 more wait on a surname.
+- **Where it shows:** a card at the top of a person's Overview (Copy research brief · Add the research · Snooze · Not
+  worth it); a "needs research" chip on People rows (a dot on phones) and a "Needs research N" filter; a Home section
+  that lists the most important first and says how many close contacts have nothing.
+- **The brief:** name, role, organization, location, email *domain* (never the address), LinkedIn, earlier
+  organizations, tags, how you know them (meetings, documents, mutual contacts), who you are, six things to learn, the
+  rules (public sources, links, no guessing, say how you told two people apart) and the output headings the importer
+  reads best. One click copies it; if the webview refuses the copy it opens in a dialog with a Copy button.
+- **Bringing it back:** the profile's "Add the research" takes pasted text or a file (.pdf .docx .md .txt) with the
+  person attached as `subject_id`. The reader is told who it is about, the proposal is forced to a person profile with
+  that person as the matched subject (never ambiguous), triage is skipped, and the item goes to review (not
+  auto-applied). Applying it fills their empty summary and facts, keeps the whole report as a note, and records
+  `research.status = done`, so even a short report clears the flag. Any other profile applied to a flagged person clears
+  it the same way.
+- **Verified:** 13 new tests (flag rules, snooze/dismiss/restore and expiry, filter and counts, Home ordering, brief
+  contents and the missing email, first-name refusal, the AI and rules paths through to a cleared flag). In a browser
+  on a copy of the real data: the Home section, People filter, profile card, brief, add-research dialog through to the
+  review page, and the flag clearing after apply; People at 375 px. 154 tests pass.
+- **Not verified:** the one-click copy inside the real Mac webview (the test browser refused it and showed the
+  fallback dialog, which works); a real deep-research report read by Claude; a PDF export from a research tool.
 
 ## 6. Risks and spikes
 
@@ -494,4 +520,4 @@ matter most.
 4. Port tests with the code; the old suite (1,186 lines) is how we know nothing regressed.
 5. Run `scripts/check` before closing a chunk, and look at Day and Dusk, 375 px and 1440 px.
 6. Tick the boxes here, and update the progress table.
-7. Don't commit unless the owner asks. Never read, copy or print `.env` or `API Keys/`.
+7. Commit at the end of each chunk, once `scripts/check` is green (the owner's standing instruction, 2026-10-12). Never read, copy or print `.env` or `API Keys/`.

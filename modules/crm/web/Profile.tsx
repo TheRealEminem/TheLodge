@@ -13,6 +13,7 @@ import { AboutCard, AffiliationsCard, ConnectionCard, EventList, MiniNetwork, No
 import { Avatar, Card, EntityLink, KIND_LABEL } from "./bits";
 import { EntityFormDialog, MergeDialog } from "./forms";
 import { formatDate } from "./format";
+import { ResearchCard } from "./Research";
 import { TierBadge, connectionLine } from "./tier";
 
 export default function Profile({ params }: RouteProps) {
@@ -171,6 +172,7 @@ function PersonTabs({ entity, relationships, ctx }: { entity: Entity; relationsh
       <Tabs tabs={tabs} active={tab} onChange={setTab} />
       {!ctx ? <Loading /> : tab === "overview" ? (
         <Stack>
+          {!entity.is_self && <ResearchCard person={entity} />}
           {!entity.is_self && ctx.connection && <ConnectionCard personId={entity.id} name={entity.name} connection={ctx.connection} />}
           <AboutCard entity={entity} />
           <AffiliationsCard affiliations={ctx.affiliations} />

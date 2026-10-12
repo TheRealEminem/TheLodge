@@ -26,9 +26,9 @@ from dateutil import parser as dateparser
 
 from core.server import ai, contracts, db, events, jobs
 
-from . import inbox, resolve, roles, snapshot, spreadsheets, store, views
+from . import inbox, research, resolve, roles, snapshot, spreadsheets, store, views
 from .documents import ParsedSheet, UnsupportedFile, kind_of, parse_document, parse_spreadsheet, text_hash
-from .extraction import (EXTRACTION_SYSTEM, TRIAGE_SYSTEM, DocContext, Extraction, Triage, extract_heuristic,
+from .extraction import (EXTRACTION_SYSTEM, TRIAGE_SYSTEM, DocContext, ExtractedEntity, Extraction, Triage, extract_heuristic,
                          extraction_prompt, triage_prompt)
 from .kinds import validate_relationship
 from .model import iso, parse_dt as parse_iso
@@ -186,14 +186,29 @@ def queue(row_ids: list[str]) -> None:
         jobs.enqueue("crm", "extract", row_id)
 
 
-def create_note_job(text: str, title: str | None = None, occurred_at: str | None = None) -> dict:
-    row = inbox.create("manual_note", title=title, occurred_at=occurred_at, raw_text=text)
+def subject_person(subject_id: str | None):
+    """The person a pasted report or file is about, when you said so (from a research flag)."""
+    if not subject_id:
+        return None
+    person = store.get_entity(subject_id)
+    if person is None or person.kind != "person" or person.is_self:
+        raise ProposalError("That person is no longer in your book")
+    return person
+
+
+def create_note_job(text: str, title: str | None = None, occurred_at: str | None = None,
+                    subject_id: str | None = None) -> dict:
+    subject = subject_person(subject_id)
+    row = inbox.create("manual_note", title=title or (f"Research on {subject.name}" if subject else None),
+                       occurred_at=occurred_at, raw_text=text,
+                       payload={"subject_id": subject.id} if subject else None)
     queue([row["id"]])
     return row
 
 
-def create_file_jobs(files: list[tuple[str, bytes]], *, auto_apply: bool) -> list[dict]:
+def create_file_jobs(files: list[tuple[str, bytes]], *, auto_apply: bool, subject_id: str | None = None) -> list[dict]:
     """One row per file. Duplicates (same text) and files that can't be read are recorded as skipped, and say why."""
+    subject = subject_person(subject_id)
     existing = inbox.known_hashes()
     by_folder: dict[str, list[str]] = {}
     for path, _ in files:
@@ -205,6 +220,8 @@ def create_file_jobs(files: list[tuple[str, bytes]], *, auto_apply: bool) -> lis
         filename, folder = os.path.basename(path), os.path.dirname(path)
         siblings = [n for n in by_folder.get(folder, []) if n != filename]
         payload = {"filename": filename, "folder": folder or None, "siblings": siblings, "auto_apply": auto_apply}
+        if subject:
+            payload["subject_id"] = subject.id
         fields: dict = {"source": "document", "title": PurePosixPath(filename).stem[:300], "status": "pending", "payload": payload}
         kind = kind_of(filename)
         try:
@@ -314,6 +331,34 @@ def triage(row: dict) -> Triage:
         return heuristic_triage(filename, words)
 
 
+def _subject_line(row: dict) -> str | None:
+    person = store.get_entity(row["payload"]["subject_id"]) if row["payload"].get("subject_id") else None
+    if person is None or person.kind != "person":
+        return None
+    employer = views.get().employer(person.id)
+    sub = subtitle_for(person, employer.name if employer else None)
+    return f"{person.name} ({sub})" if sub else person.name
+
+
+def _force_subject(row: dict, extraction: Extraction) -> str | None:
+    """You said who this text is about: make that person the subject of a person profile, whatever the reader made of
+    it. Returns their id."""
+    person = store.get_entity(row["payload"]["subject_id"]) if row["payload"].get("subject_id") else None
+    if person is None or person.kind != "person":
+        return None
+    extraction.doc_type = "person_profile"
+    people = [e for e in extraction.entities if e.kind == "person"]
+    best = max(people, key=lambda e: resolve.similarity(e.name, person.name), default=None)
+    if best is None or resolve.similarity(best.name, person.name) < MATCH_THRESHOLD:
+        refs = {e.ref for e in extraction.entities}
+        ref = next(r for r in (f"s{n}" for n in range(1, 1000)) if r not in refs)
+        best = ExtractedEntity(ref=ref, kind="person", name=person.name, role="subject")
+        extraction.entities.append(best)
+    best.name, best.role = person.name, "subject"
+    extraction.subject_ref = best.ref
+    return person.id
+
+
 def build_context(row: dict, local: bool, brief: bool, warnings: list[str]) -> DocContext:
     owner, org, title, team = owner_context()
     body = row["raw_text"] or ""
@@ -339,6 +384,7 @@ def build_context(row: dict, local: bool, brief: bool, warnings: list[str]) -> D
         teammates=[t.name for t in team],
         known_entities=[n for n, _ in relevant_known_entities(body)],
         known_tags=known_tags(),
+        subject=_subject_line(row),
         attendees=[_attendee_line(a) for a in row["payload"].get("attendees") or []],
         brief=brief,
     )
@@ -386,6 +432,7 @@ def build_proposal(row: dict, extraction: Extraction, warnings: list[str], *, br
     owner = store.get_me()
     if row["source"] == "meeting":
         extraction.doc_type = "meeting_notes"  # a recording is a meeting, whatever the model thought
+    forced_id = _force_subject(row, extraction)
     occurred = parse_dt(row["occurred_at"]) or parse_dt(extraction.occurred_on) or parse_iso(row["created_at"])
     refs = {e.ref for e in extraction.entities}
     subject = extraction.subject_ref if extraction.doc_type in PROFILE_TYPES and extraction.subject_ref in refs else None
@@ -403,6 +450,8 @@ def build_proposal(row: dict, extraction: Extraction, warnings: list[str], *, br
         match, ambiguous = resolve.pick_match(candidates, MATCH_THRESHOLD)
         if is_owner:
             match_id, ambiguous = owner.id, False
+        elif forced_id and ent.ref == subject:
+            match_id, ambiguous = forced_id, False
         else:
             match_id = match.entity.id if match else None
         entities.append({
@@ -682,6 +731,9 @@ def _apply(row_id: str, proposal: dict) -> tuple[dict, list[str], str | None]:
                                    evidence_id=record.id if record else None, conn=c)
                     counts["notes"] += 1
 
+        if proposal.get("doc_type") == "person_profile" and ids.get(proposal.get("subject_ref") or ""):
+            research.mark_done(ids[proposal["subject_ref"]], c)
+
         # Keep the original text: on the record, or on the profile's subject.
         if row["raw_text"]:
             target = record.id if record else ids.get(proposal.get("subject_ref") or "")
@@ -808,7 +860,7 @@ def handle_extract(job: jobs.Job) -> None:
         warnings = list(row["payload"].get("warnings") or [])
         brief = False
         payload = dict(row["payload"])
-        if row["source"] == "document":
+        if row["source"] == "document" and not payload.get("subject_id"):   # research you filed on someone is always read
             job.stage("Sorting")
             verdict = triage(row)
             payload["triage"] = verdict.model_dump()

@@ -5,7 +5,7 @@ from core.server import db
 
 from .schemas import EntitySummary, OrgRow, PersonRow
 from .connections import sort_key
-from . import views
+from . import research, views
 
 RECONNECT_AFTER_DAYS = 60
 ACTIVITY_WEEKS = 26
@@ -35,6 +35,9 @@ class Dashboard(BaseModel):
     lit_up: list[PersonRow]
     key_orgs: list[OrgRow]
     recent_meetings: list[MeetingCard]
+    research_needed: int
+    research_close: int
+    research: list[PersonRow]
     weekly_activity: list[WeekActivity]
 
 
@@ -88,6 +91,8 @@ def build_dashboard(me_id: str | None = None) -> Dashboard:
         for m in meetings
     ]
 
+    flagged = research.listing(research.NEEDED, limit=LIST)
+
     start = (now - timedelta(weeks=ACTIVITY_WEEKS - 1)).date()
     start = start - timedelta(days=start.weekday())  # Monday
     per_week: dict[date, int] = {}
@@ -109,6 +114,9 @@ def build_dashboard(me_id: str | None = None) -> Dashboard:
         lit_up=rows(lit),
         key_orgs=key_orgs,
         recent_meetings=cards,
+        research_needed=flagged["total"],
+        research_close=flagged["close"],
+        research=flagged["items"],
         weekly_activity=[
             WeekActivity(week=start + timedelta(weeks=i), meetings=per_week.get(start + timedelta(weeks=i), 0))
             for i in range(ACTIVITY_WEEKS)

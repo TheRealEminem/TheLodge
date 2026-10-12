@@ -38,12 +38,22 @@ export interface PersonRow {
   tags: string[];
   connection: Connection;
   created_at: string;
+  needs_research: boolean;
 }
 
 export interface PeoplePage {
   items: PersonRow[];
   total: number;
   tiers: Record<Tier, number>;
+  needs_research: number;
+}
+
+export type ResearchState = "needed" | "snoozed" | "dismissed" | "name_needed" | "has_context";
+
+export interface ResearchStatus {
+  state: ResearchState;
+  until: string | null;
+  at: string | null;
 }
 
 export interface OrgRow {
@@ -81,6 +91,9 @@ export interface Dashboard {
   lit_up: PersonRow[];
   key_orgs: OrgRow[];
   recent_meetings: { meeting: EntitySummary; attendees: EntitySummary[]; discussed: EntitySummary[] }[];
+  research_needed: number;
+  research_close: number;
+  research: PersonRow[];
   weekly_activity: { week: string; meetings: number }[];
 }
 
@@ -408,10 +421,11 @@ export const crmApi = {
   inbox: (statuses?: string) => request<InboxRow[]>(`/crm/ingest/jobs${qs({ status: statuses, limit: 200 })}`),
   inboxSummary: () => request<InboxSummary>("/crm/ingest/summary"),
   inboxItem: (id: string) => request<InboxItem>(`/crm/ingest/jobs/${id}`),
-  addNotes: (b: { text: string; title?: string; occurred_at?: string }) => request<InboxRow>("/crm/ingest/notes", json("POST", b)),
-  addFiles: (files: { file: File; path: string }[], autoApply: boolean) => {
+  addNotes: (b: { text: string; title?: string; occurred_at?: string; subject_id?: string }) => request<InboxRow>("/crm/ingest/notes", json("POST", b)),
+  addFiles: (files: { file: File; path: string }[], autoApply: boolean, subjectId?: string) => {
     const form = new FormData();
     form.append("auto_apply", String(autoApply));
+    if (subjectId) form.append("subject_id", subjectId);
     for (const { file, path } of files) form.append("files", file, path);
     return request<InboxRow[]>("/crm/ingest/files", { method: "POST", body: form });
   },
@@ -427,8 +441,12 @@ export const crmApi = {
   resume: () => request<{ resumed: number }>("/crm/ingest/resume", json("POST")),
   aiRoles: () => request<AiRole[]>("/crm/ai"),
   dashboard: () => request<Dashboard>("/crm/dashboard"),
-  people: (p: { tier?: string; org?: string; tag?: string; q?: string; sort?: string; limit?: number }) =>
+  people: (p: { tier?: string; org?: string; tag?: string; q?: string; sort?: string; limit?: number; needs_research?: string }) =>
     request<PeoplePage>(`/crm/people${qs(p)}`),
+  researchStatus: (id: string) => request<ResearchStatus>(`/crm/people/${id}/research`),
+  setResearch: (id: string, action: "snooze" | "dismiss" | "restore") =>
+    request<ResearchStatus>(`/crm/people/${id}/research`, json("POST", { action })),
+  researchBrief: (id: string) => request<{ text: string }>(`/crm/people/${id}/research/brief`),
   organizations: (p: { scope?: string; q?: string; tag?: string; sort?: string; limit?: number }) =>
     request<OrgPage>(`/crm/organizations${qs(p)}`),
   entity: (id: string) => request<{ entity: Entity }>(`/crm/entities/${id}`),
