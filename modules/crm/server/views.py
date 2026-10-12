@@ -408,7 +408,8 @@ def get(me_id: str | None = None) -> Views:
     version = store.version()
     hit = _cache.get(me_id)
     if hit is None or hit[0] != version:
-        hit = (version, Views(snapshot.load(), me_id))
+        with snapshot.building():
+            hit = (version, Views(snapshot.load(), me_id))
         _cache.clear()
         _cache[me_id] = hit
     return hit[1]

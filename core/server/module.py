@@ -31,6 +31,7 @@ class Module:
     subscribe: dict[str, Callable] = field(default_factory=dict)   # event name (or "prefix.*") -> handler(payload)
     search: Callable[[str, int], list[dict]] | None = None         # (q, limit) -> [{id, title, snippet}]
     describe: Callable[[str], dict | None] | None = None           # id -> {title, href} for links and search
+    export: Callable[[], dict] | None = None                       # () -> {name: [records…]}: what this module holds, as plain data for the JSON export
     startup: Callable[[], None] | None = None
 
 

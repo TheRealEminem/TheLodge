@@ -163,7 +163,7 @@ def _entity(row: sqlite3.Row | dict) -> Entity:
 def _edge(row: sqlite3.Row | dict) -> Relationship:
     return Relationship(
         id=row["id"], source_id=row["source_id"], target_id=row["target_id"], kind=row["kind"],
-        properties=json.loads(row["properties"] or "{}"), strength=row["strength"],
+        properties=json.loads(row["properties"]) if row["properties"] not in (None, "", "{}") else {}, strength=row["strength"],
         started_at=parse_date(row["started_at"]), ended_at=parse_date(row["ended_at"]), source=row["source"],
         evidence_id=row["evidence_id"], created_at=parse_dt(row["created_at"]),
     )
