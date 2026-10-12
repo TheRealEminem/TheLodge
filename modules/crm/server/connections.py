@@ -178,6 +178,8 @@ def compute(snap: Snapshot, ix: Index | None = None, now: datetime | None = None
             continue
         m = snap.entities[meeting_id]
         when = m.occurred_at
+        if when and when > now:   # on the calendar, not yet met
+            continue
         size = min(1.0, (SMALL_GROUP - 1) / max(len(present) - 1, 1))
         for pid in present - {me.id}:
             c = conns.get(pid)
@@ -328,6 +330,7 @@ def org_stats(snap: Snapshot, ix: Index) -> dict[str, OrgStats]:
             orgs[org_id].linked_to_mine = True
 
     # Activity: meetings/documents that name the org, or that its people attended.
+    now = datetime.now(UTC)
     employers: dict[str, set[str]] = defaultdict(set)
     for org_id, s in orgs.items():
         for pid in s.members:
@@ -339,7 +342,7 @@ def org_stats(snap: Snapshot, ix: Index) -> dict[str, OrgStats]:
             orgs[o].mentions += 1
         for pid in ix.attendees.get(ev.id, set()) | ix.authors.get(ev.id, set()):
             touched |= employers.get(pid, set())
-        if ev.occurred_at:
+        if ev.occurred_at and ev.occurred_at <= now:
             for o in touched:
                 orgs[o].last_activity_at = max(filter(None, (orgs[o].last_activity_at, ev.occurred_at)))
     return orgs

@@ -24,7 +24,7 @@ decided, and the order we build it in.
 | 9 | Inbox and review screens | L | ☑ 2026-10-12 (spreadsheet mapping view moves to chunk 10) |
 | 10 | Importers: spreadsheets, LinkedIn, recorded meetings | M | ☑ 2026-10-12 |
 | 11 | Mac polish: mark, menu, signing, disk image | M | ☑ 2026-10-12 |
-| 12 | Capture automation: Granola and calendars | M | ☐ |
+| 12 | Capture automation: Granola and calendars | M | ☑ 2026-10-12 |
 | 13 | Cutover and hardening | S–M | ☐ |
 | 14 | **Research flags: people who need deep research** (asked for 2026-10-12) | M | ☑ 2026-10-12 |
 
@@ -419,6 +419,42 @@ _Result: decisions D3 = `com.thelodge.app`, D10 = ad-hoc, D11 = manual disk imag
 
 **Done when:** a new Granola meeting shows up in The Lodge without the owner doing anything, joined to its calendar event.
 **Depends on:** 10.
+
+**Result (2026-10-12).**
+- **Spike answer:** Granola has an official public API (`https://public-api.granola.ai/v1`, docs.granola.ai) with
+  personal API keys made in the Granola app (Settings, Connectors, API keys) and sent as a bearer token. It needs a
+  Business or Enterprise plan, allows 5 requests a second, and returns the note's summary, its calendar event
+  (scheduled start and invitee emails), attendees, and the transcript (a separate paged endpoint when too large). The
+  MCP server (`mcp.granola.ai`) is OAuth through a browser sign-in, which doesn't suit a background sync, so it isn't
+  used. Fallback if the owner's plan has no API access: the manual/Claude Code pull into `/ingest/meeting` still works.
+- **Host:** `core/server/schedule.py` and `Module.recurring`: a kind of job queued every N seconds (0 = paused) on the
+  ordinary job runner; finished rows are cleared so a 15-minute job leaves one row. Settings names ending `_secret` are
+  write-only like keys and tokens. 3 tests.
+- **Granola** (`granola.py`): every 15 minutes once a key is saved (and straight away when it's pasted), list notes
+  from the last few days (the first run goes back `crm.granola_days`, 30), skip those already seen, fetch the rest, and
+  send each through `create_meeting_job`, the same path as `/ingest/meeting`. Invitee emails match people; your own email
+  on your profile marks which attendee is you. Auto-add is on by default (`crm.granola_auto_apply`) and still holds
+  anything ambiguous or read by rules alone. Rate-limit retries, 401/403 recorded for Settings instead of raised.
+- **Calendar** (`ics.py`, `calendar_sync.py`): secret iCal addresses (`crm.calendar_secret`, several allowed), hourly. A
+  small RFC 5545 reader (time zones, repeats with exceptions and edits, declines, cancellations, skips all-day).
+  Meetings are made from the last 7 and next 14 days only when you haven't declined, there are 2-20 invitees, and at
+  least one is already in your people by email. Strangers on an invite are not made people (their emails are kept on the
+  meeting). Cancelled or removed events are removed again unless something has since been written into them.
+- **Joined:** a Granola note finds the calendar's meeting by time and shared people (the existing same-meeting match) and
+  adds its summary, points and Granola id to it. Meetings still to come don't count as having met (a guard added to the
+  connection scoring, which counted every dated meeting).
+- **Tagged for removal (the owner's request):** everything a sync creates carries its origin in `source` (`granola`,
+  `calendar`) on the meeting, the people and organizations it created, and the lines and notes. Not a tag: a tag would
+  become a group on the network. Settings shows "Remove what came from Granola / Calendar" with counts first;
+  removal deletes the meetings, the people it made that nothing else holds on to, its other lines and notes, marks its
+  inbox items discarded so Granola doesn't bring them back, and leaves calendar meetings that now hold notes.
+- **Verified:** 20 new tests (17 in `test_capture.py`, 3 for the scheduler) against a fake Granola and a fake calendar feed, including the join,
+  the removal, a key Granola refuses, a busy Granola and the 413 transcript path. In a browser on a copy of the real
+  data with a local iCal file: pasting an address synced it, the status line, and the removal dialog and removal.
+  `scripts/check` is green with 174 tests.
+- **Not verified:** a real Granola key (the API shapes come from its published docs; the paged-transcript response
+  shape is a best reading); a real Google secret address (recurring events in particular); the sync inside the Mac app
+  over a day; the Dusk theme beyond the screens I opened.
 
 ### Chunk 13 · Cutover and hardening (S–M)
 
