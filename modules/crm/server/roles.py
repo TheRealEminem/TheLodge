@@ -1,7 +1,9 @@
-"""Which AI does which of the CRM's two jobs.
+"""Which AI does which of the CRM's jobs.
 
     extraction  reading notes and documents into the graph. Quality matters (Claude Opus by default).
     utility     triage and spreadsheet column mapping. Cheap and fast (Gemini Flash by default).
+    profiles    each person's overview, and answers to questions about them. Same as the app by default, which is
+                the local model unless you chose otherwise. There is no "rules" reading of this one.
 
 Each job's provider is a setting (`crm.extraction_provider`, `crm.utility_provider`): "auto" follows the
 app-wide provider and fallback chosen in Settings → AI, any one provider by id, or "rules" (no AI: a plain-text
@@ -15,9 +17,10 @@ from core.server import ai, settings
 ROLES = {
     "extraction": {"label": "Reading notes and documents", "hint": "Finds the people, organizations and relationships in what you add."},
     "utility": {"label": "Sorting and column mapping", "hint": "Decides what's worth reading, and what the columns in a spreadsheet mean."},
+    "profiles": {"label": "Overviews and questions", "hint": "Writes each person's overview and answers what you ask about them.", "rules": False},
 }
-SETTINGS = {"extraction_provider": "anthropic", "utility_provider": "gemini"}
-CHOICES = {name: ("auto", *ai.PROVIDERS, "rules") for name in SETTINGS}
+SETTINGS = {"extraction_provider": "anthropic", "utility_provider": "gemini", "profiles_provider": "auto"}
+CHOICES = {f"{role}_provider": ("auto", *ai.PROVIDERS, *(("rules",) if info.get("rules", True) else ())) for role, info in ROLES.items()}
 
 
 def choice(role: str) -> str:
@@ -37,7 +40,7 @@ def status() -> list[dict]:
             d = {"provider": "rules", "label": "Rules (no AI)", "model": "", "ready": True, "reason": "", "local": True}
         else:
             d = ai.describe(choice(role))
-        out.append({"role": role, "setting": f"crm.{role}_provider", "choice": choice(role), **info,
+        out.append({"role": role, "setting": f"crm.{role}_provider", "choice": choice(role), **info, "rules": info.get("rules", True),
                     "provider": d["provider"], "providerLabel": d["label"], "model": d["model"], "ready": d["ready"],
                     "reason": d["reason"], "local": d["local"]})
     return out

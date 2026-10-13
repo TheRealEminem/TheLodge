@@ -11,6 +11,7 @@ import type { PersonRow, Tier } from "./api";
 import { Avatar, Empty, roleLine } from "./bits";
 import { formatDate, relativeTime } from "./format";
 import { OrgLine } from "./Organizations";
+import PersonFinder from "./PersonFinder";
 import { TIER_META, TierBars, connectionLine } from "./tier";
 
 function HomeSection({ icon, title, blurb, href, more, delay = 0, children }: {
@@ -109,6 +110,7 @@ export default function HomeBlock() {
   const tiers: Tier[] = ["strong", "working", "light", "indirect"];
   return (
     <>
+      <PersonFinder />
       <div className="mb-10 grid animate-enter grid-cols-2 gap-3 lg:grid-cols-4">
         {tiers.map((t) => (
           <TierTile key={t} tier={t} count={data.tiers[t] ?? 0} />

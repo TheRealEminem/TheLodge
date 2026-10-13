@@ -186,7 +186,7 @@ def brief(person_id: str) -> str:
     if ctx.documents:
         mine.append("Documents that mention them: " + "; ".join(d.event.name for d in ctx.documents[:5]) + ".")
     if conn and conn.mutual:
-        mine.append("People we both know: " + ", ".join(m.name for m in conn.mutual[:6]) + ".")
+        mine.append("People we both know: " + ", ".join(v.snap.entities[m].name for m in conn.mutual[:6]) + ".")
     if conn and conn.context:
         mine.append(f"How we're connected: {conn.context}")
 

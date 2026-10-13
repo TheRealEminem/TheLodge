@@ -106,6 +106,29 @@ MIGRATIONS = [
         updated_at TEXT NOT NULL
     );
     """,
+    # AI overviews of people and the questions asked about them (profiles.py).
+    """
+    CREATE TABLE crm_overviews (
+        id          TEXT PRIMARY KEY,
+        entity_id   TEXT NOT NULL UNIQUE REFERENCES crm_entities(id) ON DELETE CASCADE,
+        body        TEXT NOT NULL,
+        fingerprint TEXT NOT NULL,
+        written_by  TEXT NOT NULL,
+        created_at  TEXT NOT NULL
+    );
+    CREATE TABLE crm_questions (
+        id          TEXT PRIMARY KEY,
+        entity_id   TEXT NOT NULL REFERENCES crm_entities(id) ON DELETE CASCADE,
+        question    TEXT NOT NULL,
+        answer      TEXT,
+        status      TEXT NOT NULL DEFAULT 'queued',   -- queued, done, error
+        error       TEXT,
+        written_by  TEXT,
+        created_at  TEXT NOT NULL,
+        answered_at TEXT
+    );
+    CREATE INDEX crm_questions_entity ON crm_questions(entity_id, created_at);
+    """,
 ]
 
 _version = 0

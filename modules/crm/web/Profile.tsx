@@ -11,6 +11,7 @@ import { crmApi } from "./api";
 import type { Entity, EntityContext, PersonLink, RelationshipView } from "./api";
 import { AboutCard, AffiliationsCard, ConnectionCard, EventList, MiniNetwork, NotesCard, PathsCard, PeopleList, RelationshipsCard, TimelineCard, WayInCard } from "./cards";
 import { Avatar, Card, EntityLink, KIND_LABEL } from "./bits";
+import { Briefing } from "./Briefing";
 import { EntityFormDialog, MergeDialog } from "./forms";
 import { formatDate } from "./format";
 import { ResearchCard } from "./Research";
@@ -172,6 +173,7 @@ function PersonTabs({ entity, relationships, ctx }: { entity: Entity; relationsh
       <Tabs tabs={tabs} active={tab} onChange={setTab} />
       {!ctx ? <Loading /> : tab === "overview" ? (
         <Stack>
+          {!entity.is_self && <Briefing person={entity} />}
           {!entity.is_self && <ResearchCard person={entity} />}
           {!entity.is_self && ctx.connection && <ConnectionCard personId={entity.id} name={entity.name} connection={ctx.connection} />}
           <AboutCard entity={entity} />

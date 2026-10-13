@@ -429,7 +429,7 @@ const qs = (params: Record<string, string | number | undefined | null>) => {
 };
 
 export interface AiRole {
-  role: "extraction" | "utility";
+  role: "extraction" | "utility" | "profiles";
   setting: string; // the setting that picks this job's provider
   choice: string; // "auto" or a provider id
   label: string;
@@ -440,6 +440,30 @@ export interface AiRole {
   ready: boolean;
   reason: string;
   local: boolean;
+  rules: boolean; // whether "Rules only (no AI)" is a choice for this job
+}
+
+// ---- Overviews and questions about a person ----
+
+export interface OverviewState {
+  overview: { body: string; written_by: string; created_at: string; current: boolean } | null;
+  job: Job | null; // the latest work on it
+  material: boolean; // false: nothing on file beyond a name
+  ready: boolean; // an AI is set up for this job
+  reason: string; // why not, when it isn't
+  provider: string;
+  local: boolean;
+}
+
+export interface Question {
+  id: string;
+  question: string;
+  answer: string | null;
+  status: "queued" | "done" | "error";
+  error: string | null;
+  written_by: string | null;
+  created_at: string;
+  answered_at: string | null;
 }
 
 export const crmApi = {
@@ -516,4 +540,11 @@ export const crmApi = {
   setMe: (name: string) => request<Entity>("/crm/me", json("PUT", { name })),
   makeMe: (entityId: string) => request<Entity>("/crm/me", json("PUT", { entity_id: entityId })),
   loadDemo: () => request<{ entities: number }>("/crm/admin/demo", json("POST")),
+  overview: (personId: string) => request<OverviewState>(`/crm/people/${personId}/overview`),
+  redoOverview: (personId: string) => request<OverviewState>(`/crm/people/${personId}/overview`, json("POST")),
+  overviewCoverage: () => request<{ people: number; written: number }>("/crm/overviews"),
+  questions: (personId: string) => request<Question[]>(`/crm/people/${personId}/questions`),
+  ask: (personId: string, question: string) => request<Question>(`/crm/people/${personId}/questions`, json("POST", { question })),
+  clearQuestions: (personId: string) => request<void>(`/crm/people/${personId}/questions`, json("DELETE")),
+  retryQuestion: (id: string) => request<Question>(`/crm/questions/${id}/retry`, json("POST")),
 };

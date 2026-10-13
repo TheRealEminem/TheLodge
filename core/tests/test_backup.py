@@ -64,14 +64,15 @@ def test_a_restore_tells_the_modules_so_they_drop_what_they_cached(client, monke
 def test_an_older_backup_is_brought_up_to_date_when_restored(client):
     made = backup.make("manual")
     path = backup.DIR / made["name"]
-    with sqlite3.connect(path) as c:                                  # make it look like it came from before crm's saved views and sync tables existed
-        c.execute("DROP TABLE crm_views")
-        c.execute("DROP TABLE crm_sync")
+    with sqlite3.connect(path) as c:                                  # make it look like it came from before crm's saved views, sync and overview tables
+        for table in ("crm_views", "crm_sync", "crm_overviews", "crm_questions"):
+            c.execute(f"DROP TABLE {table}")
         c.execute("UPDATE core_migrations SET version = 1 WHERE module = 'crm'")
     r = client.post(f"/api/backups/{made['name']}/restore")
     assert r.status_code == 200
     assert db.one("SELECT version FROM core_migrations WHERE module = 'crm'")["version"] == len(module.get("crm").migrations)
     assert db.query("SELECT * FROM crm_views") == [] and db.query("SELECT * FROM crm_sync") == []
+    assert db.query("SELECT * FROM crm_overviews") == [] and db.query("SELECT * FROM crm_questions") == []
 
 
 def test_a_backup_from_a_newer_app_or_a_damaged_one_is_refused(client):
