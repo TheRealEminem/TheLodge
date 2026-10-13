@@ -8,7 +8,8 @@ untouched; quit the app first if it's open, so no stray window answers) and chec
   - the server starts, with the app as its parent, and the data folder is private;
   - a server killed from outside is started again, and after three crashes in two minutes the app stops trying;
   - quitting the app leaves no server behind, and neither does force-killing the app;
-  - a second copy of the app uses the first one's server instead of fighting it for the port, and doesn't stop it.
+  - a second copy of the app uses the first one's server instead of fighting it for the port, and doesn't stop it;
+  - when the first copy quits (taking its server with it), the second starts its own instead of being left without.
 """
 import json
 import os
@@ -129,6 +130,12 @@ def main() -> int:
         os.kill(newest, signal.SIGTERM)
         time.sleep(4)
         ok(answering() and server_pids() == first, "closing the second copy doesn't stop the first one's server")
+        launch(app, data)
+        time.sleep(6)
+        oldest, newest = min(app_pids(app)), max(app_pids(app))
+        os.kill(oldest, signal.SIGTERM)
+        owner = lambda: int(sh("ps", "-o", "ppid=", "-p", str(server_pids()[0]))) if server_pids() else None
+        ok(wait(lambda: answering() and owner() == newest, 30), "when the first copy quits, the second starts its own server")
     finally:
         for pid in app_pids(app):
             try:

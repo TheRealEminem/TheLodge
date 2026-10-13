@@ -374,7 +374,6 @@ const SUN_UP = 390; // 6:30
 const SUN_DOWN = 1185; // 19:45
 const MOON_UP = 1110; // 18:30
 const MOON_DOWN = 450 + 1440; // 7:30 the next morning
-const BLUE_HOUR_AT = 1215;
 
 const hex = (h: string) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
 const mixHex = (a: string, b: string, t: number) => {
@@ -399,12 +398,8 @@ function arc(minutes: number, rise: number, set: number) {
   return { x: 110 + 600 * t, y: 150 - 92 * height, height };
 }
 
-/**
- * The scene at a time of day. In the Dusk theme a bright midday would glare against the dark page, so through
- * the daylight hours it shows the lodge at blue hour instead, and keeps the clock from then through the night.
- */
-export function lodgeLight(minutes: number, dusk: boolean) {
-  const m = dusk && minutes >= 345 && minutes < BLUE_HOUR_AT ? BLUE_HOUR_AT : minutes;
+/** The scene at a time of day: the blended look, where the sun and moon are, and a few words for screen readers. */
+export function lodgeLight(m: number) {
   const i = DAY_KEYS.findIndex(([at]) => at > m);
   const [a, from] = DAY_KEYS[i - 1];
   const [b, to] = DAY_KEYS[i];
@@ -461,14 +456,14 @@ const MOONLIGHT = "#F1E6C6";
 
 /**
  * The lodge by the lake, in layers, at the time of day it is now: sunrise over the eastern peaks, the sun across
- * the sky, golden hour, sunset, blue hour and the moon. With `parallax`, the layers drift a few pixels with the
- * pointer (nearer layers more), and the smoke from the stove sways.
+ * the sky, golden hour, sunset, blue hour and the moon, on either theme (`dusk` only dims the daylight a little).
+ * With `parallax`, the layers drift a few pixels with the pointer (nearer layers more), and the smoke sways.
  */
 export function LodgeScene({ dusk = false, parallax = false, className = "" }: { dusk?: boolean; parallax?: boolean; className?: string }) {
   const id = useId();
   const svg = useRef<SVGSVGElement>(null);
   const minutes = useMinutes();
-  const { light: P, sun, moon, when } = lodgeLight(minutes, dusk);
+  const { light: P, sun, moon, when } = lodgeLight(minutes);
   const alive = parallax && !reducedMotion();
   const sunR = 22 + 4 * (1 - sun.height);
   // The lake catches whichever is higher in the sky.
@@ -476,6 +471,8 @@ export function LodgeScene({ dusk = false, parallax = false, className = "" }: {
   const moonShows = P.moon * Math.min(1, moon.height * 2);
   const glintX = sunShows >= moonShows ? sun.x : moon.x;
   const glintAmount = P.glintOpacity * Math.max(sunShows, moonShows);
+  // On the Dusk theme the daylight hours are shown a little dimmer, so midday doesn't glare off the dark page.
+  const dim = dusk ? sunShows * (1 - P.lit) : 0;
 
   useEffect(() => {
     if (!parallax || reducedMotion()) return;
@@ -513,6 +510,7 @@ export function LodgeScene({ dusk = false, parallax = false, className = "" }: {
       viewBox="0 0 800 260"
       preserveAspectRatio="xMidYMax slice"
       className={className}
+      style={dim > 0.01 ? { filter: `brightness(${(1 - 0.16 * dim).toFixed(3)}) saturate(${(1 - 0.1 * dim).toFixed(3)})` } : undefined}
       role="img"
       aria-label={`A lodge by a mountain lake ${when}${P.lit > 0.5 ? ", its windows lit" : ""}`}
     >
