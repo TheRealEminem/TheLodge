@@ -3,8 +3,10 @@
 A job is one step of work on one thing (module "notes", kind "summarize", target <note id>). Jobs run one at
 a time on a single worker thread, so heavy steps (a local model, a big export) never compete for memory.
 A kind can opt into the "cloud" lane (register(..., lane="cloud")): work that waits on a web API rather than
-this machine's memory, so a few run side by side (a folder of 90 documents in minutes, not an hour). The lane
-can also be chosen per job: lane=lambda target: "cloud" if the cloud is doing it, else "default".
+this machine's memory, so a few run side by side (a folder of 90 documents in minutes, not an hour). The
+"interactive" lane is for work someone is sitting there waiting for (an answer to a question), so it never
+queues behind a batch. The lane can also be chosen per job: lane=lambda target: "cloud" if the cloud is doing
+it, else "default".
 
   queued -> running -> done
                     -> error    (POST /api/jobs/<id>/retry puts it back in the queue)
@@ -25,7 +27,7 @@ from . import db, events
 log = logging.getLogger("core.jobs")
 UNFINISHED = ("queued", "running", "waiting")
 
-LANES = {"default": 1, "cloud": 4}   # lane -> how many jobs run at once
+LANES = {"default": 1, "cloud": 4, "interactive": 2}   # lane -> how many jobs run at once
 _executors = {name: ThreadPoolExecutor(max_workers=n, thread_name_prefix=f"jobs-{name}") for name, n in LANES.items()}
 _handlers: dict[tuple[str, str], tuple[Callable, "str | Callable[[str], str]"]] = {}
 _pending: list[Future] = []
@@ -51,7 +53,8 @@ class Job:
 
 
 def register(module: str, kind: str, handler: Callable[[Job], None], lane: "str | Callable[[str], str]" = "default") -> None:
-    """lane: "default" (one at a time), "cloud" (a few at once), or a function of the target that returns one."""
+    """lane: "default" (one at a time), "cloud" (a few at once), "interactive" (someone is waiting for it), or a
+    function of the target that returns one."""
     _handlers[(module, kind)] = (handler, lane)
 
 

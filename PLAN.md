@@ -27,6 +27,8 @@ decided, and the order we build it in.
 | 12 | Capture automation: Granola and calendars | M | ☑ 2026-10-12 |
 | 13 | Cutover and hardening | S–M | ◐ built 2026-10-12; waiting on a week of daily use |
 | 14 | **Research flags: people who need deep research** (asked for 2026-10-12) | M | ☑ 2026-10-12 |
+| 15 | **Find someone from Home; AI overviews and questions on profiles** (asked for 2026-10-13) | M | ☑ 2026-10-13 |
+| 16 | **Profile pictures** (asked for 2026-10-13) | M | ☐ proposed; waiting on the owner's choice of sources |
 
 Milestones: **A** "it runs" = 0 · **B** "your data, natively" = 1–3 · **C** "browse and rate in the app" = 4–6
 (The owner can stop using Docker for reading; AI intake still needs the old app) · **D** "feature parity" = 7–10 ·
@@ -558,6 +560,46 @@ matter most.
   review page, and the flag clearing after apply; People at 375 px. 154 tests pass.
 - **Not verified:** the one-click copy inside the real Mac webview (the test browser refused it and showed the
   fallback dialog, which works); a real deep-research report read by Claude; a PDF export from a research tool.
+
+### Chunk 15 · Find someone from Home; AI overviews and questions on profiles (M) — DONE
+
+The owner's request (2026-10-13): a search on Home to bring up someone's profile quickly; a pre-written AI overview of each
+person; and a quick chat to ask more about a person and their profile.
+
+**Result (2026-10-13).**
+- **Find someone** (`modules/crm/web/PersonFinder.tsx`): a large search box at the top of Home, ready to type into
+  when Home opens (without scrolling past the picture), and "/" jumps back to it. It matches name, alias, role,
+  organization, place and tags, names that start with what was typed first (`sort=match` on `/api/crm/people`), then
+  the closest people. ↑ ↓ Return Escape, a role="combobox" listbox, and "All N matches" opens People filtered.
+- **Overviews** (`modules/crm/server/profiles.py`, `crm_overviews`): written from what's on file (role, organizations,
+  how you're connected, the profile summary, meetings with their summaries, notes newest first within a size budget,
+  documents, their people). Never the email address. Written ahead of time by a sweep every 10 minutes, closest
+  first, 4 a run on a local model and 25 on a cloud one, and again when the records change (a fingerprint of the text
+  the model was given). Opening a profile with none, or a stale one, asks for it at once in a new **interactive** job
+  lane in the host (`jobs.LANES`), so it never waits behind a batch. A failure shows with Try again and isn't retried
+  on every refresh; an AI that is down parks the job until it's fixed. Redo writes it again.
+- **Questions** (`crm_questions`): "Ask about <name>" under the overview, with four suggested questions. Each answer
+  is worked out in the interactive lane from the same records plus the overview, the last six questions and today's
+  date, and kept on the profile; Clear deletes them.
+- **Which AI:** a third People job in Settings → AI, "Overviews and questions", default "Same as the app" (the local
+  model unless a cloud one is chosen); there is no rules-only reading of it. "Write overviews ahead of time" turns
+  the sweep off and shows how many people have one.
+- **Also fixed:** the research brief failed (500) for anyone with people in common with you (`conn.mutual` holds ids).
+- **Verified:** 14 new tests (what the overview is written from, once and again on change, redo, nothing on file, no
+  AI, a failure not retried, a down AI parked, the sweep's order and limits, questions with follow-ups, a failed
+  question retried, guards, delete cascade, the brief with mutual contacts, finder ranking). In a browser on a copy of
+  the real data with the local qwen2.5:7b: the sweep wrote Erik Pruitt's overview within a minute of starting, it
+  matched his records, and "What should I follow up on?" was answered in about 10 seconds; both themes. 197 tests pass.
+- **Not verified:** overviews and answers from Claude or Gemini (no keys in the app).
+
+### Chunk 16 · Profile pictures (M) — PROPOSED
+
+The owner asked (2026-10-13) for a picture of each person and whether LinkedIn can supply them. LinkedIn's API doesn't
+hand out other people's photos, and scraping it breaks its terms, so the proposal is: (1) add a picture by hand on a
+profile (drop, paste or choose a file; copying the photo from LinkedIn in the browser and pasting it works), shown
+everywhere a person appears; (2) match photos from the Mac's Contacts app by email, phone and name (asks for
+Contacts access once; nothing leaves the Mac); (3) optionally, Gravatar for people with an email address (a hash of
+the address goes to Gravatar, so it's a setting, off by default). Waiting on the owner's choice.
 
 ## 6. Risks and spikes
 
