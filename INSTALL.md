@@ -66,9 +66,11 @@ are off: the updater reads public GitHub releases, and this project is private.)
 
 ## Building it yourself
 
-`scripts/install-app.sh` is the usual way: on this Mac it runs `scripts/check`, builds the app, makes a backup
-through the running app, swaps the new app into `/Applications` (keeping the old one in `build/previous-app/`), opens
-it and checks it serves the new build with the data intact. If anything fails it puts the previous app back.
+`scripts/install-app.sh` is the usual way. On this Mac it runs `scripts/check`, builds the app and tries it with
+`scripts/check-app.py`, makes a backup through the running app, then moves the new app into `/Applications`. The
+old one is kept in `build/previous-app.noindex/`, out of Spotlight's way, so there is only ever one copy to open.
+Finally it opens the new app and checks that it serves the new build with the data intact. If anything fails, it
+puts the previous app back.
 
 `scripts/build-app.sh` on its own makes `dist-app/The Lodge.app`; add `--dmg` for the disk image. Builds happen on
 this Mac, because GitHub's Mac builders cost ten times its Linux ones: the GitHub workflow that builds a release

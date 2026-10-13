@@ -13,6 +13,7 @@ final class BundledServer {
     private var crashes: [Date] = []
 
     var isRunning: Bool { process?.isRunning ?? false }
+    var isStopping: Bool { stopping }
 
     func start(port: Int) throws {
         guard Bundled.isBundled, let python = Bundled.python, let resources = Bundled.resources else { return }
