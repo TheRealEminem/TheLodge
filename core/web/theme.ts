@@ -32,7 +32,7 @@ export function useTheme() {
 
   useEffect(() => {
     document.documentElement.dataset.theme = dusk ? "dusk" : "light";
-    document.querySelector('meta[name="theme-color"]')?.setAttribute("content", dusk ? "#0F1513" : "#F8F7F2");
+    document.querySelector('meta[name="theme-color"]')?.setAttribute("content", dusk ? "#0E1416" : "#F7F4EC");
   }, [dusk]);
 
   const setPref = (p: ThemePref) => {
