@@ -66,6 +66,11 @@ are off: the updater reads public GitHub releases, and this project is private.)
 
 ## Building it yourself
 
-`scripts/build-app.sh` makes `dist-app/The Lodge.app`; add `--dmg` for the disk image. Pushing a tag like `v0.2.0` builds
-and attaches the disk image to a GitHub release (`.github/workflows/release.yml`).
+`scripts/install-app.sh` is the usual way: on this Mac it runs `scripts/check`, builds the app, makes a backup
+through the running app, swaps the new app into `/Applications` (keeping the old one in `build/previous-app/`), opens
+it and checks it serves the new build with the data intact. If anything fails it puts the previous app back.
+
+`scripts/build-app.sh` on its own makes `dist-app/The Lodge.app`; add `--dmg` for the disk image. Builds happen on
+this Mac, because GitHub's Mac builders cost ten times its Linux ones: the GitHub workflow that builds a release
+(`.github/workflows/release.yml`) only runs when started by hand from the Actions tab.
 `scripts/check-app.py` runs behaviour checks on the built app (restarts, quitting, two copies).

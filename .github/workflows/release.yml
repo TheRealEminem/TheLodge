@@ -1,11 +1,9 @@
-# Builds the Mac app and publishes it as a GitHub Release (which the app's updater reads).
-#   git tag v0.2.0 && git push --tags     -> builds <Name>-0.2.0-arm64.dmg and attaches it to a release
-#   Actions tab -> "Build Mac app" -> Run  -> builds it and keeps it as a downloadable artifact only
+# Builds the Mac app on GitHub. Only started by hand: Mac builders cost ten times the Linux ones, so the app is
+# normally built and installed on this Mac with scripts/install-app.sh.
+#   Actions tab -> "Build Mac app" -> Run  -> builds it and keeps it as a downloadable artifact
 name: Build Mac app
 
 on:
-  push:
-    tags: ["v*"]
   workflow_dispatch:
 
 permissions:

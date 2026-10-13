@@ -117,6 +117,8 @@ mac/                      the Mac app (Swift): menu bar, server supervisor, wind
 scripts/
   dev                     run for development
   check                   everything CI checks (tests, types, build, style rules)
+  build-app.sh            build the Mac app (and the disk image with --dmg)
+  install-app.sh          check, build, back up, and swap the new app into /Applications, with a rollback
   new-module              start a module from scripts/module-template
   build-app.sh            build the .app (and --dmg)
 conftest.py, pytest.ini   test setup: throwaway data, fake AI, skips tests of modules that are off
@@ -262,6 +264,7 @@ What happens when you summarize a note:
 | Check everything | `scripts/check` (pytest, `tsc`, Vite build, style rules) |
 | New module | `scripts/new-module journal "Journal"` |
 | Build the Mac app | `scripts/build-app.sh` → `dist-app/<Name>.app`; add `--dmg` for the disk image and checksum |
+| Update the installed app | `scripts/install-app.sh` (checks, builds, backs up, swaps, verifies; all on this Mac) |
 | Release | bump `VERSION`, `git tag v0.2.0 && git push --tags`. CI builds and publishes, and installed apps offer the update. |
 | Server install | `docker build -t app . && docker run -p 8790:8790 -v app-data:/data -e APP_ACCESS_TOKEN=… app` |
 | Try the built app without touching real data | `env -i HOME=$HOME PATH=/usr/bin:/bin STARTER_DATA_DIR=/tmp/x STARTER_NO_OPEN=1 dist-app/Starter.app/Contents/MacOS/Starter` (prints "Would open …"; the server answers on the port) |
