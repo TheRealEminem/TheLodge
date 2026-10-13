@@ -32,7 +32,7 @@ export function Switch({
       }`}
     >
       <span
-        className={`absolute left-[2px] h-5 w-5 rounded-full bg-white shadow-[0_1px_3px_rgba(22,40,30,0.22),0_1px_1px_rgba(22,40,30,0.08)] transition-[transform,width] duration-300 ease-spring group-active:w-[23px] ${
+        className={`absolute left-[2px] h-5 w-5 rounded-full bg-white shadow-[0_1px_3px_rgba(40,36,22,0.22),0_1px_1px_rgba(40,36,22,0.08)] transition-[transform,width] duration-300 ease-spring group-active:w-[23px] ${
           checked ? "translate-x-5 group-active:translate-x-[17px]" : "translate-x-0"
         }`}
       />
