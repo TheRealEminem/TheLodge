@@ -2,15 +2,17 @@
 # Builds the Mac app on this Mac and puts it in /Applications in place of the copy you're running, safely.
 # Everything happens locally: GitHub's Mac builders cost ten times its Linux ones, so they're not used for this.
 #
-#   scripts/install-app.sh              check, build, back up, swap, open, verify
-#   scripts/install-app.sh --no-check   skip scripts/check (when it has only just passed)
+#   scripts/install-app.sh              check, build, check the app, back up, swap, open, verify
+#   scripts/install-app.sh --no-check   skip scripts/check and scripts/check-app.py (when they've only just passed)
 #
 # 1. scripts/check: tests, types, the web build and the style rules.
-# 2. scripts/build-app.sh makes dist-app/<Name>.app.
+# 2. scripts/build-app.sh makes dist-app/<Name>.app, and scripts/check-app.py tries it on a spare port with its own
+#    data folder (restarts, quitting, two copies).
 # 3. A backup through the running app ("Back up now", so it shows in Settings), or a direct SQLite copy into the
 #    same folder when the app isn't running.
-# 4. The app is asked to quit (its server stops with it) and the new one takes its place. The one it replaces is
-#    kept in build/previous-app/.
+# 4. The app is asked to quit (its server stops with it) and the new one is moved into its place, so there is only
+#    ever one copy to open. The one it replaces is kept in build/previous-app.noindex/, where Spotlight and
+#    Launchpad don't offer it.
 # 5. The new app is opened, and the script waits for its server, then checks that it serves this build's web app,
 #    that the database passes SQLite's own check, and that no table lost rows. If any of that fails, the previous
 #    app is put back and opened, and the backup from step 3 is named so you can restore it from Settings.
@@ -25,7 +27,7 @@ PORT="$(field port)"
 MODULES="$(python3 -c 'import json,sys; print(" ".join(json.load(open(sys.argv[1]))["modules"]))' "$ROOT/app.json")"
 BUILT="$ROOT/dist-app/$NAME.app"
 TARGET="/Applications/$NAME.app"
-PREVIOUS="$ROOT/build/previous-app/$NAME.app"
+PREVIOUS="$ROOT/build/previous-app.noindex/$NAME.app"
 DATA="$HOME/Library/Application Support/$NAME"
 DB="$DATA/$APP_ID.db"
 API="http://127.0.0.1:$PORT/api"
@@ -49,11 +51,18 @@ counts() {
   return 0
 }
 
-[ "${1:-}" = "--no-check" ] || { say "Checking…"; "$ROOT/scripts/check" >/dev/null || die "scripts/check failed; nothing was installed. Run it to see why."; }
+CHECK=1
+[ "${1:-}" = "--no-check" ] && CHECK=0
+[ $CHECK = 0 ] || { say "Checking…"; "$ROOT/scripts/check" >/dev/null || die "scripts/check failed; nothing was installed. Run it to see why."; }
 
 "$ROOT/scripts/build-app.sh"
 [ -d "$BUILT" ] || die "The build didn't produce $BUILT."
 codesign --verify --strict "$BUILT" || die "The new app's signature doesn't verify; nothing was installed."
+if [ $CHECK = 1 ]; then
+  say "Trying the new app on a spare port…"
+  PY="$([ -x "$ROOT/.venv/bin/python" ] && echo "$ROOT/.venv/bin/python" || echo python3)"
+  "$PY" "$ROOT/scripts/check-app.py" | sed 's/^/  /' || die "scripts/check-app.py found a problem; nothing was installed."
+fi
 
 # ── Back up ────────────────────────────────────────────────────────────
 BACKUP=""
@@ -83,7 +92,7 @@ if [ -d "$TARGET" ]; then
   rm -rf "$PREVIOUS" && mkdir -p "$(dirname "$PREVIOUS")"
   mv "$TARGET" "$PREVIOUS"
 fi
-ditto "$BUILT" "$TARGET"
+mv "$BUILT" "$TARGET"
 
 rollback() {
   printf '\033[1;31m✗\033[0m %s\n' "$1" >&2

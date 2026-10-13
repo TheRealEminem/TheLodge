@@ -457,7 +457,7 @@ live in `core/web/index.css`; the tables in Section 3 describe Trailmix.
 | --- | --- | --- |
 | Mark | Low sun and a cream trail | Low sun and a cream A-frame (`Logo`) |
 | Hero art | `TrailScene`: rolling hills and a winding trail | `LodgeScene`: snow-capped peaks, a lake with the far shore reflected, an A-frame tucked into pines, a fire with two log seats, a dock and a canoe. The cream path from Trailmix's scene leads up to the lodge door |
-| Time of day | Day theme shows day, Dusk theme shows dusk | The scene keeps the clock (below) |
+| Time of day | Day theme shows day, Dusk theme shows dusk | The scene keeps the clock on both themes (below) |
 | Motion | A hiker walks the trail while recording | Smoke from the stove sways slowly (Home only, and never with reduced motion) |
 | `Ambient` linework | Topographic contour rings in forest green | Growth rings: the end of a log, top right, with a smaller one bottom left. Rings are wide in the early years and narrow later, with runs of thin years, and a couple of drying checks. Drawn in warm cedar (`--grain`). They also echo the app's circles of closeness |
 | `Ambient` glows | Sun and orange glows top right | A sun glow top right and a hearth glow low on the left (`--glow-hearth`), where the room's firelight would be |
@@ -473,8 +473,8 @@ golden hour, sunset (pink snow, the lights coming on) and blue hour. The sun ris
 own arc through the night, and the lake catches whichever is higher. The windows light up from late afternoon
 until after sunrise. The looks are the `DAY_KEYS` in `core/web/components/illustrations.tsx`.
 
-In the **Dusk theme** a bright midday would glare against the dark page, so from pre-dawn until evening the
-scene holds at blue hour (the moon up, every window lit), then keeps the clock through the night.
+The cycle runs on both themes. On the **Dusk theme** the daylight hours are drawn a little dimmer (down to 84%
+brightness at midday), so the picture doesn't glare off the dark page; evening and night are unchanged.
 
 To look at any time while developing, add `?hour=18.5` before the `#` (for example
 `http://localhost:5173/?hour=6.9#/`). It only works in development builds.

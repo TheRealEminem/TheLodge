@@ -118,6 +118,29 @@ final class Host: ObservableObject {
                 failure = BundledServer.shared.failure ?? "The server didn't start. Log: \(Bundled.logFile.path)"
             }
             if ready, openWindow { self.openWindow() }
+            if ready { watch() }
+        }
+    }
+
+    /// A second copy of the app uses the first one's server rather than fighting it for the port, and that server
+    /// stops when the first copy quits. So keep an eye on it: when nothing answers any more, start this copy's
+    /// own server and reload the window.
+    private func watch() {
+        guard Bundled.isBundled else { return }
+        Task {
+            while true {
+                try? await Task.sleep(for: .seconds(3))
+                let server = BundledServer.shared
+                if server.isRunning || server.isStopping || server.failure != nil { continue }
+                if await Self.answering() { continue }
+                do { try server.start(port: AppConfig.port) } catch { continue }
+                let deadline = Date().addingTimeInterval(40)
+                while !(await Self.answering()), Date() < deadline, server.failure == nil {
+                    try? await Task.sleep(for: .milliseconds(250))
+                }
+                ready = await Self.answering()
+                if ready { MainWindow.shared.reload() } else { serverFailed() }
+            }
         }
     }
 
