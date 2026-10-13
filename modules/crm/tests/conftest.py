@@ -13,7 +13,7 @@ def clean_crm():
     from modules.crm.server import ingest, roles, store
     ingest._down.clear()
     settings.update({f"crm.{name}": default for name, default in {**roles.SETTINGS, "webhook_auto_apply": False, "granola_api_key": "", "granola_auto_apply": True,
-                                                                              "granola_days": 30, "calendar_secret": ""}.items()})
+                                                                              "granola_days": 30, "calendar_secret": "", "overviews_ahead": True}.items()})
     store._touch()  # drops the matching index's cache
     yield
     jobs.drain()

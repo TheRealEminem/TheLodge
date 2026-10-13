@@ -168,7 +168,9 @@ def test_index_follows_writes(client):
 
 def test_each_ai_job_names_its_provider_and_says_whether_it_is_ready(client):
     jobs = {j["role"]: j for j in client.get("/api/crm/ai").json()}
-    assert set(jobs) == {"extraction", "utility"}
+    assert set(jobs) == {"extraction", "utility", "profiles"}
+    assert (jobs["profiles"]["choice"], jobs["profiles"]["rules"]) == ("auto", False)   # same as the app; no rules reading
+    assert client.put("/api/settings", json={"crm.profiles_provider": "rules"}).status_code == 400
     assert (jobs["extraction"]["choice"], jobs["extraction"]["provider"]) == ("anthropic", "anthropic")
     assert (jobs["utility"]["choice"], jobs["utility"]["provider"]) == ("gemini", "gemini")
     assert jobs["extraction"]["setting"] == "crm.extraction_provider"

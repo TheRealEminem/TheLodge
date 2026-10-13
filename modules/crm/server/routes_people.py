@@ -15,6 +15,17 @@ def _matches(q: str, *fields: object) -> bool:
     return any(q in str(f).lower() for f in fields if f)
 
 
+def _match_rank(q: str, name: str, aliases: list[str]) -> int:
+    """How well a person matches what was typed: their name starts with it (or a word in it does), their name
+    has it somewhere, an alias has it, or only their role, organization, place or tags do."""
+    name = name.lower()
+    if name.startswith(q) or any(w.startswith(q) for w in name.split()):
+        return 0
+    if q in name:
+        return 1
+    return 2 if any(q in a.lower() for a in aliases) else 3
+
+
 @router.get("/people")
 def list_people(
     tier: str | None = Query(None, description="Comma-separated: strong,working,light,indirect,none"),
@@ -22,7 +33,7 @@ def list_people(
     tag: str | None = None,
     q: str | None = None,
     needs_research: bool = False,
-    sort: Literal["strength", "recent", "name", "added", "meetings"] = "strength",
+    sort: Literal["strength", "recent", "name", "added", "meetings", "match"] = "strength",
     limit: int = Query(50, ge=1, le=1000),
     offset: int = Query(0, ge=0)
 ):
@@ -58,7 +69,11 @@ def list_people(
         ids = [pid for pid in ids if conns[pid].tier in wanted]
 
     name = lambda pid: ents[pid].name.lower()  # noqa: E731
-    if sort == "strength":
+    if sort == "match" and q and q.strip():   # the best matches for what was typed, then the closest people
+        needle = q.strip().lower()
+        ids.sort(key=lambda pid: (_match_rank(needle, ents[pid].name, (ents[pid].attributes or {}).get("aliases") or []),
+                                  *sort_key(conns[pid], ents[pid].name)))
+    elif sort == "strength" or sort == "match":
         ids.sort(key=lambda pid: sort_key(conns[pid], ents[pid].name))
     elif sort == "recent":
         ids.sort(key=lambda pid: (conns[pid].last_signal_at is None, -(conns[pid].last_signal_at.timestamp() if conns[pid].last_signal_at else 0), name(pid)))

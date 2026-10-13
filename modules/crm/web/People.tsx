@@ -81,7 +81,7 @@ export function PersonLine({ row, showFlag = true }: { row: PersonRow; showFlag?
 export default function People() {
   const [params, setParams] = useQueryParams();
   const [creating, setCreating] = useState(false);
-  const [q, setQ] = useState("");
+  const [q, setQ] = useState(() => params.get("q") ?? "");  // Home's finder links here with what was typed
   const [limit, setLimit] = useState(PAGE);
   const dq = useDebounced(q);
   const tier = (params.get("tier") as Tier | null) ?? "all";
