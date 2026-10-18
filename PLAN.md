@@ -25,7 +25,7 @@ decided, and the order we build it in.
 | 10 | Importers: spreadsheets, LinkedIn, recorded meetings | M | ☑ 2026-10-12 |
 | 11 | Mac polish: mark, menu, signing, disk image | M | ☑ 2026-10-12 |
 | 12 | Capture automation: Granola and calendars | M | ☑ 2026-10-12 |
-| 13 | Cutover and hardening | S–M | ◐ built 2026-10-12; waiting on a week of daily use |
+| 13 | Cutover and hardening | S–M | ◐ built 2026-10-12; cut over 2026-10-18; old stack to be removed after a week |
 | 14 | **Research flags: people who need deep research** (asked for 2026-10-12) | M | ☑ 2026-10-12 |
 | 15 | **Find someone from Home; AI overviews and questions on profiles** (asked for 2026-10-13) | M | ☑ 2026-10-13 |
 | 16 | **Profile pictures** (asked for 2026-10-13) | M | ☐ proposed; waiting on the owner's choice of sources |
@@ -498,6 +498,11 @@ _Result: decisions D3 = `com.thelodge.app`, D10 = ad-hoc, D11 = manual disk imag
   what was imported, so nothing is waiting to come across and the importer must not be run again (it would overwrite
   edits made in The Lodge). A final dump is saved at `_reference/dynacrm-final-dump-20261012.sql.gz` (0600, git-ignored;
   it includes the old app's settings table). The Postgres container is stopped.
+- **Cut over (2026-10-18, the owner's go):** installed the current build (`aa02159`) with `scripts/install-app.sh`: checks, the
+  13 app behaviour checks, a backup first, swap, and a data check ("9 tables, nothing missing"). It serves 128 people (9
+  strong, 12 working, 58 light, 29 indirect, 20 not linked), 67 flagged for research, 8 backups. Docker is closed, so the
+  old stack is stopped; nothing in the new app depends on it. Not yet set up in the new app: an AI key (extraction is on
+  Claude, so imports wait until one is saved), Granola, a calendar address, Open at Login.
 - **Still the owner's:** use The Lodge daily for a week, then archive the `DynaCRM (OLD)` folder and remove the old Docker
   containers and volume (the dump is the way back). Install the current build first (`scripts/build-app.sh`, then the
   disk image); the copy in `/Applications` is from chunk 11.
