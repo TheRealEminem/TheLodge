@@ -496,7 +496,7 @@ _Result: decisions D3 = `com.thelodge.app`, D10 = ad-hoc, D11 = manual disk imag
   is a decision for the owner, not a default; it is a small chunk if wanted.
 - **Cutover prepared:** the old Postgres holds 381 entities and 839 relationships, last changed 2026-09-26, exactly
   what was imported, so nothing is waiting to come across and the importer must not be run again (it would overwrite
-  edits made in The Lodge). A final dump is saved at `_reference/dynacrm-final-dump-20261012.sql.gz` (0600, git-ignored;
+  edits made in The Lodge). A final dump is saved at `~/Desktop/Temp/dynacrm-final-dump-20261012.sql.gz` with a README (moved there 2026-10-18; 0600, outside the repo;
   it includes the old app's settings table). The Postgres container is stopped.
 - **Cut over (2026-10-18, the owner's go):** installed the current build (`aa02159`) with `scripts/install-app.sh`: checks, the
   13 app behaviour checks, a backup first, swap, and a data check ("9 tables, nothing missing"). It serves 128 people (9
