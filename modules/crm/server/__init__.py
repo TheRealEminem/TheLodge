@@ -27,7 +27,7 @@ MODULE = Module(
     migrations=store.MIGRATIONS,
     settings={**roles.SETTINGS, "webhook_auto_apply": False, "granola_api_key": "", "granola_auto_apply": True,
               "granola_days": 30, "calendar_secret": "", "sheet_secret": "", "overviews_ahead": True,
-              "research_level": "quick", "research_batch": True, "research_budget": 5},
+              "research_level": "better", "research_batch": True, "research_budget": 5},
     choices={**roles.CHOICES, "research_level": tuple(gemini_research.LEVELS)},
     jobs={"extract": ingest.handle_extract, "granola_sync": granola.handle_sync, "calendar_sync": calendar_sync.handle_sync,
           "overview": profiles.write_overview, "overview_now": profiles.write_overview, "answer": profiles.answer,

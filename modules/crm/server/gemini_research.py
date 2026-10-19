@@ -5,8 +5,8 @@ written from the answers in the brief's shape, carrying its ref. The report goes
 and waits for your OK. Nothing runs unless you start it, and a run stops before it would pass the month's budget.
 
 Levels, which models do the work:
-    quick    Flash-Lite asks and writes                                  the default
-    better   Flash asks and writes
+    quick    Flash-Lite asks and writes. Cheap, but it often answers without searching (see PLAN.md, Chunk 19)
+    better   Flash asks and writes                                       the default, through Batch
     best     Flash asks; the Pro model checks what's missing, has it asked, and writes
 Each can go through Google's Batch API: half the token price, answers within a day (usually minutes). Google bills
 each search the model runs the same either way.
@@ -46,9 +46,9 @@ BATCH_DISCOUNT = 0.5
 
 LEVELS = {
     "quick": {"label": "Quick", "ask": "gemini-3.5-flash-lite", "check": None, "write": "gemini-3.5-flash-lite",
-              "hint": "Gemini Flash-Lite searches and writes. The cheapest; fine for most people."},
+              "hint": "Gemini Flash-Lite searches and writes. The cheapest, but it often skips searching, so reports are thin."},
     "better": {"label": "Better", "ask": "gemini-3.8-flash", "check": None, "write": "gemini-3.8-flash",
-               "hint": "Gemini Flash searches and writes. Reads sources more carefully and writes a fuller report."},
+               "hint": "Gemini Flash searches and writes. Searches thoroughly and writes a full, sourced report. Recommended."},
     "best": {"label": "Best", "ask": "gemini-3.8-flash", "check": "gemini-4-argon", "write": "gemini-4-argon",
              "hint": "Flash searches, then Gemini's Pro model checks what's missing, has it looked up, and writes."},
 }
