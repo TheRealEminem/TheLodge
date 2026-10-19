@@ -31,7 +31,7 @@ decided, and the order we build it in.
 | 16 | **Profile pictures** (asked for 2026-10-13) | M | ☐ proposed; waiting on the owner's choice of sources |
 | 17 | **Shared Google Sheet: a second way in for anyone** (asked for 2026-10-18) | M | ☑ 2026-10-18 (not yet run against a real Google Sheet) |
 | 18 | **Bulk research import, Gemini-shaped briefs, flagged duplicates** (asked for 2026-10-18) | M–L | ☑ 2026-10-19 (not yet run on a real Gemini report) |
-| 19 | **The Lodge runs Gemini research itself** (asked for 2026-10-18) | ? | ☐ scoping: costs first, no building until the owner has firm estimates |
+| 19 | **The Lodge runs Gemini research itself** (asked for 2026-10-18) | M | ☑ 2026-10-19 (trial on 3 people; default level still the owner's call) |
 
 Milestones: **A** "it runs" = 0 · **B** "your data, natively" = 1–3 · **C** "browse and rate in the app" = 4–6
 (The owner can stop using Docker for reading; AI intake still needs the old app) · **D** "feature parity" = 7–10 ·
@@ -686,7 +686,7 @@ records disappearing would change too many downstream ties.
 - **Not verified:** a real Gemini Deep Research report through Export to Docs and back. Whether Gemini keeps the
   `Lodge ref` line and the identity line is the thing to check first; without them, matching falls back to names.
 
-### Chunk 19 · The Lodge runs Gemini research itself — SCOPING
+### Chunk 19 · The Lodge runs Gemini research itself — DONE (built after the scoping below)
 
 The owner (2026-10-18): interested in The Lodge running deep research on flagged people itself through the Gemini API,
 but worried about cost even with batch pricing. **Hold off building until there are firm estimates.**
@@ -734,6 +734,52 @@ cost on each report, and Gemini named as where the research came from.
 Sources: [pricing](https://ai.google.dev/gemini-api/docs/pricing),
 [Deep Research agent](https://ai.google.dev/gemini-api/docs/deep-research),
 [search grounding](https://ai.google.dev/gemini-api/docs/google-search).
+
+**Built (2026-10-19)**, after the owner asked for a trial with Flash-Lite and Batch plus an option for better models:
+- **`gemini_research.py`** (job `crm/research_advance`, every minute while a run is under way): six focused questions
+  with Google Search grounding, seeded by the brief's "who I mean" (never your tags, never an email address), then a
+  report written to the brief's shape with its ref and identity line. It goes to the Inbox as research on that
+  person and waits for review; the footer says which models, how many searches and what it cost.
+- **Levels:** Quick (Gemini 3.5 Flash-Lite asks and writes), Better (Gemini 3.8 Flash), Best (Flash asks, Gemini 4
+  Argon checks for gaps and contradictions, up to 3 follow-ups are searched, Argon writes). Any level can go through
+  Google's Batch API: one batch per stage per model, shared by everyone started together.
+- **Money:** cost from Google's own usage and search counts (`crm_research_runs`); a monthly budget (default $5)
+  that start-up checks against and that stops a run before its next stage once spent; estimates in the dialog.
+- **Screens:** "Research with Gemini" on a flagged profile and for the Home list (choose the level and Batch, see the
+  per-person and total estimate and the budget left); the run's progress on the profile with Cancel / Try again;
+  after a run, "Research more deeply"; Settings → People: research with Gemini (usual level, Batch, budget, recent
+  runs). Prices are in code (`PRICES`, as of 2026-10-19; Google raises several from December 2026).
+
+**Trial (2026-10-19)**, on a copy of the real data with the sheet, Granola, calendar and Claude switched off, the top
+three on Needs research, using the Gemini key from Trailmix:
+
+| Person | Level | Batch | Searches | Tokens in / out | Cost | Time | Report |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| Billy Kemp | Quick | yes | 4 / 4 | ~2.6k / ~1.6k | $0.06 | ~6 min | ~300–400 words, thin |
+| Jack Marlow | Quick | yes | 10 / 8 | ~3.4k / ~2.9k | $0.12–0.14 | ~6 min | ~650 words; named the namesakes |
+| Anders Stone | Quick | yes | 1 / 3 | ~2.4k / ~0.9k | $0.02–0.04 | ~6 min | ~350 words, one source |
+| Anders Stone | Better | no | 19 | ~7k / ~14k | $0.32 | 3 min | ~1,300 words, 34 links |
+| Anders Stone | Best | no | 23 | ~13k / ~16k | $0.43 | 4 min | ~1,600 words, 32 links |
+
+(Two Quick rounds: the second after telling it to always search.) About $1.20 in all, before Google's free 5,000
+searches a month, which this key may well cover.
+- **Flash-Lite mostly doesn't search.** It answers most questions "Nothing found." without running a search, even
+  when told to always search; that, not Batch, is why Quick is so cheap, and its reports are thin. The cheapest
+  level is cheap because it does little.
+- **Better is the step change.** Same person: a PhD and its dates, national-lab work, a company and its patents, a
+  startup board seat, current teaching, and a sharp identity line (LinkedIn handle = university email handle).
+- **Best adds judgment more than facts:** it noticed the CRM's "Chemical Angel Investor" title isn't supported in
+  public records and searched for it. Its follow-ups exposed a bug (answers filed under the wrong follow-up when
+  there were several), fixed with a test.
+- **Searches are most of the cost** ($14 per 1,000, no Batch discount). Batch halves only the tokens: Better through
+  Batch would have been ~$0.29 instead of $0.32, Best ~$0.38 instead of $0.43; it's slower (~5–6 minutes a round).
+- **The 67 flagged people**, roughly: Quick ~$3–5, Better ~$20, Best ~$29, less whatever the free searches cover.
+- Reports and each question's notes are in `build/research-trial/` (not in git). Nothing from the trial is in the
+  real data: the reports carry their refs, so dropping them in the Inbox files them on the right people.
+
+**Open:** the default level (the code says Quick; the trial says Better). Gemini 4 Argon and 3.8 Flash were offered
+to this key; another key might not have them, and the error says which model. Not tried: the Google Deep Research
+agent (~$1–3 a person, by Google's estimate) as a fourth level.
 
 ## 6. Risks and spikes
 

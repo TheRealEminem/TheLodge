@@ -415,7 +415,8 @@ def absorb(r: dict, answers: dict[str, dict]) -> None:
     findings = json.loads(r["findings"] or "[]")
     usage = json.loads(r["usage"] or "{}")
     spent, searches, errors = 0.0, 0, []
-    for key, a in sorted(answers.items()):
+    open_ = [f for f in findings if f.get("follow_up") and not f.get("text")]   # in the order they were asked
+    for key, a in sorted(answers.items(), key=lambda kv: int(kv[0].rsplit(":", 1)[1]) if kv[0].rsplit(":", 1)[1].isdigit() else 0):
         n = len(a.get("searches") or [])
         searches += n
         spent += cost(model, a.get("usage") or {}, n, batch)
@@ -431,7 +432,6 @@ def absorb(r: dict, answers: dict[str, dict]) -> None:
             findings.append({"angle": ANGLES[i][0], "question": ANGLES[i][1], "text": a.get("text") or "",
                              "sources": a["sources"], "searches": a.get("searches") or []})
         elif stage == "more":
-            open_ = [f for f in findings if f.get("follow_up") and not f.get("text")]
             i = int(key.rsplit(":", 1)[1])
             if i < len(open_):
                 open_[i].update(text=a.get("text") or "Nothing found.", sources=a["sources"], searches=a.get("searches") or [])
