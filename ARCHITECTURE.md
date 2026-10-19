@@ -80,6 +80,12 @@ These keep modules combinable. Breaking one now means a rewrite when the apps me
 7. **Nothing is written inside the app bundle at runtime.** That would break its signature. All data goes in `DATA_DIR`.
 8. **Works offline and locally by default.** Cloud services are optional and chosen in Settings, and local AI
    models are unloaded after use.
+9. **Shared code has one copy: the family's.** `core/`, `mac/`, the shared scripts, the shared modules (`tasks`,
+   `notes`) and the build setup live in `~/Code/TrailmixFamily` and are synced into each app with
+   `scripts/sync-family` (the list is in that script). Change them there, never inside one app; `scripts/check`
+   fails when an app's copy differs. An app's own parts are `app.json`, `identity/` and its own modules. This is
+   what lets two apps' databases merge: `core_migrations` counts steps per module, so two different "step 2"s of
+   the same module could never be told apart.
 
 ## 4. Folder map
 
@@ -107,9 +113,18 @@ core/
     live.ts               useLive(): data that refreshes when anything changes
     shell.tsx             useShell() (toast, confirm, theme, app info), useSettings()
     api.ts                request(), json(), the host's API, the Mac bridge
-    components/           the design kit (ui, icons, illustrations) + blocks (Section, JobStatus, LinkedList…)
+    components/           the design kit (ui, icons; illustrations re-exports the identity's art) + blocks
+                          (Section, JobStatus, LinkedList, Avatar, Tags, Empty…)
+    format.ts             dates and names: relativeTime, formatDate, initials
     views/                Home, Settings, Login, NotFound
   tests/                  the host's tests (they use a stand-in module, not the real ones)
+identity/                 the app's own look, the only part of the shell that differs between family apps:
+  tokens.css              colors, shadows and atmosphere for Day and Dusk (imported before core's index.css)
+  art.tsx                 Logo, Scene, Ambient, Badge
+  copy.ts                 the host screens' brand copy (sign-in title, Your data wording)
+  public/favicon.svg      the mark, for the browser
+  mac/                    Mark.swift (menu bar icon), AppIcon.icns, and the script that draws the icon
+  DESIGN.md               the app's own design notes
 modules/
   notes/                  the reference module: server/, web/, tests/
   tasks/                  a second module that cooperates with notes through a contract
@@ -120,7 +135,7 @@ scripts/
   build-app.sh            build the Mac app (and the disk image with --dmg)
   install-app.sh          check, build, back up, and swap the new app into /Applications, with a rollback
   new-module              start a module from scripts/module-template
-  build-app.sh            build the .app (and --dmg)
+  sync-family             copy the family's shared code in (--check: fail if it differs; --push: send a change back)
 conftest.py, pytest.ini   test setup: throwaway data, fake AI, skips tests of modules that are off
 Dockerfile                the server for Linux
 .github/workflows/        tests on every push; build and release the Mac app on a version tag
@@ -277,10 +292,12 @@ whatever modules an app has. Tests of modules that `app.json` turns off are skip
 
 **Start a new family app**
 
-1. Copy this folder and run `git init`.
-2. Edit `app.json`: name, id, tagline, bundleId, envPrefix, a free port, updateRepo, and modules.
-3. Draw the app's mark: `Logo` in `core/web/components/illustrations.tsx`, `core/web/public/favicon.svg`,
-   `mac/Sources/AppHost/Mark.swift`, and optionally `mac/AppIcon.icns`. See `DESIGN.md` §2.
+1. Make a folder, `git init`, and copy `scripts/sync-family` in from the family (`~/Code/TrailmixFamily`). Run it.
+2. Write `app.json`: name, id, tagline, bundleId, envPrefix, a free port, updateRepo, and modules. Add a
+   `package.json` and `requirements.txt` (start from another family app's).
+3. Make `identity/` (start from another family app's): the palette in `tokens.css`, the mark and scene in
+   `art.tsx` and `public/favicon.svg`, `copy.ts`, and `mac/Mark.swift` and `mac/AppIcon.icns`. See `DESIGN.md` §2
+   and §17.
 4. Run `scripts/new-module <id> "<Name>"` for the app's main feature, and remove notes and tasks from
    `app.json` if they don't belong. Keep their folders: they're the reference.
 5. Run `scripts/dev`, build the feature, then `scripts/check`.

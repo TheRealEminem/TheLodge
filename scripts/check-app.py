@@ -80,7 +80,7 @@ def main() -> int:
     if server_pids():
         print(f"Something is already listening on port {PORT}; stop it first.")
         return 2
-    work = Path(tempfile.mkdtemp(prefix="lodge-app-check-"))
+    work = Path(tempfile.mkdtemp(prefix=f"{APP_JSON['id']}-app-check-"))
     app, data = work / built.name, work / "data"
     subprocess.run(["ditto", str(built), str(app)], check=True)
     subprocess.run(["plutil", "-replace", "FamilyPort", "-string", str(PORT), str(app / "Contents/Info.plist")], check=True)
