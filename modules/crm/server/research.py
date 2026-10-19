@@ -12,6 +12,7 @@ What you did about a flag lives on the person, in attributes.research:
 """
 import re
 import sqlite3
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from urllib.parse import urlparse
 
@@ -159,12 +160,19 @@ def identity_confidence(text: str) -> str | None:
     return m.group(1).lower() if m else None
 
 
-def brief(person_id: str) -> str:
-    """A prompt for a deep-research tool, shaped for Gemini Deep Research (it works in ChatGPT, Claude and Perplexity
-    too): who this is as far as you know, why you care, and a report layout the importer reads best. The report is
-    asked to keep a ref and say how sure it is of the person, so it comes back to the right profile by itself and a
-    doubtful one waits for you. It holds no email address (only the domain) and no meeting notes (only titles and
-    dates), and nothing is sent anywhere."""
+@dataclass
+class Subject:
+    """What the brief says about a person, in pieces, so The Lodge's own research (gemini_research.py) asks the same."""
+    person: Entity
+    title: str
+    ref: str
+    known: list[str]      # who they are, as far as you know: safe to put in a web search
+    mine: list[str]       # how you know them: meeting titles and dates, people in common
+    about_me: str
+    today: str
+
+
+def subject(person_id: str) -> Subject:
     v = views.get()
     p = v.snap.entities.get(person_id)
     if p is None or p.kind != "person" or p.is_self:
@@ -178,8 +186,6 @@ def brief(person_id: str) -> str:
     conn = v.conns.get(person_id)
     me = v.me
     my_org = v.employer(me.id) if me else None
-    title = f"{p.name} — research profile"
-    ref = f"Lodge ref: {ref_code(p.id)}"
 
     known = [f"- Name: {p.name}"]
     if a.get("aliases"):
@@ -217,7 +223,18 @@ def brief(person_id: str) -> str:
     if me:
         my_title = (me.attributes or {}).get("title")
         about_me = f"I'm {me.name}" + (f", {my_title}" if my_title else "") + (f" at {my_org.name}" if my_org else "") + ". "
-    today = datetime.now(UTC).strftime("%-d %B %Y")
+    return Subject(person=p, title=f"{p.name} — research profile", ref=f"Lodge ref: {ref_code(p.id)}", known=known,
+                   mine=mine, about_me=about_me, today=datetime.now(UTC).strftime("%-d %B %Y"))
+
+
+def brief(person_id: str) -> str:
+    """A prompt for a deep-research tool, shaped for Gemini Deep Research (it works in ChatGPT, Claude and Perplexity
+    too): who this is as far as you know, why you care, and a report layout the importer reads best. The report is
+    asked to keep a ref and say how sure it is of the person, so it comes back to the right profile by itself and a
+    doubtful one waits for you. It holds no email address (only the domain) and no meeting notes (only titles and
+    dates), and nothing is sent anywhere."""
+    sub = subject(person_id)
+    p, title, ref, known, mine, about_me, today = sub.person, sub.title, sub.ref, sub.known, sub.mine, sub.about_me, sub.today
 
     lines = [
         title,
