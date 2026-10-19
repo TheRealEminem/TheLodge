@@ -228,6 +228,27 @@ def test_files_already_imported_or_discarded_or_duplicated_or_unreadable_are_ski
     assert batch["x.txt"]["status"] == "applied"
 
 
+def test_a_google_drive_zip_is_unpacked_and_other_google_formats_are_read(client, rules):
+    import io
+    import zipfile
+    note = "Attendees: Zed Zulu\nA note about the depot pilot, with enough words in it to be worth reading, {}."
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as z:                       # a Drive folder download: Docs come as .docx, here as text
+        z.writestr("Research/Zed Zulu.md", note.format("from the zip"))
+        z.writestr("Research/__MACOSX/._Zed Zulu.md", "junk")
+        z.writestr("Research/inner.zip", b"PK")
+    html = f"<html><head><title>Depot</title><script>x()</script></head><body><p>{note.format('as a web page')}</p></body></html>"
+    rtf = "{\\rtf1\\ansi{\\fonttbl{\\f0 Helvetica;}}" + note.format("in rich text").replace("\n", "\\par ") + "}"
+    batch = upload(client, ("Drive/research.zip", buf.getvalue()), ("page.html", html.encode()), ("notes.rtf", rtf.encode()),
+                   ("Zed.gdoc", b'{"doc_id": "abc"}'), ("broken.zip", b"not a zip"))
+    assert batch["Zed Zulu.md"]["status"] == "applied" and batch["Zed Zulu.md"]["payload"]["folder"] == "Drive/Research"
+    assert "__MACOSX" not in str(list(batch)) and "zip inside a zip" in batch["inner.zip"]["error"]
+    assert batch["page.html"]["status"] == "applied" and "x()" not in client.get(f"/api/crm/ingest/jobs/{batch['page.html']['id']}").json()["raw_text"]
+    assert batch["notes.rtf"]["status"] == "applied" and "fonttbl" not in batch["notes.rtf"]["raw_text"]
+    assert batch["Zed.gdoc"]["status"] == "skipped" and "Google Drive shortcut" in batch["Zed.gdoc"]["error"]
+    assert batch["broken.zip"]["status"] == "skipped" and "Couldn't open the zip" in batch["broken.zip"]["error"]
+
+
 def test_folder_and_sibling_names_reach_the_ai(client, fake_structured):
     fake_structured.reply = lambda prompt, system, schema: extraction([entity("p1", "Zed Zulu", role="attendee")])
     upload(client, ("Clients/Acme/notes 9_11.txt", b"Attendees: Zed Zulu\nNotes from the Acme call, with enough words in them to count."),
