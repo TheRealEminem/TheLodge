@@ -193,3 +193,8 @@ def test_a_module_lists_its_recurring_work_and_the_host_wires_it():
     module.register(module.Module(id="testmod2", name="Test", jobs={"poll": lambda job: None}, recurring={"poll": 300}))
     assert schedule.tick(now=9000.0) == ["testmod2/poll"]
     jobs.drain()
+
+
+def test_tags_are_normalized_the_same_way_everywhere():
+    from core.server.tags import normalize_tags
+    assert normalize_tags(["Angel Investor", " angel  investor ", "", "Climate"]) == ["angel-investor", "climate"]

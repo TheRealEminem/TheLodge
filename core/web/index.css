@@ -2,54 +2,11 @@
 @tailwind components;
 @tailwind utilities;
 
-/* ── The Lodge's tokens (a Trailmix sibling) ───────────────────────────
-   The family's roles and contrast, nudged toward the lodge: warm linen
-   surfaces, spruce for primary actions, ember for the live action,
-   lantern yellow for "needs you", lake blue and lingonberry for You and
-   Them. Dusk is a spruce-blue night by the fire. See DESIGN.md §17.      */
+/* ── The family's shared tokens ────────────────────────────────────────
+   Type scale, radii, motion and the focus ring: the same in every family
+   app. Each app's palette (colors, shadows, atmosphere, for Day and Dusk)
+   comes from its identity: identity/tokens.css, imported before this.   */
 :root {
-  /* surfaces */
-  --bg: #f7f4ec;
-  --bg-top: #fcfaf5;
-  --surface: rgba(255, 253, 248, 0.72);
-  --surface-solid: #fffdf8;
-  --surface-subtle: #f2eee4;
-  --sidebar-bg: rgba(250, 247, 240, 0.8);
-  --scrim: rgba(34, 36, 26, 0.26);
-
-  /* text */
-  --text-primary: #21271f;
-  --text-secondary: #666a5f;
-  --text-tertiary: #979a8f; /* icons, placeholders and decoration only: too light for body text */
-
-  /* brand */
-  --forest: #1f5e4b;
-  --forest-hover: #174a3b;
-  --forest-soft: #d9e8e0;
-  --forest-ink: #174838; /* text on forest-soft */
-  --trail-orange: #de5f31;
-  --trail-orange-hover: #c94f24;
-  --trail-orange-soft: #fadfd2;
-  --trail-orange-ink: #9e3a16;
-  --yellow: #f2b13c;
-  --yellow-soft: #fbeccb;
-  --yellow-ink: #764c06;
-  --sky: #457f9c;
-  --sky-soft: #dfecf1;
-  --sky-ink: #22566e;
-  --berry: #9a4f6b;
-  --berry-soft: #f3e2e8;
-  --berry-ink: #76304d;
-  --on-accent: #ffffff;
-
-  /* lines */
-  --border: rgba(56, 52, 36, 0.11);
-  --border-strong: rgba(56, 52, 36, 0.17);
-  --switch-off: rgba(56, 52, 36, 0.17);
-  --highlight: rgba(255, 255, 255, 0.75);
-  --art-edge: rgba(255, 255, 255, 0.6);
-  --art-hairline: rgba(56, 52, 36, 0.05);
-
   /* type scale (Geist for the interface, Fraunces for titles) */
   --fs-caption: 11px; /* chips, badges, key caps */
   --fs-meta: 12px; /* timestamps, footnotes */
@@ -69,24 +26,8 @@
   --radius-xl: 22px;
   --radius-hero: 28px;
 
-  /* depth: warm olive-tinted, never black */
-  --shadow-sm: 0 1px 2px rgba(40, 36, 22, 0.05);
-  --shadow-md: 0 8px 24px rgba(40, 36, 22, 0.07);
-  --shadow-lg: 0 18px 60px rgba(40, 36, 22, 0.09);
-  --shadow-panel: 0 1px 2px rgba(40, 36, 22, 0.04), 0 14px 40px rgba(46, 44, 30, 0.05);
-  --shadow-chrome: 8px 0 40px -12px rgba(40, 36, 22, 0.06);
+  /* focus */
   --ring-focus: 0 0 0 3px color-mix(in srgb, var(--forest) 14%, transparent);
-
-  /* atmosphere: The Lodge's own. Growth rings in warm cedar instead of Trailmix's contour lines, and a
-     hearth glow low on the left where Trailmix has its sunrise */
-  --grain: rgba(120, 86, 46, 0.06);
-  --glow-green: rgba(31, 94, 75, 0.07);
-  --glow-warm: rgba(245, 184, 58, 0.12);
-  --glow-hearth: rgba(240, 166, 64, 0.09);
-  --skeleton-a: #eeeae0;
-  --skeleton-b: #f7f4ec;
-  --tooltip-bg: rgba(33, 39, 31, 0.94);
-  --tooltip-fg: #f7f4ec;
 
   /* motion */
   --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
@@ -95,61 +36,7 @@
   color-scheme: light;
 }
 
-/* Dusk: the lodge after dark. Accents lighten, text on them goes dark. */
 :root[data-theme="dusk"] {
-  --bg: #0e1416;
-  --bg-top: #121a1d;
-  --surface: rgba(27, 37, 40, 0.62);
-  --surface-solid: #172023;
-  --surface-subtle: #131b1d;
-  --sidebar-bg: rgba(16, 23, 25, 0.78);
-  --scrim: rgba(0, 0, 0, 0.5);
-
-  --text-primary: #eceae3;
-  --text-secondary: #a9aaa1;
-  --text-tertiary: #72776f;
-
-  --forest: #52a487;
-  --forest-hover: #66b699;
-  --forest-soft: #19332f;
-  --forest-ink: #96d5be;
-  --trail-orange: #ec7347;
-  --trail-orange-hover: #f2875d;
-  --trail-orange-soft: #3a2219;
-  --trail-orange-ink: #f4a784;
-  --yellow: #f3b955;
-  --yellow-soft: #352b16;
-  --yellow-ink: #f3d08c;
-  --sky: #7db3cf;
-  --sky-soft: #172a34;
-  --sky-ink: #a8d0e4;
-  --berry: #cc85a0;
-  --berry-soft: #321f28;
-  --berry-ink: #e5b0c4;
-  --on-accent: #0c1214;
-
-  --border: rgba(214, 228, 226, 0.08);
-  --border-strong: rgba(214, 228, 226, 0.14);
-  --switch-off: rgba(214, 228, 226, 0.16);
-  --highlight: rgba(255, 255, 255, 0.04);
-  --art-edge: rgba(255, 255, 255, 0.07);
-  --art-hairline: rgba(0, 0, 0, 0.2);
-
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
-  --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.35);
-  --shadow-lg: 0 18px 60px rgba(0, 0, 0, 0.45);
-  --shadow-panel: 0 1px 2px rgba(0, 0, 0, 0.25), 0 14px 40px rgba(0, 0, 0, 0.22);
-  --shadow-chrome: 8px 0 40px -12px rgba(0, 0, 0, 0.4);
-
-  --grain: rgba(236, 220, 190, 0.04);
-  --glow-green: rgba(82, 164, 135, 0.08);
-  --glow-warm: rgba(242, 190, 78, 0.04);
-  --glow-hearth: rgba(240, 140, 60, 0.08);
-  --skeleton-a: #162022;
-  --skeleton-b: #1d282b;
-  --tooltip-bg: rgba(236, 234, 227, 0.96);
-  --tooltip-fg: #0e1416;
-
   color-scheme: dark;
 }
 

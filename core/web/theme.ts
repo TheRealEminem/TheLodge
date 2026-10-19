@@ -32,7 +32,9 @@ export function useTheme() {
 
   useEffect(() => {
     document.documentElement.dataset.theme = dusk ? "dusk" : "light";
-    document.querySelector('meta[name="theme-color"]')?.setAttribute("content", dusk ? "#0E1416" : "#F7F4EC");
+    // The window's color is the page's own background, from the identity's tokens.
+    const bg = getComputedStyle(document.documentElement).getPropertyValue("--bg").trim();
+    document.querySelector('meta[name="theme-color"]')?.setAttribute("content", bg);
   }, [dusk]);
 
   const setPref = (p: ThemePref) => {

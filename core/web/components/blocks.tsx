@@ -5,6 +5,8 @@ import { api } from "../api";
 import type { Job, Linked } from "../api";
 import { useLive } from "../live";
 import { useShell } from "../shell";
+import { initials } from "../format";
+import { Badge } from "./illustrations";
 import { AlertIcon, RefreshIcon } from "./icons";
 import { Spinner, StatusChip } from "./ui";
 
@@ -187,6 +189,43 @@ export function SecretSetting({ hint, onSave, label }: { hint: string | null | u
           Remove
         </button>
       )}
+    </div>
+  );
+}
+
+/** Initials in a soft tile: round for people, rounded-square for everything else (an organization, a project). */
+export function Avatar({ name, round = true, size = 36 }: { name: string; round?: boolean; size?: number }) {
+  return (
+    <span
+      aria-hidden="true"
+      className={`grid shrink-0 place-items-center bg-surface-subtle font-semibold text-ink-soft ${round ? "rounded-full" : "rounded-sm"}`}
+      style={{ width: size, height: size, fontSize: Math.round(size * 0.36) }}
+    >
+      {initials(name)}
+    </span>
+  );
+}
+
+/** Up to `max` tags as quiet chips. */
+export function Tags({ tags, max = 2 }: { tags: string[]; max?: number }) {
+  return (
+    <>
+      {tags.slice(0, max).map((t) => (
+        <span key={t} className="chip bg-surface-subtle text-ink-soft">
+          #{t}
+        </span>
+      ))}
+    </>
+  );
+}
+
+/** An empty list or page: the identity's badge around an icon, a title, and a line on what will appear here. */
+export function Empty({ icon, title, children }: { icon: ReactNode; title: string; children?: ReactNode }) {
+  return (
+    <div className="inset-surface px-4 py-12 text-center">
+      <Badge>{icon}</Badge>
+      <p className="mt-3 font-medium">{title}</p>
+      {children && <p className="mx-auto mt-1 max-w-sm text-ui text-ink-soft">{children}</p>}
     </div>
   );
 }

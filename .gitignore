@@ -7,6 +7,7 @@ data/
 __pycache__/
 .pytest_cache/
 mac/.build/
+mac/Sources/AppHost/Mark.swift
 .DS_Store
 *.tsbuildinfo
 _reference/

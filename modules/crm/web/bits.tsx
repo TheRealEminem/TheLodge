@@ -1,9 +1,10 @@
 // Small pieces shared by the module's screens.
 import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
-import { ContourBadge } from "@core/components/illustrations";
+import { Avatar as CoreAvatar } from "@core/components/blocks";
 import type { EntityKind } from "./api";
-import { initials } from "./format";
+
+export { Empty, Tags } from "@core/components/blocks";
 
 export function useDebounced<T>(value: T, ms = 200): T {
   const [v, setV] = useState(value);
@@ -14,39 +15,9 @@ export function useDebounced<T>(value: T, ms = 200): T {
   return v;
 }
 
-/** Initials in a soft tile: round for people, rounded-square for everything else. */
+/** The host's Avatar, round for people and rounded-square for everything else. */
 export function Avatar({ name, kind = "person", size = 36 }: { name: string; kind?: EntityKind; size?: number }) {
-  return (
-    <span
-      aria-hidden="true"
-      className={`grid shrink-0 place-items-center bg-surface-subtle font-semibold text-ink-soft ${kind === "person" ? "rounded-full" : "rounded-sm"}`}
-      style={{ width: size, height: size, fontSize: Math.round(size * 0.36) }}
-    >
-      {initials(name)}
-    </span>
-  );
-}
-
-export function Tags({ tags, max = 2 }: { tags: string[]; max?: number }) {
-  return (
-    <>
-      {tags.slice(0, max).map((t) => (
-        <span key={t} className="chip bg-surface-subtle text-ink-soft">
-          #{t}
-        </span>
-      ))}
-    </>
-  );
-}
-
-export function Empty({ icon, title, children }: { icon: ReactNode; title: string; children?: ReactNode }) {
-  return (
-    <div className="inset-surface px-4 py-12 text-center">
-      <ContourBadge>{icon}</ContourBadge>
-      <p className="mt-3 font-medium">{title}</p>
-      {children && <p className="mx-auto mt-1 max-w-sm text-ui text-ink-soft">{children}</p>}
-    </div>
-  );
+  return <CoreAvatar name={name} round={kind === "person"} size={size} />;
 }
 
 /** "Founder · Acme", without repeating the organization when the title already names it. */

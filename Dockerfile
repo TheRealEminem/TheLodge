@@ -6,6 +6,7 @@ COPY package.json package-lock.json ./
 RUN npm ci --no-audit --no-fund
 COPY app.json vite.config.ts tsconfig.json tailwind.config.js postcss.config.js ./
 COPY core/web core/web
+COPY identity identity
 COPY modules modules
 RUN npx vite build
 

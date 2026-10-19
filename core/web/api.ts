@@ -104,7 +104,7 @@ export const api = {
 
   backups: () => request<{ items: BackupItem[]; folder: string }>("/backups"),
   backUpNow: () => request<BackupItem>("/backups", json("POST")),
-  restoreBackup: (name: string) => request<{ restored: string; kept: string; people: number | null }>(`/backups/${name}/restore`, json("POST")),
+  restoreBackup: (name: string) => request<{ restored: string; kept: string; counts: Record<string, number> }>(`/backups/${name}/restore`, json("POST")),
   deleteBackup: (name: string) => request<void>(`/backups/${name}`, { method: "DELETE" }),
   exportAll: () => request<{ name: string; folder: string; bytes: number; counts: Record<string, Record<string, number>> }>("/export", json("POST")),
 

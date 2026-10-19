@@ -1,7 +1,7 @@
 """Backups and restore, and a plain-JSON export of what you have.
 
 A backup is a complete copy of the database made with SQLite's own online backup, so it is consistent even while the
-app is writing, and it holds everything: your people, notes, inbox, settings and keys. They live in the data
+app is writing, and it holds everything every module keeps, plus settings and keys. They live in the data
 folder's `backups/` (private to you, like the database) and are not sent anywhere. One is made a day, kept for
 two weeks; "Back up now" makes another, and a restore first makes one of the state it replaces, so a restore can
 itself be undone.
@@ -55,12 +55,18 @@ def _stamp_of(name: str) -> datetime:
 
 
 def _counts(path: Path) -> dict:
-    """What's in a backup, by looking: people and so on, per module that keeps a count."""
+    """What's in a backup, by looking: each module that keeps a count says what it holds ({"people": 381})."""
     try:
         with sqlite3.connect(f"file:{path}?mode=ro", uri=True) as c:
             out = {r[0]: r[1] for r in c.execute("SELECT module, version FROM core_migrations")}
-            people = c.execute("SELECT count(*) FROM crm_entities WHERE kind = 'person'").fetchone()[0] if "crm" in out else None
-        return {"migrations": out, "people": people}
+            counts: dict[str, int] = {}
+            for m in module.all_modules():
+                if m.count and m.id in out:
+                    try:
+                        counts.update(m.count(c))
+                    except sqlite3.Error:
+                        log.warning("couldn't count %s in %s", m.id, path.name)
+        return {"migrations": out, "counts": counts}
     except sqlite3.Error as e:
         raise BackupError(f"That backup can't be read ({e}).") from e
 

@@ -14,7 +14,7 @@
     "resolveJsonModule": true,
     "types": ["vite/client", "node"],
     "baseUrl": ".",
-    "paths": { "@core/*": ["core/web/*"] }
+    "paths": { "@core/*": ["core/web/*"], "@identity/*": ["identity/*"] }
   },
-  "include": ["core/web", "modules/*/web", "vite.config.ts", "app.json"]
+  "include": ["core/web", "modules/*/web", "identity", "vite.config.ts", "app.json"]
 }

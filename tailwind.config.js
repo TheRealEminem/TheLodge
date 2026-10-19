@@ -1,11 +1,12 @@
 /** @type {import('tailwindcss').Config} */
 
-// Every color, radius and shadow is a CSS variable defined in src/index.css (light "Day" and dark "Dusk").
+// Every color, radius and shadow is a CSS variable: colors and shadows from identity/tokens.css, the rest from
+// core/web/index.css (light "Day" and dark "Dusk").
 // Colors are mixed with transparent so Tailwind's opacity modifiers keep working (bg-forest/10).
 const c = (name) => `color-mix(in srgb, var(--${name}) calc(<alpha-value> * 100%), transparent)`;
 
 export default {
-  content: ["./core/web/**/*.{html,ts,tsx}", "./modules/*/web/**/*.{ts,tsx}"],
+  content: ["./core/web/**/*.{html,ts,tsx}", "./modules/*/web/**/*.{ts,tsx}", "./identity/**/*.{ts,tsx}"],
   theme: {
     // Replaced, not extended: only the design-system radii and shadows exist.
     borderRadius: {

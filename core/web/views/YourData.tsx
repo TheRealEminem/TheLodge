@@ -7,6 +7,7 @@ import { AlertIcon, CheckIcon, DownloadIcon, FolderIcon, RefreshIcon, TrashIcon 
 import { ControlRow, Spinner, useConfirm } from "../components/ui";
 import { useLive } from "../live";
 import { useShell } from "../shell";
+import { exportHint, restoreBody } from "@identity/copy";
 
 const KIND: Record<BackupItem["kind"], string> = { auto: "Daily", manual: "Made by you", "before-restore": "Kept before a restore" };
 
@@ -43,14 +44,15 @@ export default function YourData() {
   const restore = (b: BackupItem) => run(b.name, async () => {
     const ok = await confirm({
       title: `Go back to ${when(b.created_at)}?`,
-      body: "Everything The Lodge holds is replaced with what it held then: people, notes, the inbox and settings, keys included. A backup of how things are now is kept first, so you can undo this.",
+      body: restoreBody,
       confirmLabel: "Restore",
       tone: "danger",
     });
     if (!ok) return;
     const r = await api.restoreBackup(b.name);
     await reload();
-    toast(`Restored${r.people != null ? `: ${r.people} people` : ""}. The earlier state is kept as a backup.`);
+    const held = Object.entries(r.counts ?? {}).map(([what, n]) => `${n} ${what}`).join(", ");
+    toast(`Restored${held ? `: ${held}` : ""}. The earlier state is kept as a backup.`);
   });
   const remove = (b: BackupItem) => run(b.name, async () => {
     await api.deleteBackup(b.name);
@@ -92,7 +94,7 @@ export default function YourData() {
         ) : (
           <p className="flex items-start gap-1.5 py-3.5 text-hint text-ink-soft"><AlertIcon size={16} className="mt-px shrink-0" /> No backups yet. The first is made shortly after the app starts.</p>
         )}
-        <ControlRow label="Export everything" hint="A readable JSON file of your people, relationships and notes, with no settings or keys. Saved in the data folder's exports." wrap>
+        <ControlRow label="Export everything" hint={exportHint} wrap>
           <button className="btn btn-sm btn-soft" disabled={busy !== null} onClick={() => void exportAll()}>
             {busy === "export" ? <Spinner /> : <DownloadIcon size={16} />} Export
           </button>
