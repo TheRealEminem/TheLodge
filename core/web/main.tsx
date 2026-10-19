@@ -4,6 +4,8 @@ import ReactDOM from "react-dom/client";
 import "@fontsource-variable/fraunces/full.css";
 import "@fontsource-variable/geist";
 import "@fontsource-variable/geist-mono";
+// The app's palette first (identity/tokens.css), then the family's shared styles.
+import "@identity/tokens.css";
 import App from "./App";
 import "./index.css";
 

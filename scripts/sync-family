@@ -1,0 +1,76 @@
+#!/usr/bin/env bash
+# Keeps this app's copy of the family's shared code the same as the family's one copy (~/Code/TrailmixFamily, or
+# $TRAILMIX_FAMILY). Shared code is changed in the family, then synced into each app, so no two apps ever grow
+# different versions of core/ or of a shared module (the one-lineage rule, ARCHITECTURE.md).
+#
+#   scripts/sync-family            copy the family's shared files into this app (what's listed below, nothing else)
+#   scripts/sync-family --check    list what differs and fail if anything does (scripts/check runs this)
+#   scripts/sync-family --push     copy this app's shared files into the family, after changing them here on
+#                                  purpose; then commit in the family and sync the other apps
+#
+# An app's own parts never sync: app.json, identity/, its own modules, package.json and requirements.txt.
+set -euo pipefail
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+FAMILY="${TRAILMIX_FAMILY:-$HOME/Code/TrailmixFamily}"
+
+# What every family app shares. Folders end in a slash.
+SHARED=(
+  core/ mac/ modules/tasks/ modules/notes/ modules/__init__.py
+  scripts/module-template/ scripts/dev scripts/check scripts/new-module scripts/sync-family
+  scripts/build-app.sh scripts/install-app.sh scripts/check-app.py
+  ARCHITECTURE.md DESIGN.md conftest.py pytest.ini Dockerfile .dockerignore
+  vite.config.ts tsconfig.json tailwind.config.js postcss.config.js
+  .github/workflows/test.yml .github/workflows/release.yml
+)
+# Never shared, wherever they turn up: caches, build output, and the copy of the app's mark the Mac build makes.
+IGNORE=(--exclude=__pycache__/ --exclude=.pytest_cache/ --exclude=.DS_Store --exclude=.build/
+        --exclude=/Sources/AppHost/Mark.swift)
+
+mode="${1:-pull}"
+case "$mode" in pull | --check | --push) ;; *) echo "Usage: scripts/sync-family [--check | --push]" >&2; exit 2 ;; esac
+
+if [ ! -d "$FAMILY" ]; then
+  if [ "$mode" = --check ]; then echo "  No family folder at $FAMILY, so there's nothing to compare (fine on CI)."; exit 0; fi
+  if [ "$mode" = pull ]; then echo "There's no family folder at $FAMILY. Set TRAILMIX_FAMILY or clone it there." >&2; exit 1; fi
+  mkdir -p "$FAMILY"
+fi
+
+[ "$mode" = --push ] && { from="$ROOT"; to="$FAMILY"; } || { from="$FAMILY"; to="$ROOT"; }
+differ=0
+for path in "${SHARED[@]}"; do
+  src="$from/${path%/}"
+  dst="$to/${path%/}"
+  if [ ! -e "$src" ]; then
+    echo "  Missing in $( [ "$from" = "$ROOT" ] && echo this app || echo the family ): $path" >&2
+    differ=1
+    continue
+  fi
+  if [ "$mode" = --check ]; then
+    # Content only (checksums), not times or permissions; deletions count too.
+    if [ -d "$src" ]; then
+      out="$(rsync -rlnc --delete --itemize-changes "${IGNORE[@]}" "$src/" "$dst/" | grep -vE '^\.d|^cd' || true)"
+      if [ -n "$out" ]; then
+        echo "$out" | sed -E "s#^\*deleting +(.*)#  ${path}\1  (only in this app)#; s#^[<>ch][^ ]* (.*)#  ${path}\1  (differs)#"
+        differ=1
+      fi
+    elif [ ! -e "$dst" ] || ! cmp -s "$src" "$dst"; then
+      echo "  $path  (differs)"
+      differ=1
+    fi
+  else
+    mkdir -p "$(dirname "$dst")"
+    if [ -d "$src" ]; then rsync -rlpt --delete "${IGNORE[@]}" "$src/" "$dst/"; else rsync -lpt "$src" "$dst"; fi
+  fi
+done
+
+case "$mode" in
+  --check)
+    if [ "$differ" = 1 ]; then
+      echo "  This app's shared code differs from the family's ($FAMILY)." >&2
+      echo "  Change shared code in the family and run scripts/sync-family, or push a deliberate change with --push." >&2
+      exit 1
+    fi
+    echo "  Same as the family." ;;
+  --push) echo "Copied this app's shared code into $FAMILY. Commit it there, then run scripts/sync-family in the other apps." ;;
+  pull) echo "Synced the family's shared code from $FAMILY." ;;
+esac

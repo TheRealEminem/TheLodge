@@ -21,6 +21,11 @@ def export() -> dict:
     }
 
 
+def count(conn) -> dict:
+    """How many people a database holds (a backup's, opened read-only), to label it in Settings → Your data."""
+    return {"people": conn.execute("SELECT count(*) FROM crm_entities WHERE kind = 'person'").fetchone()[0]}
+
+
 def on_restored(payload: dict) -> None:
     """A backup replaced the database: drop everything built from the old one."""
     from . import ingest, store

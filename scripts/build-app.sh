@@ -45,6 +45,8 @@ say "Building the web app…"
 
 # ── Menu bar host ──────────────────────────────────────────────────────
 say "Building the menu bar app…"
+# The menu bar icon is the app's own (identity/mac/Mark.swift); it's copied in for the build and never committed in mac/.
+cp "$ROOT/identity/mac/Mark.swift" "$ROOT/mac/Sources/AppHost/Mark.swift"
 swift build -c release --package-path "$ROOT/mac" 2>&1 | grep -E "error|Build complete" | tail -n 3 || true
 BIN="$(swift build -c release --package-path "$ROOT/mac" --show-bin-path)/AppHost"
 [ -x "$BIN" ] || die "The menu bar app didn't build. Run: swift build -c release --package-path mac"
@@ -54,7 +56,7 @@ say "Assembling $NAME.app…"
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$RES/bin" "$RES/app"
 cp "$BIN" "$APP/Contents/MacOS/$NAME"
-[ -f "$ROOT/mac/AppIcon.icns" ] && cp "$ROOT/mac/AppIcon.icns" "$RES/AppIcon.icns"
+[ -f "$ROOT/identity/mac/AppIcon.icns" ] && cp "$ROOT/identity/mac/AppIcon.icns" "$RES/AppIcon.icns"
 
 cat >"$APP/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>

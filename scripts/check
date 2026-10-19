@@ -9,6 +9,8 @@ echo "› Server tests"
 "$PY" -m pytest
 echo "› Types and web build"
 npm run -s build >/dev/null
+echo "› Family code (the same as ~/Code/TrailmixFamily)"
+scripts/sync-family --check
 echo "› Style rules (DESIGN.md §15)"
 fail=0
 rule() { if out="$(grep -rnE "$1" core/web modules --include='*.tsx' --include='*.ts' | grep -vE "$2" || true)"; [ -n "$out" ]; then echo "$3"; echo "$out"; fail=1; fi; }

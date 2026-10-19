@@ -34,6 +34,7 @@ MODULE = Module(
     recurring={"granola_sync": granola.seconds, "calendar_sync": calendar_sync.seconds, "overview_sweep": profiles.sweep_seconds},
     subscribe={"core.settings.changed": on_settings_changed, "core.restored": exporting.on_restored},
     export=exporting.export,
+    count=exporting.count,
     search=store.search,
     describe=store.describe,
 )

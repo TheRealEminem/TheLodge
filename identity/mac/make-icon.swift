@@ -1,7 +1,7 @@
-// Draws the app icon (the same mark as core/web/public/favicon.svg: a low sun over an A-frame lodge) and writes
-// mac/AppIcon.icns. Run it again only if the mark changes; the result is checked in.
+// Draws the app icon (the same mark as identity/public/favicon.svg: a low sun over an A-frame lodge) and writes
+// identity/mac/AppIcon.icns. Run it again only if the mark changes; the result is checked in.
 //
-//     swift scripts/make-icon.swift
+//     swift identity/mac/make-icon.swift
 import AppKit
 
 func render(size: Int) -> Data {
@@ -113,4 +113,4 @@ task.arguments = ["-c", "icns", iconset.path, "-o", root.appendingPathComponent(
 try task.run()
 task.waitUntilExit()
 try? FileManager.default.removeItem(at: iconset)
-print(task.terminationStatus == 0 ? "Wrote mac/AppIcon.icns" : "iconutil failed")
+print(task.terminationStatus == 0 ? "Wrote identity/mac/AppIcon.icns" : "iconutil failed")

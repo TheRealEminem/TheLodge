@@ -11,6 +11,7 @@ from datetime import date, datetime, timezone
 from typing import Any
 
 from core.server import db, events
+from core.server.tags import normalize_tags  # noqa: F401 - also used as store.normalize_tags
 
 from .kinds import RELATIONSHIP_KINDS
 from .model import Entity, Note, Relationship, iso, parse_date, parse_dt
@@ -195,16 +196,6 @@ def _edge(row: sqlite3.Row | dict) -> Relationship:
 def _note(row: sqlite3.Row | dict) -> Note:
     return Note(id=row["id"], entity_id=row["entity_id"], body=row["body"], occurred_at=parse_dt(row["occurred_at"]),
                 source=row["source"], evidence_id=row["evidence_id"], created_at=parse_dt(row["created_at"]))
-
-
-def normalize_tags(tags: list[str]) -> list[str]:
-    """Lowercase, hyphenated, de-duplicated: "Angel Investor" -> "angel-investor"."""
-    seen: list[str] = []
-    for t in tags:
-        t = "-".join(t.strip().lower().split())[:64]
-        if t and t not in seen:
-            seen.append(t)
-    return seen
 
 
 def _day(value: date | str | None) -> str | None:

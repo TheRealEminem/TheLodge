@@ -8,6 +8,7 @@ jobs, settings and AI.
 import importlib
 import logging
 from dataclasses import dataclass, field
+import sqlite3
 from typing import Callable
 
 from fastapi import APIRouter
@@ -32,6 +33,7 @@ class Module:
     search: Callable[[str, int], list[dict]] | None = None         # (q, limit) -> [{id, title, snippet}]
     describe: Callable[[str], dict | None] | None = None           # id -> {title, href} for links and search
     export: Callable[[], dict] | None = None                       # () -> {name: [records…]}: what this module holds, as plain data for the JSON export
+    count: Callable[[sqlite3.Connection], dict[str, int]] | None = None  # (a database, e.g. a backup's) -> {"people": 381}: to label backups
     startup: Callable[[], None] | None = None
 
 
