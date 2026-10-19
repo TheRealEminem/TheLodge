@@ -1,17 +1,22 @@
 #!/usr/bin/env bash
-# Keeps this app's copy of the family's shared code the same as the family's one copy (~/Code/TrailmixFamily, or
-# $TRAILMIX_FAMILY). Shared code is changed in the family, then synced into each app, so no two apps ever grow
-# different versions of core/ or of a shared module (the one-lineage rule, ARCHITECTURE.md).
+# Keeps this app's copy of the family's shared code in step with the family's one copy (~/Code/TrailmixFamily, or
+# $TRAILMIX_FAMILY), at a version this app chooses. The app is pinned to a family commit in family.lock, the way a
+# project pins a dependency: it moves to a newer one only when you run this script, so each app takes family updates
+# on its own schedule.
 #
-#   scripts/sync-family            copy the family's shared files into this app (what's listed below, nothing else)
-#   scripts/sync-family --check    list what differs and fail if anything does (scripts/check runs this)
-#   scripts/sync-family --push     copy this app's shared files into the family, after changing them here on
-#                                  purpose; then commit in the family and sync the other apps
+#   scripts/sync-family                    take the family's latest commit and pin to it
+#   scripts/sync-family <commit>           take a particular family commit (to stay on one, or go back)
+#   scripts/sync-family --check            compare with the pinned commit and warn about differences
+#                                          (scripts/check runs this); add --strict to fail instead
+#   scripts/sync-family --push             copy this app's shared files into the family's folder, after changing
+#                                          them here on purpose; then commit there and run scripts/sync-family here
 #
-# An app's own parts never sync: app.json, identity/, its own modules, package.json and requirements.txt.
+# Only committed family code is ever taken. An app's own parts never sync: app.json, family.lock, identity/, its own
+# modules, package.json and requirements.txt.
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 FAMILY="${TRAILMIX_FAMILY:-$HOME/Code/TrailmixFamily}"
+LOCK="$ROOT/family.lock"
 
 # What every family app shares. Folders end in a slash.
 SHARED=(
@@ -26,51 +31,118 @@ SHARED=(
 IGNORE=(--exclude=__pycache__/ --exclude=.pytest_cache/ --exclude=.DS_Store --exclude=.build/
         --exclude=/Sources/AppHost/Mark.swift)
 
-mode="${1:-pull}"
-case "$mode" in pull | --check | --push) ;; *) echo "Usage: scripts/sync-family [--check | --push]" >&2; exit 2 ;; esac
+mode=pull strict=0 ref=HEAD
+for arg in "$@"; do
+  case "$arg" in
+    --check) mode=check ;;
+    --strict) strict=1 ;;
+    --push) mode=push ;;
+    -*) echo "Usage: scripts/sync-family [<commit> | --check [--strict] | --push]" >&2; exit 2 ;;
+    *) ref="$arg" ;;
+  esac
+done
 
-if [ ! -d "$FAMILY" ]; then
-  if [ "$mode" = --check ]; then echo "  No family folder at $FAMILY, so there's nothing to compare (fine on CI)."; exit 0; fi
-  if [ "$mode" = pull ]; then echo "There's no family folder at $FAMILY. Set TRAILMIX_FAMILY or clone it there." >&2; exit 1; fi
-  mkdir -p "$FAMILY"
-fi
+note() { echo "  $*"; }
+pinned() { [ -f "$LOCK" ] && python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["commit"])' "$LOCK" 2>/dev/null || true; }
+is_family() { git -C "$FAMILY" rev-parse --git-dir >/dev/null 2>&1; }
 
-[ "$mode" = --push ] && { from="$ROOT"; to="$FAMILY"; } || { from="$FAMILY"; to="$ROOT"; }
-differ=0
-for path in "${SHARED[@]}"; do
-  src="$from/${path%/}"
-  dst="$to/${path%/}"
-  if [ ! -e "$src" ]; then
-    echo "  Missing in $( [ "$from" = "$ROOT" ] && echo this app || echo the family ): $path" >&2
-    differ=1
-    continue
-  fi
-  if [ "$mode" = --check ]; then
-    # Content only (checksums), not times or permissions; deletions count too.
+# The family's files at one commit, in a temporary folder (only what's committed, never work in progress).
+export_at() {
+  local commit="$1" dir="$2" paths=()
+  for path in "${SHARED[@]}"; do
+    # Only what that commit has (an older one may predate a path added to the list since).
+    [ -n "$(git -C "$FAMILY" ls-tree --name-only "$commit" -- "${path%/}")" ] && paths+=("${path%/}")
+  done
+  git -C "$FAMILY" archive "$commit" -- "${paths[@]}" | tar -x -C "$dir"
+}
+
+# Lists how this app's shared files differ from a folder of the family's; returns 1 when anything does.
+compare_with() {
+  local base="$1" differ=0 out
+  for path in "${SHARED[@]}"; do
+    local src="$base/${path%/}" dst="$ROOT/${path%/}"
+    if [ ! -e "$src" ]; then
+      [ -e "$dst" ] && { note "${path%/}  (not in the family)"; differ=1; }
+      continue
+    fi
     if [ -d "$src" ]; then
-      out="$(rsync -rlnc --delete --itemize-changes "${IGNORE[@]}" "$src/" "$dst/" | grep -vE '^\.d|^cd' || true)"
+      # Content only: a file that's new, deleted, or whose checksum (c) or size (s) differs. Times don't count.
+      out="$(rsync -rlnc --delete --itemize-changes "${IGNORE[@]}" "$src/" "$dst/" | grep -E '^\*deleting|^[<>ch.][fL](\+|c|.s)' || true)"
       if [ -n "$out" ]; then
-        echo "$out" | sed -E "s#^\*deleting +(.*)#  ${path}\1  (only in this app)#; s#^[<>ch][^ ]* (.*)#  ${path}\1  (differs)#"
+        echo "$out" | sed -E "s#^\*deleting +(.*)#  ${path}\1  (only in this app)#; s#^[<>ch][^ ]* (.*)#  ${path}\1  (changed here)#"
         differ=1
       fi
     elif [ ! -e "$dst" ] || ! cmp -s "$src" "$dst"; then
-      echo "  $path  (differs)"
+      note "$path  (changed here)"
       differ=1
     fi
-  else
-    mkdir -p "$(dirname "$dst")"
-    if [ -d "$src" ]; then rsync -rlpt --delete "${IGNORE[@]}" "$src/" "$dst/"; else rsync -lpt "$src" "$dst"; fi
-  fi
-done
+  done
+  return $differ
+}
 
 case "$mode" in
-  --check)
-    if [ "$differ" = 1 ]; then
-      echo "  This app's shared code differs from the family's ($FAMILY)." >&2
-      echo "  Change shared code in the family and run scripts/sync-family, or push a deliberate change with --push." >&2
-      exit 1
+  push)
+    is_family || { echo "There's no family repository at $FAMILY." >&2; exit 1; }
+    for path in "${SHARED[@]}"; do
+      src="$ROOT/${path%/}" dst="$FAMILY/${path%/}"
+      [ -e "$src" ] || continue
+      mkdir -p "$(dirname "$dst")"
+      if [ -d "$src" ]; then rsync -rlpt --delete "${IGNORE[@]}" "$src/" "$dst/"; else rsync -lpt "$src" "$dst"; fi
+    done
+    echo "Copied this app's shared code into $FAMILY:"
+    git -C "$FAMILY" status --short | sed 's/^/  /'
+    echo "Commit it there, then run scripts/sync-family here to pin this app to that commit."
+    ;;
+
+  check)
+    commit="$(pinned)"
+    if ! is_family; then note "No family repository at $FAMILY, so there's nothing to compare (fine on CI)."; exit 0; fi
+    if [ -z "$commit" ]; then
+      note "This app isn't pinned to a family version yet. Run scripts/sync-family to take the latest and pin it."
+      [ "$strict" = 1 ] && exit 1 || exit 0
     fi
-    echo "  Same as the family." ;;
-  --push) echo "Copied this app's shared code into $FAMILY. Commit it there, then run scripts/sync-family in the other apps." ;;
-  pull) echo "Synced the family's shared code from $FAMILY." ;;
+    if ! git -C "$FAMILY" cat-file -e "$commit^{commit}" 2>/dev/null; then
+      note "family.lock names ${commit:0:7}, which the family repository doesn't have. Pull the family, or re-pin."
+      [ "$strict" = 1 ] && exit 1 || exit 0
+    fi
+    tmp="$(mktemp -d)"; trap 'rm -rf "$tmp"' EXIT
+    export_at "$commit" "$tmp"
+    if compare_with "$tmp"; then
+      note "Same as the family at ${commit:0:7}."
+      drift=0
+    else
+      note "These differ from the family at ${commit:0:7}, the version this app is pinned to."
+      note "Keep them here, or send them to the family with scripts/sync-family --push."
+      drift=1
+    fi
+    ahead="$(git -C "$FAMILY" rev-list --count "$commit..HEAD" 2>/dev/null || echo 0)"
+    [ "$ahead" -gt 0 ] && note "The family has $ahead newer commit(s). Take them when you choose: scripts/sync-family"
+    [ "$strict" = 1 ] && [ "$drift" = 1 ] && exit 1
+    exit 0
+    ;;
+
+  pull)
+    is_family || { echo "There's no family repository at $FAMILY. Set TRAILMIX_FAMILY or clone it there." >&2; exit 1; }
+    commit="$(git -C "$FAMILY" rev-parse --verify --quiet "$ref^{commit}")" || { echo "The family has no commit called $ref." >&2; exit 1; }
+    [ -n "$(git -C "$FAMILY" status --porcelain)" ] && note "The family has uncommitted changes; they aren't taken until they're committed."
+    tmp="$(mktemp -d)"; trap 'rm -rf "$tmp"' EXIT
+    export_at "$commit" "$tmp"
+    for path in "${SHARED[@]}"; do
+      src="$tmp/${path%/}" dst="$ROOT/${path%/}"
+      [ -e "$src" ] || continue
+      mkdir -p "$(dirname "$dst")"
+      if [ -d "$src" ]; then rsync -rlp --checksum --delete "${IGNORE[@]}" "$src/" "$dst/"; else rsync -lp --checksum "$src" "$dst"; fi
+    done
+    subject="$(git -C "$FAMILY" log -1 --format=%s "$commit")"
+    python3 - "$LOCK" "$commit" "$subject" <<'PY'
+import json, sys, datetime
+path, commit, subject = sys.argv[1:]
+json.dump({"commit": commit, "subject": subject, "synced_on": datetime.date.today().isoformat(),
+           "note": "The TrailmixFamily commit this app's shared code comes from. Change it with scripts/sync-family."},
+          open(path, "w"), indent=2)
+open(path, "a").write("\n")
+PY
+    echo "Synced the family's shared code at ${commit:0:7} (\"$subject\") and pinned it in family.lock."
+    git -C "$ROOT" status --short -- "${SHARED[@]%/}" 2>/dev/null | sed 's/^/  /' || true
+    ;;
 esac

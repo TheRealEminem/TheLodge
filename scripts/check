@@ -9,7 +9,7 @@ echo "› Server tests"
 "$PY" -m pytest
 echo "› Types and web build"
 npm run -s build >/dev/null
-echo "› Family code (the same as ~/Code/TrailmixFamily)"
+echo "› Family code (compared with the pinned TrailmixFamily version)"
 scripts/sync-family --check
 echo "› Style rules (DESIGN.md §15)"
 fail=0

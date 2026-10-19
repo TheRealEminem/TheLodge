@@ -80,17 +80,20 @@ These keep modules combinable. Breaking one now means a rewrite when the apps me
 7. **Nothing is written inside the app bundle at runtime.** That would break its signature. All data goes in `DATA_DIR`.
 8. **Works offline and locally by default.** Cloud services are optional and chosen in Settings, and local AI
    models are unloaded after use.
-9. **Shared code has one copy: the family's.** `core/`, `mac/`, the shared scripts, the shared modules (`tasks`,
-   `notes`) and the build setup live in `~/Code/TrailmixFamily` and are synced into each app with
-   `scripts/sync-family` (the list is in that script). Change them there, never inside one app; `scripts/check`
-   fails when an app's copy differs. An app's own parts are `app.json`, `identity/` and its own modules. This is
-   what lets two apps' databases merge: `core_migrations` counts steps per module, so two different "step 2"s of
-   the same module could never be told apart.
+9. **Shared code has one copy: the family's, and each app pins a version of it.** `core/`, `mac/`, the shared
+   scripts, the shared modules (`tasks`, `notes`) and the build setup live in `~/Code/TrailmixFamily`.
+   `scripts/sync-family` copies a family commit into the app and records it in `family.lock`, so every app is
+   developed and released on its own and takes family updates when it chooses, like a pinned dependency.
+   `scripts/check` warns (it doesn't fail) when the app's copy differs from its pinned version; send a deliberate
+   change back with `scripts/sync-family --push`. An app's own parts are `app.json`, `family.lock`, `identity/`
+   and its own modules. A shared module's schema grows only in the family: `core_migrations` counts steps per
+   module, so two apps that each added a different "step 2" could never share data or merge.
 
 ## 4. Folder map
 
 ```
 app.json                  who the app is and which modules it's made of
+family.lock               the TrailmixFamily commit this app's shared code comes from (written by scripts/sync-family)
 VERSION                   the version number (release tags override it)
 core/
   server/                 the host's server (Python package "core.server")
@@ -135,7 +138,7 @@ scripts/
   build-app.sh            build the Mac app (and the disk image with --dmg)
   install-app.sh          check, build, back up, and swap the new app into /Applications, with a rollback
   new-module              start a module from scripts/module-template
-  sync-family             copy the family's shared code in (--check: fail if it differs; --push: send a change back)
+  sync-family             take a family version and pin it (--check: warn about drift; --push: send a change back)
 conftest.py, pytest.ini   test setup: throwaway data, fake AI, skips tests of modules that are off
 Dockerfile                the server for Linux
 .github/workflows/        tests on every push; build and release the Mac app on a version tag
@@ -292,7 +295,8 @@ whatever modules an app has. Tests of modules that `app.json` turns off are skip
 
 **Start a new family app**
 
-1. Make a folder, `git init`, and copy `scripts/sync-family` in from the family (`~/Code/TrailmixFamily`). Run it.
+1. Make a folder, `git init`, and copy `scripts/sync-family` in from the family (`~/Code/TrailmixFamily`). Run it:
+   it copies the shared code in and pins the version in `family.lock`.
 2. Write `app.json`: name, id, tagline, bundleId, envPrefix, a free port, updateRepo, and modules. Add a
    `package.json` and `requirements.txt` (start from another family app's).
 3. Make `identity/` (start from another family app's): the palette in `tokens.css`, the mark and scene in
