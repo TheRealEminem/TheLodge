@@ -78,8 +78,9 @@ ASK_SYSTEM = (
     "You look up one specific person for the owner of a personal CRM, using Google Search. Answer only the question "
     "asked, about this person and no one else with the same name. Give concrete facts, with the month and year where "
     "you can, and name the source of each. If a result could be about someone else with the same name, say so and why. "
-    "If you find nothing, say \"Nothing found.\" Never guess or fill in from general knowledge. Keep it under 300 "
-    "words, and run no more than three searches."
+    "Always search Google before you answer, even if you think you know: at least one search, and up to three, "
+    "trying the name with their organization, their city or their field. Only after that, if nothing is about this "
+    "person, say \"Nothing found.\" Never guess or fill in from general knowledge. Keep it under 300 words."
 )
 CHECK_SYSTEM = (
     "You review research notes about one person before a profile is written from them. Reply with JSON only: "
@@ -363,7 +364,9 @@ def _update(run_id: str, **fields) -> None:
 # ── The stages ────────────────────────────────────────────────────────
 
 def _who(sub: research.Subject) -> str:
-    return f"The person: {sub.person.name}\nWhat the owner knows about them:\n" + "\n".join(sub.known)
+    """Who to look for, for a web search: what's known about them, but not your own tags for them."""
+    known = [k for k in sub.known if not k.startswith("- My tags")]
+    return f"The person: {sub.person.name}\nWhat the owner knows about them:\n" + "\n".join(known)
 
 
 def _model(r: dict, stage: str) -> str:
@@ -473,7 +476,7 @@ def _file(r: dict, report: str, searches: int, spent: float) -> dict:
     lv = LEVELS[r["level"]]
     models = " and ".join(dict.fromkeys(MODEL_NAMES.get(m, m) for m in (lv["ask"], lv["check"], lv["write"]) if m))
     footer = (f"\n\n---\nResearched by The Lodge with {models}{' through Google Batch' if r['batch'] else ''} on {sub.today}: "
-              f"{searches} Google searches, about ${spent:.2f}.")
+              f"{searches} Google search{'' if searches == 1 else 'es'}, about ${spent:.2f}.")
     row = ingest.create_note_job(report.strip() + footer, sub.title, None, r["entity_id"])
     return {"stage": "done", "status": "done", "inbox_id": row["id"], "finished_at": _now()}
 
