@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field, field_validator
 
 from . import dashboard as dash
 from . import graph as graph_svc
-from . import listing, roles, routes_capture, routes_ingest, routes_network, routes_people, routes_profiles, routes_research, routes_sheet, store, timeline as timeline_svc, views
+from . import listing, roles, routes_capture, routes_duplicates, routes_ingest, routes_network, routes_people, routes_profiles, routes_research, routes_sheet, store, timeline as timeline_svc, views
 from .kinds import ENTITY_KINDS, RELATIONSHIP_KINDS, validate_relationship
 from .model import Entity, Note, Relationship, iso
 
@@ -20,6 +20,7 @@ router.include_router(routes_research.router)
 router.include_router(routes_capture.router)
 router.include_router(routes_profiles.router)
 router.include_router(routes_sheet.router)
+router.include_router(routes_duplicates.router)
 
 
 @router.get("/ai")
@@ -176,7 +177,7 @@ def delete_entity(entity_id: str):
 
 @router.post("/entities/{entity_id}/merge")
 def merge_entity(entity_id: str, body: MergeIn):
-    """Merge this entity into `into_id` (this one is deleted)."""
+    """Merge this entity into `into_id`. It can be undone from the kept record (POST /merges/{id}/undo)."""
     try:
         return entity_out(store.merge_entities(entity_id, body.into_id))
     except store.NotFound as e:

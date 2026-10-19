@@ -27,7 +27,7 @@ from dateutil import parser as dateparser
 from core.server import ai, contracts, db, events, jobs
 
 from . import inbox, research, resolve, roles, snapshot, spreadsheets, store, views
-from .documents import ParsedSheet, UnsupportedFile, kind_of, parse_document, parse_spreadsheet, text_hash
+from .documents import ParsedSheet, UnsupportedFile, expand_archives, kind_of, parse_document, parse_spreadsheet, text_hash
 from .extraction import (EXTRACTION_SYSTEM, TRIAGE_SYSTEM, DocContext, ExtractedEntity, Extraction, Triage, extract_heuristic,
                          extraction_prompt, triage_prompt)
 from .kinds import validate_relationship
@@ -196,27 +196,42 @@ def subject_person(subject_id: str | None):
     return person
 
 
+def ref_subject(text: str):
+    """The person a research report names by the ref its brief asked for ("Lodge ref: 3f9a1c2b7e"), if exactly one
+    person has it. It's looked for near the top and at the end, where a research tool leaves it."""
+    found = {m.group(1).lower() for m in research.REF_RE.finditer(text[:6000] + "\n" + text[-3000:])}
+    if len(found) != 1:
+        return None
+    rows = db.query("SELECT id FROM crm_entities WHERE kind = 'person' AND is_self = 0 AND id LIKE ?", (f"{found.pop()}%",))
+    return store.get_entity(rows[0]["id"]) if len(rows) == 1 else None
+
+
 def create_note_job(text: str, title: str | None = None, occurred_at: str | None = None,
                     subject_id: str | None = None) -> dict:
     subject = subject_person(subject_id)
+    by = "you" if subject else None
+    if subject is None and (subject := ref_subject(text)):
+        by = "ref"
     row = inbox.create("manual_note", title=title or (f"Research on {subject.name}" if subject else None),
                        occurred_at=occurred_at, raw_text=text,
-                       payload={"subject_id": subject.id} if subject else None)
+                       payload={"subject_id": subject.id, "subject_by": by} if subject else None)
     queue([row["id"]])
     return row
 
 
 def create_file_jobs(files: list[tuple[str, bytes]], *, auto_apply: bool, subject_id: str | None = None) -> list[dict]:
-    """One row per file. Duplicates (same text) and files that can't be read are recorded as skipped, and say why."""
+    """One row per file, with each .zip unpacked into the files inside it. Duplicates (same text) and files that can't
+    be read are recorded as skipped, and say why."""
     subject = subject_person(subject_id)
     existing = inbox.known_hashes()
+    unpacked = expand_archives(files)
     by_folder: dict[str, list[str]] = {}
-    for path, _ in files:
+    for path, _, _ in unpacked:
         by_folder.setdefault(os.path.dirname(path), []).append(os.path.basename(path))
 
     rows: list[dict] = []
     seen: dict[str, str] = {}
-    for path, data in files:
+    for path, data, unreadable in unpacked:
         filename, folder = os.path.basename(path), os.path.dirname(path)
         siblings = [n for n in by_folder.get(folder, []) if n != filename]
         payload = {"filename": filename, "folder": folder or None, "siblings": siblings, "auto_apply": auto_apply}
@@ -225,7 +240,15 @@ def create_file_jobs(files: list[tuple[str, bytes]], *, auto_apply: bool, subjec
         fields: dict = {"source": "document", "title": PurePosixPath(filename).stem[:300], "status": "pending", "payload": payload}
         kind = kind_of(filename)
         try:
-            if kind == "unsupported":
+            if unreadable:
+                fields.update(status="skipped", error=unreadable)
+            elif kind == "google_shortcut":
+                fields.update(status="skipped", error=(
+                    "This is a Google Drive shortcut: the text is in Google, not in the file. On drive.google.com, "
+                    "download the file or its folder (it comes as .docx, or a .zip) and add that instead."))
+            elif kind == "archive":
+                fields.update(status="skipped", error="A zip inside a zip isn't opened; unzip it and add the folder.")
+            elif kind == "unsupported":
                 ext = PurePosixPath(filename).suffix.lower()
                 fields.update(status="skipped", error=(
                     "Audio and video need a transcript first; add the transcript file instead."
@@ -241,6 +264,8 @@ def create_file_jobs(files: list[tuple[str, bytes]], *, auto_apply: bool, subjec
                 fields.update(raw_text=doc.text, content_hash=text_hash(doc.text), payload={
                     **payload, "words": doc.words, "created": doc.created.isoformat() if doc.created else None,
                     "warnings": doc.warnings})
+                if not subject and (found := ref_subject(doc.text)):
+                    fields["payload"].update(subject_id=found.id, subject_by="ref")
                 if doc.words < 15:
                     fields.update(status="skipped", error="File has no usable text.")
         except UnsupportedFile as e:
@@ -503,6 +528,17 @@ def build_proposal(row: dict, extraction: Extraction, warnings: list[str], *, br
             continue
         add(source, target, rel.kind, rel.context, rel.started, rel.ended)
 
+    identity = None
+    if subject:
+        identity = research.identity_confidence(row["raw_text"] or "")
+        if identity in ("medium", "low"):
+            warnings.append(f"The report says it may not have found the right person (identity confidence: {identity}). "
+                            "Check it's them before adding it.")
+        held = _hold_back_mentions(entities, relationships, subject)
+        if held:
+            warnings.append(f"Left out {held} new {'name' if held == 1 else 'names'} the report only mentions; "
+                            "switch any you want to Create.")
+
     existing = None
     if include_record and record_kind == "meeting":
         people = {e["match_id"] for e in entities if e["match_id"] and e["role"] == "attendee" and not e["is_self"]}
@@ -521,10 +557,26 @@ def build_proposal(row: dict, extraction: Extraction, warnings: list[str], *, br
             "tags": _tags(extraction.tags),
         },
         "subject_ref": subject,
+        "identity": identity,
         "entities": entities,
         "relationships": relationships,
         "warnings": warnings,
     }
+
+
+def _hold_back_mentions(entities: list[dict], relationships: list[dict], subject: str) -> int:
+    """A research report on one person names dozens of others. The new ones it only mentions, with no tie to its
+    subject, are set to Skip, so a folder of reports doesn't fill your book with strangers. People and organizations
+    already on file are still linked. Returns how many were held back."""
+    tied = {ref for rel in relationships if subject in (rel["source"], rel["target"]) and RECORD_REF not in (rel["source"], rel["target"])
+            for ref in (rel["source"], rel["target"])}
+    held = 0
+    for ent in entities:
+        if (ent["action"] == "create" and ent["kind"] in ("person", "organization") and ent["role"] == "mentioned"
+                and ent["ref"] not in tied and not ent["is_self"]):
+            ent["action"], ent["held_back"] = "skip", True
+            held += 1
+    return held
 
 
 def _merge_invitees(row: dict, entities: list[dict], kinds_by_ref: dict[str, str], owner) -> None:
@@ -595,6 +647,8 @@ def find_existing_meeting(occurred: datetime | None, people: set[str], title: st
 def needs_review(proposal: dict) -> bool:
     """Auto-apply is safe unless a name matched several records or the AI step fell back to rules."""
     if any(w.startswith(FALLBACK_WARNING_PREFIX) for w in proposal.get("warnings", [])):
+        return True
+    if proposal.get("identity") in ("medium", "low"):
         return True
     return any(e.get("ambiguous") and e.get("action") != "skip" for e in proposal.get("entities", []))
 
@@ -721,6 +775,13 @@ def _apply(row_id: str, proposal: dict) -> tuple[dict, list[str], str | None]:
             fields = {"attributes": attrs}
             if ent.get("summary") and not entity.summary:
                 fields["summary"] = ent["summary"]
+            elif (ent.get("summary") and ent["ref"] == proposal.get("subject_ref") and proposal.get("doc_type") in PROFILE_TYPES
+                  and ent["summary"].strip() != (entity.summary or "").strip()):
+                # New research on them is the better summary. The one it replaces is kept as a note.
+                store.add_note(entity.id, f"Summary before the research of {occurred.date().isoformat()}:\n\n{entity.summary.strip()}",
+                               occurred_at=occurred, source="summary", conn=c)
+                fields["summary"] = ent["summary"]
+                counts["notes"] += 1
             if ent.get("tags"):
                 fields["tags"] = _tags([*(entity.tags or []), *ent["tags"]])[:20]
             entity = store.update_entity(entity.id, conn=c, **fields)

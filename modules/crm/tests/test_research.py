@@ -4,6 +4,8 @@ The AI is a fake (conftest's fake_structured), so these check what the app does 
 import pytest
 from crm_helpers import entity, extraction, link, make, post_notes
 
+from modules.crm.server import store
+
 REPORT = ("Jordan Reyes is a supply chain operator. " + "Background and history of the work in cold chain. " * 40)
 
 
@@ -84,8 +86,9 @@ def test_the_brief_names_what_we_know_and_leaves_the_email_address_out(client, b
     meeting = make(client, "meeting", "Depot walk-through", occurred_at="2026-03-04T10:00:00Z")
     link(client, jordan, "attended", meeting)
     text = client.get(f"/api/crm/people/{jordan['id']}/research/brief").json()["text"]
-    for expected in ("Jordan Reyes", "Head of Fleet at Frostline Logistics", "Portland", "frostline.example",
-                     "https://linkedin.com/in/jordanreyes", "Depot walk-through", "Alex Rivera", "Sources"):
+    for expected in ("Jordan Reyes — research profile", "Head of Fleet at Frostline Logistics", "Portland", "frostline.example",
+                     "https://linkedin.com/in/jordanreyes", "Depot walk-through", "Alex Rivera",
+                     f"Lodge ref: {jordan['id'][:10]}", "Identity confidence", "Key facts"):
         assert expected in text, expected
     assert "jordan@frostline.example" not in text
 
@@ -131,3 +134,63 @@ def test_a_report_read_by_rules_alone_still_lands_on_them(client, book):
 def test_a_report_for_someone_who_is_gone_is_refused(client, book):
     r = client.post("/api/crm/ingest/notes", json={"text": REPORT, "subject_id": "nobody"})
     assert r.status_code == 422
+
+
+# ── Reports that come back by themselves (a folder of them) ──────────
+
+def gemini_report(person, confidence="High"):
+    return (f"{person['name']} — research profile\n**Lodge ref:** {person['id'][:10]}\n\n"
+            f"Identity confidence: {confidence}. Matched on employer and city.\n\n{REPORT}")
+
+
+def profile_reply(subject_name="Jordan Reyes"):
+    return extraction([entity("p1", subject_name, role="subject", summary="Jordan Reyes runs fleet operations at Frostline."),
+                       entity("o1", "Frostline Logistics", kind="organization"),
+                       entity("p2", "Casey Stranger"),          # only mentioned: held back
+                       entity("p3", "Priya Nair")],             # mentioned, but already in your book: linked
+                      doc_type="person_profile", subject_ref="p1",
+                      relationships=[{"source": "p1", "target": "o1", "kind": "works_at"}])
+
+
+def test_a_report_with_its_ref_files_itself_on_the_right_person_and_leaves_strangers_out(client, book, fake_structured):
+    from crm_helpers import upload
+    jordan = book["nothing"]
+    make(client, "person", "Jordan Reyes")                     # a namesake: the ref, not the name, decides
+    fake_structured.reply = profile_reply()
+    job = upload(client, ("Research/Jordan Reyes — research profile.md", gemini_report(jordan).encode()))[
+        "Jordan Reyes — research profile.md"]
+    assert job["status"] == "applied", job.get("error")
+    assert job["payload"]["subject_by"] == "ref" and job["result"]["subject_id"] == jordan["id"]
+    held = next(e for e in job["proposal"]["entities"] if e["name"] == "Casey Stranger")
+    assert held["action"] == "skip" and held["held_back"]
+    assert any("Left out 1 new name" in w for w in job["proposal"]["warnings"])
+    people = {r["name"] for r in client.get("/api/crm/entities", params={"kind": "person"}).json()["items"]}
+    assert "Casey Stranger" not in people
+    assert store.get_entity(jordan["id"]).summary.startswith("Jordan Reyes runs fleet")
+    assert flagged(client).count("Jordan Reyes") == 1           # only the namesake still needs research
+
+
+def test_a_report_unsure_of_the_person_waits_for_you(client, book, fake_structured):
+    from crm_helpers import upload
+    fake_structured.reply = profile_reply()
+    job = upload(client, ("jordan.md", gemini_report(book["nothing"], "Low").encode()))["jordan.md"]
+    assert job["status"] == "review" and job["proposal"]["identity"] == "low"
+    assert any("may not have found the right person" in w for w in job["proposal"]["warnings"])
+
+
+def test_new_research_replaces_a_summary_and_keeps_the_old_one_as_a_note(client, book, fake_structured):
+    jordan = book["nothing"]
+    client.patch(f"/api/crm/entities/{jordan['id']}", json={"summary": "Met at the depot once."})
+    fake_structured.reply = profile_reply()
+    job = post_notes(client, gemini_report(jordan))                # pasted text always waits for your OK
+    assert job["status"] == "review" and job["payload"]["subject_by"] == "ref"
+    assert client.post(f"/api/crm/ingest/jobs/{job['id']}/apply", json={"proposal": job["proposal"]}).status_code == 200
+    assert store.get_entity(jordan["id"]).summary.startswith("Jordan Reyes runs fleet")
+    notes = [n["body"] for n in client.get(f"/api/crm/entities/{jordan['id']}/notes").json()]
+    assert any(n.startswith("Summary before the research") and "Met at the depot once." in n for n in notes)
+
+
+def test_a_ref_that_matches_no_one_is_ignored(client, book, fake_structured):
+    fake_structured.reply = profile_reply()
+    job = post_notes(client, "Lodge ref: 0000000000\n" + REPORT)
+    assert "subject_by" not in job["payload"]
