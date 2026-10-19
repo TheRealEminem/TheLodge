@@ -1,0 +1,6 @@
+{
+  "commit": "84ea14d5e389dba1c6fd229a99d2205bfe7f3c12",
+  "subject": "sync-family --check: compare content only, not file times",
+  "synced_on": "2026-10-18",
+  "note": "The TrailmixFamily commit this app's shared code comes from. Change it with scripts/sync-family."
+}
