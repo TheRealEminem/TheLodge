@@ -689,16 +689,51 @@ records disappearing would change too many downstream ties.
 ### Chunk 19 · The Lodge runs Gemini research itself — SCOPING
 
 The owner (2026-10-18): interested in The Lodge running deep research on flagged people itself through the Gemini API,
-but worried about cost even with batch pricing. **Hold off building until there are firm estimates.** Two shapes to
-cost side by side, per person and for the current 67 flagged:
-- **A. Google's Deep Research agent** (Interactions API, background execution, paid tiers): one call per person,
-  Google's own planning and browsing. Likely the best reports and the highest, least predictable cost.
-- **B. Our own pipeline**: Flash with Google Search grounding runs a handful of focused searches seeded by what the
-  brief already knows (name, employer, email domain, LinkedIn), then Pro writes the report in the brief's shape.
-  Predictable and capped per person; the open cost is per-search grounding fees, which may not get batch discounts.
-To settle before any build: current per-token and per-search prices for each model, whether batch applies to
-grounded calls and to the agent, a real per-person token count from a few trial runs, and a hard spending cap per
-person and per month. Reports would land in the inbox like any other, already carrying their ref.
+but worried about cost even with batch pricing. **Hold off building until there are firm estimates.**
+
+**Prices (Google's pricing page, read 2026-10-19; increases are scheduled from December 2026 / January 2027).**
+Per 1M tokens, standard → batch/flex: Gemini 3.8 Flash $0.75 in / $3.75 out → $0.375 / $1.875; Gemini 3.1 Pro
+(preview) $2 / $12 → $1 / $6; Gemini 4 Argon $2 / $10 → $1 / $5. Thinking tokens bill as output. **Google Search
+grounding** on Gemini 3 and newer: 5,000 searches a month free (shared across models), then **$14 per 1,000
+searches**, billed per search the model runs, **with no batch or flex discount**. Retrieved page text from search
+isn't billed as input.
+
+**A. Google's Deep Research agent** (`deep-research-preview-04-2026`, Interactions API, background only, preview).
+Google's own estimate: **~$1–3 a task** (~80 searches, ~250k input tokens of which 50–70% cached, ~60k output).
+Deep Research Max: ~$3–7. The 80 searches are ~$1.12 of that once past the free 5,000, so 62 people a month fit
+in the free searches. Output format is steered only by the prompt (the brief already does this); it can be held to
+Google Search alone, given URLs to read, or asked for a plan to approve first. No batch discount documented.
+- The 67 flagged today: **~$65–200** once (Max: ~$200–470).
+
+**B. Our own pipeline**, sized for one person rather than a market report (our estimate, to confirm by trial):
+Flash with search grounding runs ~6 focused questions seeded by the brief (who they are, roles and dates, boards and
+investments, public work, people around them, recent news), ~2 searches each; Pro checks the findings once and sends
+~3 follow-ups; Pro writes the report in the brief's shape.
+| Step | Tokens (in / out incl. thinking) | Searches | Standard | Flex |
+| --- | --- | --- | --- | --- |
+| 9 Flash search calls | ~14k / ~32k | ~18 | ~$0.13 | ~$0.07 |
+| Pro check | ~15k / ~4k | 0 | ~$0.08 | ~$0.04 |
+| Pro report | ~20k / ~8k | 0 | ~$0.14 | ~$0.07 |
+| **Per person** | | ~18 | **~$0.35** + searches past the free 5,000 (~$0.25) | **~$0.18** + searches |
+- Per person **~$0.20–0.60**; the 67 flagged **~$15–40** once. ~270 people a month fit in the free searches.
+- Cheaper still with Flash writing the report (~$0.10 a person), at some cost in judgment.
+
+**The trade:** A is Google's tuned research loop (deeper, ~80 searches a person, more likely to find obscure people)
+at roughly 5× the cost and less control; B is cheap, predictable and fits The Lodge's job queue, budget and brief
+exactly, but we own its quality. Either way the result is a report in the brief's shape, carrying its ref, that lands
+in the Inbox like any other.
+
+**Before building (the firm numbers):** a trial on 3 people the owner picks, both ways, with real token and search counts
+read back from the API's usage data. Expected cost of the trial: under $10. Needs the owner's Gemini key on a paid tier,
+and his OK to spend it.
+
+**If built, it would have:** a monthly budget and a per-person cap set in Settings (the job stops before a call that
+would cross either), a "Research these" action on flagged people that shows the estimate before it starts, a per-run
+cost on each report, and Gemini named as where the research came from.
+
+Sources: [pricing](https://ai.google.dev/gemini-api/docs/pricing),
+[Deep Research agent](https://ai.google.dev/gemini-api/docs/deep-research),
+[search grounding](https://ai.google.dev/gemini-api/docs/google-search).
 
 ## 6. Risks and spikes
 
