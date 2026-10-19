@@ -8,6 +8,7 @@ import type { ModuleWeb } from "@core/registry";
 import { NavCount } from "@core/Sidebar";
 import { crmApi } from "./api";
 import AiSettings from "./AiSettings";
+import Duplicates from "./Duplicates";
 import Groups from "./GroupsPage";
 import HomeBlock from "./Home";
 import Library from "./Library";
@@ -42,6 +43,7 @@ const crm: ModuleWeb = {
     { path: "crm/inbox", view: () => later(<Inbox />) },
     { path: "crm/inbox/:id", view: (p) => later(<InboxItem {...p} />) },
     { path: "crm/organizations", view: Organizations },
+    { path: "crm/duplicates", view: Duplicates },
     { path: "crm/network", view: Network, wide: true },
     { path: "crm/meetings", view: (p) => <Library {...p} params={{ kind: "meeting" }} /> },
     { path: "crm/documents", view: (p) => <Library {...p} params={{ kind: "document" }} /> },

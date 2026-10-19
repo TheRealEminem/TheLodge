@@ -12,6 +12,7 @@ import type { Entity, EntityContext, PersonLink, RelationshipView } from "./api"
 import { AboutCard, AffiliationsCard, ConnectionCard, EventList, MiniNetwork, NotesCard, PathsCard, PeopleList, RelationshipsCard, TimelineCard, WayInCard } from "./cards";
 import { Avatar, Card, EntityLink, KIND_LABEL } from "./bits";
 import { Briefing } from "./Briefing";
+import { DuplicatesCard, MergedCard } from "./Duplicates";
 import { EntityFormDialog, MergeDialog } from "./forms";
 import { formatDate } from "./format";
 import { ResearchCard } from "./Research";
@@ -20,9 +21,22 @@ import { TierBadge, connectionLine } from "./tier";
 export default function Profile({ params }: RouteProps) {
   const { data, error } = useLive(() => crmApi.detail(params.id), [params.id]);
   const { data: ctx } = useLive(() => crmApi.context(params.id), [params.id]);
-  if (error) return <p className="text-ui text-trail-deep">{error}</p>;
+  if (error) return <Missing id={params.id} error={error} />;
   if (!data) return <Skeleton className="h-40 w-full rounded-xl" />;
   return <ProfileView entity={data.entity} relationships={data.relationships} ctx={ctx ?? undefined} />;
+}
+
+/** A record that's gone: if it was merged into another, that's where it lives now. */
+function Missing({ id, error }: { id: string; error: string }) {
+  const { data } = useLive(() => crmApi.movedTo(id), [id]);
+  if (data?.id) {
+    return (
+      <p className="inset-surface px-5 py-4 text-ui text-ink-soft">
+        This record was merged into another. <a className="font-medium text-forest-deep hover:underline" href={`#/crm/e/${data.id}`}>Go to it</a>
+      </p>
+    );
+  }
+  return <p className="text-ui text-trail-deep">{error}</p>;
 }
 
 function ProfileView({ entity, relationships, ctx }: { entity: Entity; relationships: RelationshipView[]; ctx?: EntityContext }) {
@@ -173,6 +187,8 @@ function PersonTabs({ entity, relationships, ctx }: { entity: Entity; relationsh
       <Tabs tabs={tabs} active={tab} onChange={setTab} />
       {!ctx ? <Loading /> : tab === "overview" ? (
         <Stack>
+          <DuplicatesCard entity={entity} />
+          <MergedCard entity={entity} />
           {!entity.is_self && <Briefing person={entity} />}
           {!entity.is_self && <ResearchCard person={entity} />}
           {!entity.is_self && ctx.connection && <ConnectionCard personId={entity.id} name={entity.name} connection={ctx.connection} />}
@@ -216,6 +232,8 @@ function OrgTabs({ entity, relationships, ctx }: { entity: Entity; relationships
       <Tabs tabs={tabs} active={tab} onChange={setTab} />
       {!ctx ? <Loading /> : tab === "overview" ? (
         <Stack>
+          <DuplicatesCard entity={entity} />
+          <MergedCard entity={entity} />
           {ctx.org && <WayInCard org={ctx.org} />}
           <AboutCard entity={entity} />
           {flush("People", <PeopleList people={people.slice(0, 8)} empty="No people linked yet." />,
