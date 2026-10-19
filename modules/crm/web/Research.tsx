@@ -27,7 +27,7 @@ function BriefDialog({ text, onClose }: { text: string; onClose: () => void }) {
   const [copied, setCopied] = useState(false);
   return (
     <Dialog title="Research brief" onClose={onClose} width={640}>
-      <p className="text-ui text-ink-soft">Copy this into the deep-research tool you use. Nothing is sent from here.</p>
+      <p className="text-ui text-ink-soft">Paste this into Gemini Deep Research (or another deep-research tool). Nothing is sent from here. The report keeps a ref, so when you add it back, even in a folder of reports, it finds this person by itself.</p>
       <textarea className="field mt-3 h-72 w-full resize-none p-3 text-ui" readOnly aria-label="Research brief" value={text} onFocus={(e) => e.currentTarget.select()} />
       <div className="mt-4 flex justify-end gap-2">
         <button className="btn btn-md btn-ghost" onClick={onClose}>Close</button>
@@ -63,11 +63,12 @@ function AddResearchDialog({ person, onClose }: { person: Entity; onClose: () =>
   return (
     <Dialog title={`Add the research on ${person.name}`} onClose={onClose} width={640}>
       <p className="text-ui text-ink-soft">
-        Paste the report from your deep-research tool, or choose its file (.pdf, .docx, .md, .txt). The summary and facts are
-        added to {person.name}, and the whole report is kept as a note. You check it before anything is saved.
+        Paste the report from your deep-research tool, or choose its file. From Gemini, use Export to Docs, then in Google
+        Docs File → Download → .docx or .md. The summary and facts are added to {person.name}, and the whole report is
+        kept as a note. You check it before anything is saved.
       </p>
       <textarea className="field mt-3 h-64 w-full resize-none p-3 text-ui" placeholder="Paste the report here" aria-label="Research report" value={text} onChange={(e) => setText(e.target.value)} />
-      <input ref={file} type="file" className="hidden" aria-label="Choose a research file" accept=".pdf,.docx,.md,.txt,.markdown"
+      <input ref={file} type="file" className="hidden" aria-label="Choose a research file" accept=".pdf,.docx,.md,.txt,.markdown,.odt,.rtf,.html,.htm"
         onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) void send(() => crmApi.addFiles([{ file: f, path: f.name }], false, person.id)); }} />
       <div className="mt-4 flex flex-wrap justify-between gap-2">
         <button className="btn btn-md btn-soft" disabled={busy} onClick={() => file.current?.click()}><DocIcon size={18} /> Choose a file</button>
@@ -101,7 +102,7 @@ export function ResearchCard({ person }: { person: Entity }) {
   const copy = async () => {
     try {
       const fallback = await copyBrief(person.id);
-      if (fallback === null) toast("Brief copied. Paste it into your research tool.");
+      if (fallback === null) toast("Brief copied. Paste it into Gemini Deep Research.");
       else setShown(await fallback);
     } catch (e) {
       toast((e as Error).message, "error");
@@ -133,7 +134,7 @@ export function ResearchCard({ person }: { person: Entity }) {
             <h2 className="text-label font-medium">Nothing on file about {first}</h2>
             <span className={NEEDS_RESEARCH_CHIP}>needs research</span>
           </div>
-          <p className="mt-0.5 text-hint text-ink-soft">Run a deep-research tool on them, then bring the report back here.</p>
+          <p className="mt-0.5 text-hint text-ink-soft">Run Gemini Deep Research on them, then bring the report back here, or drop it in the Inbox with any others.</p>
         </div>
         <div className="flex flex-wrap gap-2">
           <button className="btn btn-sm btn-primary" onClick={() => void copy()}><CopyIcon size={16} /> Copy research brief</button>

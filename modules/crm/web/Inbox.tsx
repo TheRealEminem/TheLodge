@@ -66,8 +66,8 @@ function AddFiles() {
       >
         <p className="max-w-md text-ui text-ink-soft">
           Drop files or a whole folder here: meeting notes and transcripts, research on a person or organization, briefs
-          (.docx .pdf .pptx .txt .md), and contact spreadsheets (.xlsx .csv). Folder and file names help the AI work out
-          dates and who is who.
+          (.docx .pdf .pptx .odt .rtf .html .txt .md), contact spreadsheets (.xlsx .csv), or a .zip of any of them, such as
+          a folder downloaded from Google Drive. Folder and file names help the AI work out dates and who is who.
         </p>
         <div className="flex flex-wrap justify-center gap-2">
           <button className="btn btn-sm btn-soft" onClick={() => files.current?.click()}><DocIcon size={16} /> Choose files</button>
