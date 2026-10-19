@@ -30,6 +30,8 @@ decided, and the order we build it in.
 | 15 | **Find someone from Home; AI overviews and questions on profiles** (asked for 2026-10-13) | M | ☑ 2026-10-13 |
 | 16 | **Profile pictures** (asked for 2026-10-13) | M | ☐ proposed; waiting on the owner's choice of sources |
 | 17 | **Shared Google Sheet: a second way in for anyone** (asked for 2026-10-18) | M | ☑ 2026-10-18 (not yet run against a real Google Sheet) |
+| 18 | **Bulk research import, Gemini-shaped briefs, flagged duplicates** (asked for 2026-10-18) | M–L | ☑ 2026-10-19 (not yet run on a real Gemini report) |
+| 19 | **The Lodge runs Gemini research itself** (asked for 2026-10-18) | ? | ☐ scoping: costs first, no building until the owner has firm estimates |
 
 Milestones: **A** "it runs" = 0 · **B** "your data, natively" = 1–3 · **C** "browse and rate in the app" = 4–6
 (The owner can stop using Docker for reading; AI intake still needs the old app) · **D** "feature parity" = 7–10 ·
@@ -641,6 +643,62 @@ connect through an Apps Script web app rather than a Google Cloud service accoun
 - **Not verified:** a real Google Sheet and Apps Script deployment. The script was written against Apps Script's
   documented API but has only run against the stand-in, so the first real setup is the check. Edits only arrive while
   the Mac is awake and The Lodge is running.
+
+### Chunk 18 · Bulk research import, Gemini-shaped briefs, flagged duplicates (M–L) — DONE
+
+The owner's request (2026-10-18): bulk-import research briefs, or a messy folder of research and notes on people; make the
+brief and its copy as good as they can be for Gemini Deep Research, which he'll mostly use. And, like Trailmix's
+duplicate meetings: flag likely duplicate people automatically, keep everything, and leave the merge to him, because
+records disappearing would change too many downstream ties.
+
+**Result (2026-10-19).**
+- **Google formats** (`documents.py`): a `.zip` (a Drive folder download, a Takeout export) is unpacked into its files,
+  each keeping its folder path (`__MACOSX` and `._` files skipped; 2,000 files, 300 MB unpacked, 20 MB a file). `.html`
+  (a Docs "Web page" export), `.rtf` and `.odt` are read. Drive for desktop's `.gdoc`/`.gsheet`/… shortcuts hold no
+  text, so they're skipped with how to download the real file.
+- **The brief** (`research.py`), shaped for Gemini Deep Research: an exact title ("‹Name› — research profile", so the
+  exported Doc and its file are named after the person), a `Lodge ref: ‹first 10 of the id›` line to keep, an
+  "Identity confidence: High/Medium/Low" line, a 2–3 sentence summary, Key facts, fixed sections, citations left to
+  the tool, 1,500–2,500 words, today's date. Meeting titles and dates only (no meeting summaries leave the app).
+- **Reports that file themselves** (`ingest.py`): a report or pasted text carrying a ref that matches exactly one
+  person becomes research on them (`payload.subject_by = "ref"`), skips triage and can be applied automatically.
+  "Identity confidence: Medium/Low" holds it for review with a warning. In a profile, new people and organizations
+  the report only mentions (no relationship to its subject) are set to Skip, so a folder of reports doesn't fill the
+  book with strangers. A profile's summary replaces the subject's existing one, and the old one is kept as a note.
+- **Duplicates** (`duplicates.py`, `crm_duplicates`, job `crm/duplicates_check` every 5 minutes when the book changed,
+  or "Look again"): pairs of people by email, LinkedIn, same name or alias, nickname or short form with the same
+  surname, a one-letter slip (two in long words; first names of 5+ letters only), or a first name alone that shares a
+  meeting or employer with the full name; a shared employer adds weight. Organizations by website, name without
+  Inc/LLC/…, alias or near spelling. Compared within blocks (surname, first name and nicknames, email, …), not all
+  pairs. **Nothing merges by itself.** "Not the same" sticks.
+- **Merges keep everything** (`store.merge_entities`, `crm_merges`): the folded-in record's row, every edge and what
+  happened to it, the notes, questions and overview that moved, and the kept record before and after. **Undo merge**
+  (`store.unmerge`) brings the record back under its own id with its edges, notes and questions, takes off only what
+  the merge added and is unchanged since, and marks the pair "not the same". Links to a merged record (`describe`,
+  other modules' refs) lead to the record it's part of; its old page says where it went. Merged records are in the JSON
+  export. The profile's existing Merge button gets all of this too.
+- **Screens:** Possible duplicates page (`#/crm/duplicates`) and a Home section; on a profile, "Might be the same
+  person as" with Merge… (you choose which record to keep) and Not the same, and "‹Name› was merged into this record ·
+  Undo merge". Import and research dialogs name the new formats and Gemini's Export to Docs → Download.
+- **Verified:** 12 new tests (formats and zips, ref filing and namesakes, identity hold, held-back mentions, summary
+  kept as a note, duplicate rules, not-the-same, merge and undo end to end, you as the merged record); 235 pass. In a
+  browser on a scratch database: Home section, duplicates page, merge from a profile, the old record's page, undo.
+- **Not verified:** a real Gemini Deep Research report through Export to Docs and back. Whether Gemini keeps the
+  `Lodge ref` line and the identity line is the thing to check first; without them, matching falls back to names.
+
+### Chunk 19 · The Lodge runs Gemini research itself — SCOPING
+
+The owner (2026-10-18): interested in The Lodge running deep research on flagged people itself through the Gemini API,
+but worried about cost even with batch pricing. **Hold off building until there are firm estimates.** Two shapes to
+cost side by side, per person and for the current 67 flagged:
+- **A. Google's Deep Research agent** (Interactions API, background execution, paid tiers): one call per person,
+  Google's own planning and browsing. Likely the best reports and the highest, least predictable cost.
+- **B. Our own pipeline**: Flash with Google Search grounding runs a handful of focused searches seeded by what the
+  brief already knows (name, employer, email domain, LinkedIn), then Pro writes the report in the brief's shape.
+  Predictable and capped per person; the open cost is per-search grounding fees, which may not get batch discounts.
+To settle before any build: current per-token and per-search prices for each model, whether batch applies to
+grounded calls and to the agent, a real per-person token count from a few trial runs, and a hard spending cap per
+person and per month. Reports would land in the inbox like any other, already carrying their ref.
 
 ## 6. Risks and spikes
 

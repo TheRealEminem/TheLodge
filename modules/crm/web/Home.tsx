@@ -1,7 +1,7 @@
 // The People block on Home: who you know, how well, and who your recent meetings brought into view.
 import { useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
-import { CalendarIcon, ClockIcon, CompassIcon, OrgIcon, PlusIcon, SearchIcon, SparkleIcon, UsersIcon } from "@core/components/icons";
+import { CalendarIcon, ClockIcon, CompassIcon, MergeIcon, OrgIcon, PlusIcon, SearchIcon, SparkleIcon, UsersIcon } from "@core/components/icons";
 import { Skeleton } from "@core/components/ui";
 import { useLive } from "@core/live";
 import { useShell } from "@core/shell";
@@ -155,6 +155,13 @@ export default function HomeBlock() {
           delay={165}
         >
           <PersonRows rows={data.research} empty="" detail={(r) => connectionLine(r.connection) || "nothing on file"} />
+        </HomeSection>
+      )}
+
+      {data.duplicates > 0 && (
+        <HomeSection icon={<MergeIcon size={16} />} title="Possible duplicates" delay={170}
+          blurb={`${data.duplicates} ${data.duplicates === 1 ? "pair of records looks" : "pairs of records look"} like the same person or organization twice. Nothing is merged until you say so.`}>
+          <a href="#/crm/duplicates" className="btn btn-sm btn-soft"><MergeIcon size={16} /> Review {data.duplicates === 1 ? "it" : "them"}</a>
         </HomeSection>
       )}
 
