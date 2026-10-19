@@ -169,3 +169,12 @@ def test_estimates_rise_with_the_level_and_batch_halves_the_tokens(google):
     assert qb < q < b < best
     searches = 12 * gr.SEARCH_PRICE
     assert (qb - searches) == pytest.approx((q - searches) / 2, abs=1e-3)
+
+
+def test_without_a_choice_it_uses_better_through_batch(client, google):
+    jordan = person(client)
+    client.post("/api/crm/research/gemini", json={"person_ids": [jordan["id"]]})
+    jobs.drain()
+    started = run(client, jordan["id"])
+    assert started["level"] == "better" and started["batch"] and started["status"] == "running"
+    assert list(google.batches) == ["batches/1"] and "gemini-3.8-flash" in google.calls[0][1]

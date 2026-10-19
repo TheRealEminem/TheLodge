@@ -5,6 +5,8 @@ from typing import Literal
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
+from core.server import settings
+
 from . import gemini_research, research
 
 router = APIRouter()
@@ -50,8 +52,8 @@ def research_brief(person_id: str):
 
 class RunIn(BaseModel):
     person_ids: list[str] = Field(min_length=1, max_length=200)
-    level: Literal["quick", "better", "best"] = "quick"
-    batch: bool = True
+    level: Literal["quick", "better", "best"] | None = None   # None: the usual level from Settings
+    batch: bool | None = None                                 # None: as Settings says
 
 
 def _run_guard(fn, *args):
@@ -71,7 +73,10 @@ def gemini_overview():
 def gemini_start(body: RunIn):
     """Research these people with Gemini: as many as fit in what's left of the month's budget. Each report waits
     in the Inbox for your OK."""
-    return _run_guard(gemini_research.start, body.person_ids, body.level, body.batch)
+    cfg = settings.section("crm")
+    level = body.level or cfg["research_level"]
+    batch = cfg["research_batch"] if body.batch is None else body.batch
+    return _run_guard(gemini_research.start, body.person_ids, level, batch)
 
 
 @router.get("/people/{person_id}/research/gemini")
