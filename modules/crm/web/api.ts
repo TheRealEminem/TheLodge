@@ -133,6 +133,7 @@ export interface Dashboard {
   research_needed: number;
   research_close: number;
   research: PersonRow[];
+  duplicates: number;
   weekly_activity: { week: string; meetings: number }[];
 }
 
@@ -480,6 +481,39 @@ export interface Question {
   answered_at: string | null;
 }
 
+export interface DuplicateSide {
+  id: string;
+  name: string;
+  kind: EntityKind;
+  is_self: boolean;
+  degree: number;
+  subtitle: string | null;
+  email: string | null;
+  source: string;
+  created_at: string | null;
+}
+
+export interface DuplicatePair {
+  id: string;
+  kind: EntityKind;
+  score: number;
+  reasons: string[];
+  status: "open" | "not_same";
+  a: DuplicateSide;
+  b: DuplicateSide;
+}
+
+export interface MergeRecord {
+  id: string;
+  source_id: string;
+  target_id: string;
+  kind: EntityKind;
+  name: string;
+  created_at: string;
+}
+
+type Brief = { id: string; name: string; kind: EntityKind };
+
 export const crmApi = {
   inbox: (statuses?: string) => request<InboxRow[]>(`/crm/ingest/jobs${qs({ status: statuses, limit: 200 })}`),
   inboxSummary: () => request<InboxSummary>("/crm/ingest/summary"),
@@ -535,6 +569,13 @@ export const crmApi = {
   createEntity: (body: EntityInput) => request<Entity>("/crm/entities", json("POST", body)),
   updateEntity: (id: string, body: Partial<EntityInput>) => request<Entity>(`/crm/entities/${id}`, json("PATCH", body)),
   deleteEntity: (id: string) => request<void>(`/crm/entities/${id}`, { method: "DELETE" }),
+  duplicates: (entityId?: string) => request<{ total: number; items: DuplicatePair[] }>(`/crm/duplicates${qs({ entity_id: entityId })}`),
+  checkDuplicates: () => request<{ queued: boolean }>("/crm/duplicates/check", json("POST")),
+  mergePair: (pairId: string, keepId: string) => request<Brief>(`/crm/duplicates/${pairId}/merge`, json("POST", { keep_id: keepId })),
+  notSame: (pairId: string) => request<{ ok: boolean }>(`/crm/duplicates/${pairId}/not-same`, json("POST")),
+  merges: (id: string) => request<MergeRecord[]>(`/crm/entities/${id}/merges`),
+  undoMerge: (mergeId: string) => request<Brief>(`/crm/merges/${mergeId}/undo`, json("POST")),
+  movedTo: (id: string) => request<{ id: string | null }>(`/crm/entities/${id}/moved`),
   mergeEntity: (id: string, intoId: string) => request<Entity>(`/crm/entities/${id}/merge`, json("POST", { into_id: intoId })),
   createRelationship: (body: { source_id: string; target_id: string; kind: string; strength?: number; started_at?: string | null }) =>
     request(`/crm/relationships`, json("POST", body)),

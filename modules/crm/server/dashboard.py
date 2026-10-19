@@ -38,6 +38,7 @@ class Dashboard(BaseModel):
     research_needed: int
     research_close: int
     research: list[PersonRow]
+    duplicates: int
     weekly_activity: list[WeekActivity]
 
 
@@ -117,6 +118,7 @@ def build_dashboard(me_id: str | None = None) -> Dashboard:
         research_needed=flagged["total"],
         research_close=flagged["close"],
         research=flagged["items"],
+        duplicates=db.one("SELECT count(*) AS n FROM crm_duplicates WHERE status = 'open'")["n"],
         weekly_activity=[
             WeekActivity(week=start + timedelta(weeks=i), meetings=per_week.get(start + timedelta(weeks=i), 0))
             for i in range(ACTIVITY_WEEKS)

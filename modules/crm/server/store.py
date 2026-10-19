@@ -139,6 +139,34 @@ MIGRATIONS = [
         synced_at TEXT NOT NULL
     );
     """,
+    # Records that are probably the same one twice (duplicates.py), and every merge with what's needed to undo it.
+    """
+    CREATE TABLE crm_duplicates (
+        id         TEXT PRIMARY KEY,
+        a_id       TEXT NOT NULL REFERENCES crm_entities(id) ON DELETE CASCADE,   -- a_id < b_id
+        b_id       TEXT NOT NULL REFERENCES crm_entities(id) ON DELETE CASCADE,
+        kind       TEXT NOT NULL,
+        score      REAL NOT NULL,
+        reasons    TEXT NOT NULL DEFAULT '[]',   -- JSON: why they look like one record
+        status     TEXT NOT NULL DEFAULT 'open', -- open | not_same
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        UNIQUE (a_id, b_id)
+    );
+    CREATE INDEX crm_duplicates_status ON crm_duplicates(status);
+    CREATE TABLE crm_merges (
+        id         TEXT PRIMARY KEY,
+        source_id  TEXT NOT NULL,   -- the record folded in; no foreign key, it's gone until the merge is undone
+        target_id  TEXT NOT NULL,   -- the record kept
+        kind       TEXT NOT NULL,
+        name       TEXT NOT NULL,   -- the folded-in record's name, to show
+        snapshot   TEXT NOT NULL,   -- JSON: everything needed to undo it
+        created_at TEXT NOT NULL,
+        undone_at  TEXT
+    );
+    CREATE INDEX crm_merges_source ON crm_merges(source_id);
+    CREATE INDEX crm_merges_target ON crm_merges(target_id);
+    """,
 ]
 
 _version = 0
@@ -506,9 +534,14 @@ def delete_note(note_id: str) -> None:
 
 # ── Merge ─────────────────────────────────────────────────────────────
 
+def _row(r: sqlite3.Row | None) -> dict | None:
+    return dict(r) if r is not None else None
+
+
 def merge_entities(source_id: str, target_id: str) -> Entity:
-    """Fold `source` into `target`, then delete `source`. Target values win; the source's name is kept as an
-    alias so future notes match the survivor."""
+    """Fold `source` into `target`. Target values win; the source's name is kept as an alias so future notes match
+    the survivor. Nothing is lost: the source record, every edge as it was, and what moved where are kept in
+    crm_merges, so the merge can be undone (unmerge) and links to the old record still lead somewhere (describe)."""
     if source_id == target_id:
         raise MergeError("Cannot merge a record into itself")
     with db.connect() as c:
@@ -518,16 +551,28 @@ def merge_entities(source_id: str, target_id: str) -> Entity:
             raise NotFound("Entity not found")
         if src.kind != tgt.kind:
             raise MergeError(f"Cannot merge a {src.kind} into a {tgt.kind}")
+        snap: dict = {
+            "source": _row(c.execute("SELECT * FROM crm_entities WHERE id = ?", (source_id,)).fetchone()),
+            "target_before": {"attributes": tgt.attributes, "tags": tgt.tags, "summary": tgt.summary,
+                              "occurred_at": _when(tgt.occurred_at), "is_self": tgt.is_self},
+            "edges": [],
+            "notes": [r["id"] for r in c.execute("SELECT id FROM crm_notes WHERE entity_id = ?", (source_id,))],
+            "note_evidence": [r["id"] for r in c.execute("SELECT id FROM crm_notes WHERE evidence_id = ?", (source_id,))],
+            "edge_evidence": [r["id"] for r in c.execute("SELECT id FROM crm_relationships WHERE evidence_id = ?", (source_id,))],
+            "questions": [r["id"] for r in c.execute("SELECT id FROM crm_questions WHERE entity_id = ?", (source_id,))],
+            "overview": _row(c.execute("SELECT * FROM crm_overviews WHERE entity_id = ?", (source_id,)).fetchone()),
+        }
 
-        for edge in [_edge(r) for r in c.execute(
-                "SELECT * FROM crm_relationships WHERE source_id = ? OR target_id = ?", (source_id, source_id))]:
+        for row in c.execute("SELECT * FROM crm_relationships WHERE source_id = ? OR target_id = ?", (source_id, source_id)).fetchall():
+            edge = _edge(row)
+            kept = {"row": dict(row)}
             new_s = target_id if edge.source_id == source_id else edge.source_id
             new_t = target_id if edge.target_id == source_id else edge.target_id
             if new_s == new_t:
                 c.execute("DELETE FROM crm_relationships WHERE id = ?", (edge.id,))
-                continue
-            dup = find_edge(new_s, new_t, edge.kind, c)
-            if dup is not None and dup.id != edge.id:
+                kept["fate"] = "dropped"
+            elif (dup := find_edge(new_s, new_t, edge.kind, c)) is not None and dup.id != edge.id:
+                kept.update(fate="folded", into=dup.id, into_before={"strength": dup.strength, "properties": dup.properties})
                 props = {**(edge.properties or {}), **(dup.properties or {})}
                 c.execute("UPDATE crm_relationships SET strength = ?, properties = ?, updated_at = ? WHERE id = ?",
                           (max(dup.strength, edge.strength), json.dumps(props), _now(), dup.id))
@@ -535,10 +580,13 @@ def merge_entities(source_id: str, target_id: str) -> Entity:
             else:
                 c.execute("UPDATE crm_relationships SET source_id = ?, target_id = ?, updated_at = ? WHERE id = ?",
                           (new_s, new_t, _now(), edge.id))
+                kept["fate"] = "moved"
+            snap["edges"].append(kept)
 
         c.execute("UPDATE crm_notes SET entity_id = ? WHERE entity_id = ?", (target_id, source_id))
         c.execute("UPDATE crm_notes SET evidence_id = ? WHERE evidence_id = ?", (target_id, source_id))
         c.execute("UPDATE crm_relationships SET evidence_id = ? WHERE evidence_id = ?", (target_id, source_id))
+        c.execute("UPDATE crm_questions SET entity_id = ? WHERE entity_id = ?", (target_id, source_id))
 
         attrs = {**src.attributes, **tgt.attributes}
         aliases = set(attrs.get("aliases") or []) | set(src.attributes.get("aliases") or [])
@@ -555,14 +603,119 @@ def merge_entities(source_id: str, target_id: str) -> Entity:
             target_id, attributes=attrs, tags=tags, summary=tgt.summary or src.summary,
             occurred_at=tgt.occurred_at or src.occurred_at, conn=c,
         )
+        snap["target_after"] = {"attributes": merged.attributes, "tags": merged.tags, "summary": merged.summary,
+                                "occurred_at": _when(merged.occurred_at)}
+        c.execute("INSERT INTO crm_merges (id, source_id, target_id, kind, name, snapshot, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                  (db.new_id(), source_id, target_id, src.kind, src.name, json.dumps(snap, default=str), _now()))
     _touch()
     return merged
+
+
+def merges_into(entity_id: str) -> list[dict]:
+    """Merges into this record that can still be undone, newest first."""
+    return [{k: r[k] for k in ("id", "source_id", "target_id", "kind", "name", "created_at")} for r in db.query(
+        "SELECT * FROM crm_merges WHERE target_id = ? AND undone_at IS NULL ORDER BY created_at DESC", (entity_id,))]
+
+
+def merged_into(entity_id: str) -> str | None:
+    """Where a record merged away lives now, following merges of merges. None if it wasn't merged."""
+    current, seen = entity_id, set()
+    while current not in seen:
+        seen.add(current)
+        row = db.one("SELECT target_id FROM crm_merges WHERE source_id = ? AND undone_at IS NULL ORDER BY created_at DESC LIMIT 1",
+                     (current,))
+        if row is None:
+            return None if current == entity_id else current
+        current = row["target_id"]
+    return None
+
+
+def unmerge(merge_id: str) -> Entity:
+    """Undo a merge: the record comes back with its own id, its edges, notes and questions return to it, and what the
+    merge added to the kept record is taken off again. Anything added to either since stays where it is now."""
+    m = db.one("SELECT * FROM crm_merges WHERE id = ?", (merge_id,))
+    if m is None:
+        raise NotFound("That merge isn't on record")
+    if m["undone_at"]:
+        raise MergeError("That merge was already undone")
+    snap = json.loads(m["snapshot"])
+    src, tid, sid = snap["source"], m["target_id"], m["source_id"]
+    with db.connect() as c:
+        tgt = get_entity(tid, c)
+        if tgt is None:
+            raise MergeError("The record it was merged into is gone, so it can't be split again")
+        if c.execute("SELECT 1 FROM crm_entities WHERE id = ?", (sid,)).fetchone():
+            raise MergeError(f"{m['name']} is already back")
+        if src["is_self"]:
+            c.execute("UPDATE crm_entities SET is_self = 0 WHERE id = ?", (tid,))
+        cols = list(src)
+        c.execute(f"INSERT INTO crm_entities ({', '.join(cols)}) VALUES ({', '.join('?' for _ in cols)})", [src[k] for k in cols])
+        _reindex(c, _entity(src))
+
+        exists = lambda eid: eid == sid or c.execute("SELECT 1 FROM crm_entities WHERE id = ?", (eid,)).fetchone() is not None  # noqa: E731
+        for kept in snap["edges"]:
+            row = kept["row"]
+            if not (exists(row["source_id"]) and exists(row["target_id"])):
+                continue   # the record at the other end was deleted since
+            if kept["fate"] == "moved":
+                c.execute("UPDATE OR IGNORE crm_relationships SET source_id = ?, target_id = ? WHERE id = ?",
+                          (row["source_id"], row["target_id"], row["id"]))
+            else:
+                cols = list(row)
+                c.execute(f"INSERT OR IGNORE INTO crm_relationships ({', '.join(cols)}) VALUES ({', '.join('?' for _ in cols)})",
+                          [row[k] for k in cols])
+                if kept["fate"] == "folded":
+                    before = kept["into_before"]
+                    c.execute("UPDATE crm_relationships SET strength = ?, properties = ? WHERE id = ?",
+                              (before["strength"], json.dumps(before["properties"] or {}), kept["into"]))
+
+        def back(table: str, column: str, ids: list[str]) -> None:
+            for chunk in (ids[i:i + 500] for i in range(0, len(ids), 500)):
+                c.execute(f"UPDATE {table} SET {column} = ? WHERE {column} = ? AND id IN ({', '.join('?' for _ in chunk)})",
+                          (sid, tid, *chunk))
+
+        back("crm_notes", "entity_id", snap["notes"])
+        back("crm_notes", "evidence_id", snap["note_evidence"])
+        back("crm_relationships", "evidence_id", snap["edge_evidence"])
+        back("crm_questions", "entity_id", snap["questions"])
+        if (ov := snap.get("overview")) and not c.execute("SELECT 1 FROM crm_overviews WHERE entity_id = ?", (sid,)).fetchone():
+            cols = list(ov)
+            c.execute(f"INSERT OR IGNORE INTO crm_overviews ({', '.join(cols)}) VALUES ({', '.join('?' for _ in cols)})", [ov[k] for k in cols])
+
+        # Take off the kept record only what the merge put there and is still as the merge left it.
+        before, after = snap["target_before"], snap.get("target_after") or {}
+        attrs = dict(tgt.attributes or {})
+        for key, value in (after.get("attributes") or {}).items():
+            if key == "aliases":
+                continue
+            if key not in before["attributes"] and attrs.get(key) == value:
+                attrs.pop(key)
+        added = set((after.get("attributes") or {}).get("aliases") or []) - set(before["attributes"].get("aliases") or [])
+        aliases = [a for a in attrs.get("aliases") or [] if a not in added]
+        if aliases:
+            attrs["aliases"] = aliases
+        else:
+            attrs.pop("aliases", None)
+        added_tags = set(after.get("tags") or []) - set(before["tags"] or [])
+        fields: dict = {"attributes": attrs, "tags": [t for t in tgt.tags if t not in added_tags]}
+        if not before["summary"] and tgt.summary and tgt.summary == after.get("summary"):
+            fields["summary"] = None
+        if not before["occurred_at"] and _when(tgt.occurred_at) == after.get("occurred_at"):
+            fields["occurred_at"] = None
+        update_entity(tid, conn=c, **fields)
+        c.execute("UPDATE crm_merges SET undone_at = ? WHERE id = ?", (_now(), merge_id))
+        restored = get_entity(sid, c)
+    _touch()
+    return restored  # type: ignore[return-value]
 
 
 # ── For the host: search and links ────────────────────────────────────
 
 def describe(entity_id: str) -> dict | None:
+    """A link's title and address. A record merged into another leads to the one it's part of now."""
     row = db.one("SELECT name FROM crm_entities WHERE id = ?", (entity_id,))
+    if row is None and (now := merged_into(entity_id)):
+        row, entity_id = db.one("SELECT name FROM crm_entities WHERE id = ?", (now,)), now
     return {"title": row["name"], "href": f"#/crm/e/{entity_id}"} if row else None
 
 

@@ -5,7 +5,7 @@ import json
 
 from core.server import db
 
-_JSON = ("attributes", "tags", "properties", "wells")
+_JSON = ("attributes", "tags", "properties", "wells", "snapshot")
 
 
 def _parsed(row: dict) -> dict:
@@ -18,6 +18,8 @@ def export() -> dict:
         "relationships": [_parsed(r) for r in db.query("SELECT * FROM crm_relationships ORDER BY created_at, id")],
         "notes": [_parsed(r) for r in db.query("SELECT * FROM crm_notes ORDER BY occurred_at, id")],
         "views": [_parsed(r) for r in db.query("SELECT * FROM crm_views ORDER BY created_at")],
+        # Records merged into others, each with all it held when it was merged, so nothing a merge folded away is lost.
+        "merges": [_parsed(r) for r in db.query("SELECT * FROM crm_merges ORDER BY created_at, id")],
     }
 
 
@@ -28,6 +30,7 @@ def count(conn) -> dict:
 
 def on_restored(payload: dict) -> None:
     """A backup replaced the database: drop everything built from the old one."""
-    from . import ingest, store
+    from . import duplicates, ingest, store
     ingest._down.clear()
+    duplicates.forget_check()
     store._touch()
