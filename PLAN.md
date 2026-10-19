@@ -29,6 +29,7 @@ decided, and the order we build it in.
 | 14 | **Research flags: people who need deep research** (asked for 2026-10-12) | M | ☑ 2026-10-12 |
 | 15 | **Find someone from Home; AI overviews and questions on profiles** (asked for 2026-10-13) | M | ☑ 2026-10-13 |
 | 16 | **Profile pictures** (asked for 2026-10-13) | M | ☐ proposed; waiting on the owner's choice of sources |
+| 17 | **Shared Google Sheet: a second way in for anyone** (asked for 2026-10-18) | M | ☑ 2026-10-18 (not yet run against a real Google Sheet) |
 
 Milestones: **A** "it runs" = 0 · **B** "your data, natively" = 1–3 · **C** "browse and rate in the app" = 4–6
 (The owner can stop using Docker for reading; AI intake still needs the old app) · **D** "feature parity" = 7–10 ·
@@ -605,6 +606,41 @@ profile (drop, paste or choose a file; copying the photo from LinkedIn in the br
 everywhere a person appears; (2) match photos from the Mac's Contacts app by email, phone and name (asks for
 Contacts access once; nothing leaves the Mac); (3) optionally, Gravatar for people with an email address (a hash of
 the address goes to Gravatar, so it's a setting, off by default). Waiting on the owner's choice.
+
+### Chunk 17 · Shared Google Sheet (M) — DONE
+
+The owner's request (2026-10-18): a human-readable copy of the CRM in a Google Sheet that anyone can see, correct and add
+to, as a live parallel interface. A sync, not a backend, so the app stays quick; not everything belongs on it.
+Decided with the owner: contact card and summary only (no ratings, notes, meetings or overviews); new rows go straight in;
+connect through an Apps Script web app rather than a Google Cloud service account.
+
+**Result (2026-10-18).**
+- **The link** (`sheet_script.py`): a short Apps Script pasted into the spreadsheet (`@OnlyCurrentDoc`, so it can open
+  only that spreadsheet) and deployed as a web app, Execute as Me, Who has access Anyone. Its URL is the setting
+  `crm.sheet_secret`, kept like a key. The script is dumb on purpose: it adds missing tabs and headers (plain text
+  columns, the Lodge ID column greyed and warning-protected), reads every row as shown, and writes what it's told.
+  Each written cell names the value that was read there, and one changed since is left alone. `VERSION` makes the
+  server ask for a fresh copy when the script changes.
+- **The sync** (`sheet_sync.py`, job `crm/sheet_sync` in the cloud lane): every 2 minutes, or 30 seconds after a change
+  in the app. People tab (Name, Organization, Title, Email, Phone, LinkedIn, Location, Tags, Summary) and
+  Organizations tab (Name, Website, Location, Email, Tags, Summary), each with "Add a note" and "Lodge ID". You and
+  anyone tagged `private` stay off. Three-way, per cell, against `crm_sheet_rows` (what both sides last agreed): a
+  change on one side wins; a change on both keeps The Lodge's and notes the sheet's on the record. Organization edits
+  end the job the sheet showed and add the new one. New rows match by email, LinkedIn or exact name, or become new
+  records (source "sheet"); a second row for someone is folded in and removed; a copied row renamed is someone new.
+  Deleted rows come back; deleted or private records leave. A deleted column comes back without emptying anything.
+  More than 10 values (or a fifth of the rows) emptied or replaced on a tab at once hold that tab until the owner chooses
+  "Put The Lodge's back" or "Copy them in" in Settings (or undoes it on the sheet).
+- **Settings → People: shared sheet**: what goes on it, the setup steps with Copy and Show the script, the link,
+  the last sync with an Open the sheet link, the held-tab choice, Test it and Sync now.
+- **Verified:** 23 new tests that run the real script under Node against a stand-in for Google Sheets
+  (`tests/sheet_harness.mjs`: strict about ranges, turns numbers in non-text cells into numbers, answers through
+  Google's redirect), including a cell typed over between the read and the write. A dry run on a copy of the real data:
+  128 people and 175 organizations on the first sync (one 80 KB write), and a second sync is a single read that
+  changes nothing on either side. The Settings section in a browser, both states and 375 px. 225 tests pass.
+- **Not verified:** a real Google Sheet and Apps Script deployment. The script was written against Apps Script's
+  documented API but has only run against the stand-in, so the first real setup is the check. Edits only arrive while
+  the Mac is awake and The Lodge is running.
 
 ## 6. Risks and spikes
 
