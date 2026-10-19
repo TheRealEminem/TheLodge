@@ -73,6 +73,20 @@ export interface CaptureOverview {
   sources: CaptureSource[];
 }
 
+export interface SheetStatus {
+  configured: boolean;
+  script_version: number;
+  last_run_at: string | null;
+  last_ok_at: string | null;
+  last_counts: Record<string, number> | null;
+  error: string | null;
+  link_problem: boolean | null;
+  spreadsheet: { name: string; url: string } | null;
+  /** Tabs held back because many values were emptied or replaced at once. */
+  held: Record<string, { cells: number; columns: string[] }> | null;
+  decision: "apply" | "restore" | null;
+}
+
 export type ResearchState = "needed" | "snoozed" | "dismissed" | "name_needed" | "has_context";
 
 export interface ResearchStatus {
@@ -498,6 +512,11 @@ export const crmApi = {
   captureSync: () => request<{ queued: number }>("/crm/capture/sync", json("POST")),
   captureRemove: (origin: string) =>
     request<{ meetings: number; people: number; lines: number; kept: number }>(`/crm/capture/${origin}/remove`, json("POST")),
+  sheet: () => request<SheetStatus>("/crm/sheet"),
+  sheetScript: () => request<{ text: string; version: number }>("/crm/sheet/script"),
+  sheetTest: () => request<{ ok: boolean; spreadsheet: { name: string; url: string } | null }>("/crm/sheet/test", json("POST")),
+  sheetSync: () => request<{ job: string }>("/crm/sheet/sync", json("POST")),
+  sheetDecide: (choice: "apply" | "restore") => request<{ job: string }>("/crm/sheet/decide", json("POST", { choice })),
   researchStatus: (id: string) => request<ResearchStatus>(`/crm/people/${id}/research`),
   setResearch: (id: string, action: "snooze" | "dismiss" | "restore") =>
     request<ResearchStatus>(`/crm/people/${id}/research`, json("POST", { action })),
