@@ -9,6 +9,7 @@ import { useLive } from "@core/live";
 import { useSettings, useShell } from "@core/shell";
 import { crmApi } from "./api";
 import CaptureSettings from "./Capture";
+import { GeminiSettings } from "./GeminiResearch";
 import SheetSettings from "./SheetSettings";
 import type { AiRole } from "./api";
 
@@ -94,6 +95,7 @@ export default function AiSettings() {
         onChange={(v) => void save({ "crm.webhook_auto_apply": v })}
       />
     </Section>
+    <GeminiSettings />
     <CaptureSettings />
     <SheetSettings />
     </>

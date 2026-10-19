@@ -167,6 +167,29 @@ MIGRATIONS = [
     CREATE INDEX crm_merges_source ON crm_merges(source_id);
     CREATE INDEX crm_merges_target ON crm_merges(target_id);
     """,
+    # Research The Lodge runs itself with Gemini (gemini_research.py): one row per person per run.
+    """
+    CREATE TABLE crm_research_runs (
+        id          TEXT PRIMARY KEY,
+        entity_id   TEXT NOT NULL REFERENCES crm_entities(id) ON DELETE CASCADE,
+        level       TEXT NOT NULL,                  -- quick | better | best
+        batch       INTEGER NOT NULL DEFAULT 0,     -- through Google's Batch API
+        status      TEXT NOT NULL,                  -- queued | running | waiting | done | failed | cancelled
+        stage       TEXT NOT NULL DEFAULT 'ask',    -- ask | check | more | write | done
+        batch_name  TEXT,                           -- Google's batch in flight ("batches/…")
+        findings    TEXT NOT NULL DEFAULT '[]',     -- JSON: each question, the answer and its sources
+        usage       TEXT NOT NULL DEFAULT '{}',     -- JSON: model -> tokens in, out, cached, calls
+        searches    INTEGER NOT NULL DEFAULT 0,
+        cost        REAL NOT NULL DEFAULT 0,        -- dollars, from what Google reported
+        inbox_id    TEXT,                           -- the report, waiting in the Inbox
+        error       TEXT,
+        created_at  TEXT NOT NULL,
+        updated_at  TEXT NOT NULL,
+        finished_at TEXT
+    );
+    CREATE INDEX crm_research_runs_entity ON crm_research_runs(entity_id, created_at);
+    CREATE INDEX crm_research_runs_status ON crm_research_runs(status);
+    """,
 ]
 
 _version = 0

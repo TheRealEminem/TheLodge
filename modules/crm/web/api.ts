@@ -514,6 +514,36 @@ export interface MergeRecord {
 
 type Brief = { id: string; name: string; kind: EntityKind };
 
+export type ResearchLevel = "quick" | "better" | "best";
+
+export interface ResearchRun {
+  id: string;
+  person_id: string;
+  person: string | null;
+  level: ResearchLevel;
+  batch: boolean;
+  status: "queued" | "running" | "waiting" | "done" | "failed" | "cancelled";
+  stage: "ask" | "check" | "more" | "write" | "done";
+  error: string | null;
+  searches: number;
+  cost: number;
+  inbox_id: string | null;
+  created_at: string;
+  finished_at: string | null;
+}
+
+export interface GeminiOverview {
+  ready: boolean;
+  reason: string | null;
+  level: ResearchLevel;
+  batch: boolean;
+  budget: number;
+  spent: number;
+  prices_as_of: string;
+  levels: { id: ResearchLevel; label: string; hint: string; models: string[]; estimate: number; estimate_batch: number }[];
+  runs: ResearchRun[];
+}
+
 export const crmApi = {
   inbox: (statuses?: string) => request<InboxRow[]>(`/crm/ingest/jobs${qs({ status: statuses, limit: 200 })}`),
   inboxSummary: () => request<InboxSummary>("/crm/ingest/summary"),
@@ -554,6 +584,12 @@ export const crmApi = {
   researchStatus: (id: string) => request<ResearchStatus>(`/crm/people/${id}/research`),
   setResearch: (id: string, action: "snooze" | "dismiss" | "restore") =>
     request<ResearchStatus>(`/crm/people/${id}/research`, json("POST", { action })),
+  geminiOverview: () => request<GeminiOverview>("/crm/research/gemini"),
+  startGemini: (personIds: string[], level: ResearchLevel, batch: boolean) =>
+    request<{ started: number; skipped: { id: string; reason: string }[]; estimate_each: number }>("/crm/research/gemini", json("POST", { person_ids: personIds, level, batch })),
+  geminiRun: (personId: string) => request<{ run: ResearchRun | null }>(`/crm/people/${personId}/research/gemini`),
+  cancelRun: (runId: string) => request<ResearchRun>(`/crm/research/gemini/${runId}/cancel`, json("POST")),
+  retryRun: (runId: string) => request<ResearchRun>(`/crm/research/gemini/${runId}/retry`, json("POST")),
   researchBrief: (id: string) => request<{ text: string }>(`/crm/people/${id}/research/brief`),
   organizations: (p: { scope?: string; q?: string; tag?: string; sort?: string; limit?: number }) =>
     request<OrgPage>(`/crm/organizations${qs(p)}`),

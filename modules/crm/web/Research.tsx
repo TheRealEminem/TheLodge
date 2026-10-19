@@ -1,6 +1,6 @@
 // People with nothing on file: the flag, the brief for a deep-research tool, and bringing the report back.
 import { useRef, useState } from "react";
-import { CheckIcon, ClockIcon, CopyIcon, DocIcon, PlusIcon, SearchIcon } from "@core/components/icons";
+import { CheckIcon, ClockIcon, CopyIcon, DocIcon, PlusIcon, SearchIcon, SparkleIcon } from "@core/components/icons";
 import { useLive } from "@core/live";
 import { navigate } from "@core/router";
 import { useShell } from "@core/shell";
@@ -8,6 +8,7 @@ import { crmApi } from "./api";
 import type { Entity } from "./api";
 import { Dialog } from "./forms";
 import { formatDate } from "./format";
+import { GeminiDialog, GeminiRunLine } from "./GeminiResearch";
 
 export const NEEDS_RESEARCH_CHIP = "chip bg-sun-soft text-sun-deep";
 
@@ -90,7 +91,9 @@ export function ResearchCard({ person }: { person: Entity }) {
   const { data } = useLive(() => crmApi.researchStatus(person.id), [person.id]);
   const [adding, setAdding] = useState(false);
   const [shown, setShown] = useState<string | null>(null);
-  if (!data || data.state === "has_context") return null;
+  const [gemini, setGemini] = useState(false);
+  if (!data) return null;
+  if (data.state === "has_context") return <GeminiRunLine person={person} offerMore />;
 
   const act = async (action: "snooze" | "dismiss" | "restore") => {
     try {
@@ -134,15 +137,18 @@ export function ResearchCard({ person }: { person: Entity }) {
             <h2 className="text-label font-medium">Nothing on file about {first}</h2>
             <span className={NEEDS_RESEARCH_CHIP}>needs research</span>
           </div>
-          <p className="mt-0.5 text-hint text-ink-soft">Run Gemini Deep Research on them, then bring the report back here, or drop it in the Inbox with any others.</p>
+          <p className="mt-0.5 text-hint text-ink-soft">Have The Lodge research them with Gemini, or copy the brief into Gemini Deep Research and bring the report back here (or drop it in the Inbox with any others).</p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <button className="btn btn-sm btn-primary" onClick={() => void copy()}><CopyIcon size={16} /> Copy research brief</button>
+          <button className="btn btn-sm btn-primary" onClick={() => setGemini(true)}><SparkleIcon size={16} /> Research with Gemini</button>
+          <button className="btn btn-sm btn-soft" onClick={() => void copy()}><CopyIcon size={16} /> Copy research brief</button>
           <button className="btn btn-sm btn-soft" onClick={() => setAdding(true)}><PlusIcon size={16} /> Add the research</button>
           <button className="btn btn-sm btn-ghost" onClick={() => void act("snooze")}>Snooze 30 days</button>
           <button className="btn btn-sm btn-ghost" onClick={() => void act("dismiss")}>Not worth it</button>
         </div>
       </section>
+      <GeminiRunLine person={person} />
+      {gemini && <GeminiDialog people={[person]} onClose={() => setGemini(false)} />}
       {adding && <AddResearchDialog person={person} onClose={() => setAdding(false)} />}
       {shown && <BriefDialog text={shown} onClose={() => setShown(null)} />}
     </>
