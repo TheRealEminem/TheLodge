@@ -27,13 +27,14 @@ class Google:
         prompt = body["contents"][0]["parts"][0]["text"]
         if system == gr.CHECK_SYSTEM:
             return answer(json.dumps({"same_person": True, "gaps": "No dates for the board seat.",
-                                      "follow_ups": ["When did they join the Helio board?"]}), searches=0)
+                                      "follow_ups": ["When did they join the Helio board?", "Who founded Frostline?"]}), searches=0)
         if system == gr.WRITE_SYSTEM:
             name = prompt.split(" — research profile")[0]
             ref = prompt.split("Lodge ref: ")[1][:10]
             return answer(f"{name} — research profile\nLodge ref: {ref}\nIdentity confidence: High. Matched employer.\n\n"
                           f"{name} runs fleet operations. " * 3, searches=0, tokens=(9000, 2000, 0))
-        return answer("Head of Fleet at Frostline since March 2024 (example.org).")
+        question = prompt.rsplit("Question: ", 1)[-1]
+        return answer(f"Answer to: {question}")
 
     def __call__(self, method, path, **kw):
         self.calls.append((method, path, kw.get("json")))
@@ -124,9 +125,12 @@ def test_best_has_the_pro_model_check_and_ask_again_before_it_writes(client, goo
     jobs.drain()
     assert run(client, jordan["id"])["status"] == "done"
     models = [c[1].split("/")[1].split(":")[0] for c in google.calls]
-    assert models == ["gemini-3.8-flash"] * 6 + ["gemini-4-argon", "gemini-3.8-flash", "gemini-4-argon"]
+    assert models == ["gemini-3.8-flash"] * 6 + ["gemini-4-argon"] + ["gemini-3.8-flash"] * 2 + ["gemini-4-argon"]
     row = db.one("SELECT findings FROM crm_research_runs WHERE entity_id = ?", (jordan["id"],))
-    assert any(f["angle"].startswith("Follow-up: When did they join") and f["text"] for f in json.loads(row["findings"]))
+    follow = [f for f in json.loads(row["findings"]) if f.get("follow_up")]
+    assert [(f["question"], f["text"]) for f in follow] == [                     # each answer under its own question
+        ("When did they join the Helio board?", "Answer to: When did they join the Helio board?"),
+        ("Who founded Frostline?", "Answer to: Who founded Frostline?")]
 
 
 def test_the_budget_stops_new_runs_and_says_so(client, google):
