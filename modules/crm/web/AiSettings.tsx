@@ -9,6 +9,7 @@ import { useLive } from "@core/live";
 import { useSettings, useShell } from "@core/shell";
 import { crmApi } from "./api";
 import CaptureSettings from "./Capture";
+import SheetSettings from "./SheetSettings";
 import type { AiRole } from "./api";
 
 function Job({ job, providers }: { job: AiRole; providers: ProviderInfo[] }) {
@@ -94,6 +95,7 @@ export default function AiSettings() {
       />
     </Section>
     <CaptureSettings />
+    <SheetSettings />
     </>
   );
 }

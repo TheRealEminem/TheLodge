@@ -130,6 +130,15 @@ MIGRATIONS = [
     );
     CREATE INDEX crm_questions_entity ON crm_questions(entity_id, created_at);
     """,
+    # The shared Google Sheet (sheet_sync.py): for each record on it, the values both sides last agreed on.
+    """
+    CREATE TABLE crm_sheet_rows (
+        entity_id TEXT PRIMARY KEY,           -- no foreign key: a deleted record's row is recognized, then taken off
+        tab       TEXT NOT NULL,
+        base      TEXT NOT NULL DEFAULT '{}', -- JSON: field -> value
+        synced_at TEXT NOT NULL
+    );
+    """,
 ]
 
 _version = 0
