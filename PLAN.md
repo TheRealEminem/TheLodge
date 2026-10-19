@@ -31,7 +31,7 @@ decided, and the order we build it in.
 | 16 | **Profile pictures** (asked for 2026-10-13) | M | ☐ proposed; waiting on the owner's choice of sources |
 | 17 | **Shared Google Sheet: a second way in for anyone** (asked for 2026-10-18) | M | ☑ 2026-10-18 (not yet run against a real Google Sheet) |
 | 18 | **Bulk research import, Gemini-shaped briefs, flagged duplicates** (asked for 2026-10-18) | M–L | ☑ 2026-10-19 (not yet run on a real Gemini report) |
-| 19 | **The Lodge runs Gemini research itself** (asked for 2026-10-18) | M | ☑ 2026-10-19 (trial on 3 people; default level still the owner's call) |
+| 19 | **The Lodge runs Gemini research itself** (asked for 2026-10-18) | M | ☑ 2026-10-19 (usual level: Better through Batch) |
 
 Milestones: **A** "it runs" = 0 · **B** "your data, natively" = 1–3 · **C** "browse and rate in the app" = 4–6
 (The owner can stop using Docker for reading; AI intake still needs the old app) · **D** "feature parity" = 7–10 ·
@@ -760,8 +760,9 @@ three on Needs research, using the Gemini key from Trailmix:
 | Anders Stone | Quick | yes | 1 / 3 | ~2.4k / ~0.9k | $0.02–0.04 | ~6 min | ~350 words, one source |
 | Anders Stone | Better | no | 19 | ~7k / ~14k | $0.32 | 3 min | ~1,300 words, 34 links |
 | Anders Stone | Best | no | 23 | ~13k / ~16k | $0.43 | 4 min | ~1,600 words, 32 links |
+| Billy Kemp | Better | yes | 16 | ~5.6k / ~10.6k | $0.25 | ~6 min | ~800 words, 28 links |
 
-(Two Quick rounds: the second after telling it to always search.) About $1.20 in all, before Google's free 5,000
+(Two Quick rounds: the second after telling it to always search.) About $1.45 in all, before Google's free 5,000
 searches a month, which this key may well cover.
 - **Flash-Lite mostly doesn't search.** It answers most questions "Nothing found." without running a search, even
   when told to always search; that, not Batch, is why Quick is so cheap, and its reports are thin. The cheapest
@@ -777,7 +778,12 @@ searches a month, which this key may well cover.
 - Reports and each question's notes are in `build/research-trial/` (not in git). Nothing from the trial is in the
   real data: the reports carry their refs, so dropping them in the Inbox files them on the right people.
 
-**Open:** the default level (the code says Quick; the trial says Better). Gemini 4 Argon and 3.8 Flash were offered
+- **Better through Batch** (Billy Kemp, after the default changed): every question searched (16 searches), the
+  studio's website, his business partner, his music project; $0.25, of which Gemini's reading and writing was ~2¢.
+  For the 67 flagged, about **$17**, less what the free searches cover.
+
+**Decided (2026-10-19):** the owner chose **Better through Batch** as the usual level (`crm.research_level = better`,
+`crm.research_batch = true`); Quick and Best stay as choices in the dialog. **Open:** Gemini 4 Argon and 3.8 Flash were offered
 to this key; another key might not have them, and the error says which model. Not tried: the Google Deep Research
 agent (~$1–3 a person, by Google's estimate) as a fourth level.
 
