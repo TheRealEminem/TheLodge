@@ -1,8 +1,10 @@
 /* ── The Lodge's tokens (a Trailmix sibling) ───────────────────────────
-   The family's roles and contrast, nudged toward the lodge: warm linen
-   surfaces, spruce for primary actions, ember for the live action,
-   lantern yellow for "needs you", lake blue and lingonberry for You and
-   Them. Dusk is a spruce-blue night by the fire. See identity/DESIGN.md.
+   The family's roles, in The Lodge's own palette, lake and lantern: warm
+   linen surfaces, lake blue for primary actions, ember for errors, lantern
+   yellow for "needs you", glacier and cedar for You and Them. Every
+   meaning sits on the blue-to-yellow axis or a step of lightness, never on
+   red against green, so it holds for red-green colorblind eyes. Dusk is a
+   spruce-blue night by the fire. See identity/DESIGN.md.
 
    This is the identity's half of the tokens: every color, shadow and the
    atmosphere, for Day (:root) and Dusk. The family's shared half (type
@@ -24,23 +26,23 @@
   --text-tertiary: #979a8f; /* icons, placeholders and decoration only: too light for body text */
 
   /* brand */
-  --forest: #1f5e4b;
-  --forest-hover: #174a3b;
-  --forest-soft: #d9e8e0;
-  --forest-ink: #174838; /* text on forest-soft */
-  --trail-orange: #de5f31;
-  --trail-orange-hover: #c94f24;
-  --trail-orange-soft: #fadfd2;
-  --trail-orange-ink: #9e3a16;
-  --yellow: #f2b13c;
-  --yellow-soft: #fbeccb;
-  --yellow-ink: #764c06;
-  --sky: #457f9c;
-  --sky-soft: #dfecf1;
-  --sky-ink: #22566e;
-  --berry: #9a4f6b;
-  --berry-soft: #f3e2e8;
-  --berry-ink: #76304d;
+  --forest: #1d4f8c; /* lake: the main color (the family calls the role "forest") */
+  --forest-hover: #173f72;
+  --forest-soft: #d2ddf2;
+  --forest-ink: #173c6c; /* text on forest-soft */
+  --trail-orange: #d4501c; /* ember */
+  --trail-orange-hover: #b9420f;
+  --trail-orange-soft: #f6cfb8;
+  --trail-orange-ink: #8f2f0a;
+  --yellow: #f2b705; /* lantern */
+  --yellow-soft: #fdf0b8;
+  --yellow-ink: #674800;
+  --sky: #3290cc; /* glacier: lighter than the lake, so the two differ by lightness */
+  --sky-soft: #e8f4fb;
+  --sky-ink: #185c88;
+  --berry: #5c2e1c; /* cedar */
+  --berry-soft: #e8d3c3;
+  --berry-ink: #4f2717;
   --on-accent: #ffffff;
 
   /* lines */
@@ -61,7 +63,7 @@
   /* atmosphere: The Lodge's own. Growth rings in warm cedar instead of Trailmix's contour lines, and a
      hearth glow low on the left where Trailmix has its sunrise */
   --grain: rgba(120, 86, 46, 0.06);
-  --glow-green: rgba(31, 94, 75, 0.07);
+  --glow-green: rgba(29, 79, 140, 0.07);
   --glow-warm: rgba(245, 184, 58, 0.12);
   --glow-hearth: rgba(240, 166, 64, 0.09);
   --skeleton-a: #eeeae0;
@@ -84,23 +86,23 @@
   --text-secondary: #a9aaa1;
   --text-tertiary: #72776f;
 
-  --forest: #52a487;
-  --forest-hover: #66b699;
-  --forest-soft: #19332f;
-  --forest-ink: #96d5be;
-  --trail-orange: #ec7347;
-  --trail-orange-hover: #f2875d;
-  --trail-orange-soft: #3a2219;
-  --trail-orange-ink: #f4a784;
-  --yellow: #f3b955;
-  --yellow-soft: #352b16;
-  --yellow-ink: #f3d08c;
-  --sky: #7db3cf;
-  --sky-soft: #172a34;
-  --sky-ink: #a8d0e4;
-  --berry: #cc85a0;
-  --berry-soft: #321f28;
-  --berry-ink: #e5b0c4;
+  --forest: #6aa0ec;
+  --forest-hover: #84b2f0;
+  --forest-soft: #1a2c50;
+  --forest-ink: #b4cff7;
+  --trail-orange: #ef7a45;
+  --trail-orange-hover: #f48f60;
+  --trail-orange-soft: #3e1b0e;
+  --trail-orange-ink: #f6ad87;
+  --yellow: #f6c63c;
+  --yellow-soft: #463a0c;
+  --yellow-ink: #f6dc8e;
+  --sky: #a7d8f5;
+  --sky-soft: #1a3040;
+  --sky-ink: #c4e5f8;
+  --berry: #d9c4aa; /* birch */
+  --berry-soft: #2c2620;
+  --berry-ink: #e6d6c2;
   --on-accent: #0c1214;
 
   --border: rgba(214, 228, 226, 0.08);
@@ -117,7 +119,7 @@
   --shadow-chrome: 8px 0 40px -12px rgba(0, 0, 0, 0.4);
 
   --grain: rgba(236, 220, 190, 0.04);
-  --glow-green: rgba(82, 164, 135, 0.08);
+  --glow-green: rgba(106, 160, 236, 0.08);
   --glow-warm: rgba(242, 190, 78, 0.04);
   --glow-hearth: rgba(240, 140, 60, 0.08);
   --skeleton-a: #162022;

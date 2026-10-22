@@ -33,7 +33,7 @@ decided, and the order we build it in.
 | 18 | **Bulk research import, Gemini-shaped briefs, flagged duplicates** (asked for 2026-10-18) | M–L | ☑ 2026-10-19 (not yet run on a real Gemini report) |
 | 19 | **The Lodge runs Gemini research itself** (asked for 2026-10-18) | M | ☑ 2026-10-19 (usual level: Better through Batch) |
 | 20 | **Network presets: focused questions, and lists the AI writes** (asked for 2026-10-21) | M | ☑ 2026-10-21 (AI lists not yet run against a real model) |
-| 21 | **Lake and lantern: a colorblind-safe palette for The Lodge** (asked for 2026-10-21) | S–M | ☐ approved, building |
+| 21 | **Lake and lantern: a colorblind-safe palette for The Lodge** (asked for 2026-10-21) | S–M | ☑ 2026-10-21 |
 
 Milestones: **A** "it runs" = 0 · **B** "your data, natively" = 1–3 · **C** "browse and rate in the app" = 4–6
 (The owner can stop using Docker for reading; AI intake still needs the old app) · **D** "feature parity" = 7–10 ·
@@ -830,6 +830,36 @@ by hand, 23 people) shown and drawn. **Not verified:** a real AI writing a list.
 profiles job uses Gemini for the owner. The first "Suggest some" in the installed app is the check. Known rough edges: the
 canvas legend covers part of a narrow canvas, and a React warning about state set during render comes from the graph
 library's hover handling (it was there before this chunk).
+
+### Chunk 21 · Lake and lantern: a colorblind-safe palette for The Lodge (S–M) — DONE
+
+The owner (2026-10-21) asked for a palette that holds for red-green colorblind eyes (protan/deutan type: red, green and brown run together); the old colors didn't, and each family app should have its own palette while sharing the design and UX. The owner approved the
+proposal from a comparison page (current against proposed, in Day and Dusk, as drawn and simulated for protan and
+deutan eyes), with the lake-blue mark.
+
+- **The audit.** Simulated with Machado 2009 at full strength and measured in CIEDE2000, the old palette's closest
+  meanings were spruce (main color, done) against lingonberry (Them): 10.0 apart in deutan vision by day and 5.9 at
+  dusk. Every tinted chip background was within 2–4 of the others, so "Added", "Reading", "Them" and neutral chips
+  looked the same: the flatness he saw.
+- **The palette** (`identity/tokens.css`, values and reasons in `identity/DESIGN.md`): lake blue for the main color,
+  ember for errors, lantern yellow for "needs you", glacier (a lighter blue) for "working on it" and You, and cedar
+  for Them. Every meaning sits on the blue-to-yellow axis or a step of lightness. Closest pair of dots now 19.6
+  (deutan, day) and 12.6 (deutan, dusk); chips at least 6.2 at dusk. White on lake 8.2:1, white on ember 4.2:1 (up
+  from 3.6), glacier 3.2:1 on the page. Token names stay the family's, so no component changed, and nothing in the
+  family's shared code needed a hook: `identity/tokens.css` already holds each app's values.
+- **The mark** is on a lake tile (`#3B72B8 → #1D4F8C`) in `Logo`, the favicon and the app icon (`make-icon.swift`
+  run again). The menu bar icon is a template image, so it's unchanged.
+- The family design guide the owner started (`~/Desktop/Lodge Family Design Guide`, `01-ui-and-ux.md` §2 and the README)
+  says the project app should **reuse The Lodge's palette exactly** and set itself apart only by mark, scene and
+  motif. That contradicts the owner's new direction (each app its own palette, same roles and kit). The guide isn't
+  changed here; it needs updating before the project app is built.
+- The simulation script, the palettes tried and the comparison page are in `build/palette/` (not in git);
+  the page is also at https://claude.ai/artifact/44RUgarKdyKXYt7aWKrFuX.
+
+**Verified in a browser on a copy of the real data**, Day and Dusk: Home (tier bars, section wells, links), the
+Inbox, the network canvas with a group and a preset switched on (fills, rings, outlines, the preset panel), and the new
+icon. `scripts/check` green. **Not checked by eye:** every status chip tone on a live screen (the comparison page
+draws them from the same values), and the Scene artwork, whose pines and lake keep their own colors.
 
 ## 6. Risks and spikes
 

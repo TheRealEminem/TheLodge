@@ -7,29 +7,43 @@ family's `DESIGN.md` §2 leaves to each app, nudges the palette toward its own m
 **The idea:** *where the trail ends up.* Trailmix is out on the walk. The Lodge is the place you come back to,
 where your people are: a cabin by a mountain lake, with a fire going.
 
-## Palette
+## Palette: lake and lantern
 
-Same roles, same pairs (`soft` + `deep`), contrast equal to or better than Trailmix's on every pair. The values
-live in `identity/tokens.css`; the tables in the family's `DESIGN.md` §3 describe Trailmix.
+Same roles, same pairs (`soft` + `deep`), every text pair at 4.5:1 or better. The values live in `identity/tokens.css`;
+the tables in the family's `DESIGN.md` §3 describe Trailmix. The token names stay the family's (`forest`, `trail`,
+`sun`, `sky`, `berry`), so components don't change; what they hold is The Lodge's own.
 
-| Token | Trailmix Day / Dusk | The Lodge Day / Dusk | Why |
-| --- | --- | --- | --- |
-| `canvas` | `#F8F7F2` / `#0F1513` | `#F7F4EC` / `#0E1416` | Warm linen by day; a spruce-blue night by the lake |
-| `surface` | `#FFFEFA` / `#18211D` | `#FFFDF8` / `#172023` | |
-| `ink` | `#1C2922` / `#E9EDE8` | `#21271F` / `#ECEAE3` | Olive-black; candlelit paper at night |
-| `ink-soft` | `#667269` / `#A1ADA5` | `#666A5F` / `#A9AAA1` | 5.0:1 and 7.9:1 on the canvas |
-| `forest` | `#236347` / `#4FA27A` | `#1F5E4B` / `#52A487` | Spruce: a touch deeper and bluer |
-| `trail` | `#E86636` / `#EE7445` | `#DE5F31` / `#EC7347` | Ember (white on it is 3.6:1, up from 3.3) |
-| `sun` | `#F5B83A` / `#F2BE4E` | `#F2B13C` / `#F3B955` | Lantern |
-| `sky` | `#4F86A8` / `#7FB2D3` | `#457F9C` / `#7DB3CF` | Lake |
-| `berry` | `#9B5575` / `#CB86A6` | `#9A4F6B` / `#CC85A0` | Lingonberry |
-| lines, shadows | forest-tinted | warm olive-tinted (`rgba(56,52,36,…)`, `rgba(40,36,22,…)`) | |
+**Why it isn't Trailmix's green (chosen 2026-10-21).** The target is red-green colorblind eyes (protan/deutan type). Trailmix's
+palette tells its meanings apart mostly by green against orange, pink and brown, which those eyes see as the same
+olive. Simulated (Machado 2009, full strength), today's spruce and lingonberry dots were only 10 apart in deutan
+vision (CIEDE2000; Dusk 5.9) and the tinted chips 2 to 3 apart, so "Added", "Them", "Reading" and plain chips looked
+alike. The Lodge now puts every meaning on the axis those eyes keep, blue to yellow, or on a clear step of
+lightness, and never on red against green alone.
+
+| Token | Its job | Was (Day / Dusk) | Now (Day / Dusk) | Material |
+| --- | --- | --- | --- | --- |
+| `forest` | The main action, selection, links, tier bars, done | spruce `#1F5E4B` / `#52A487` | `#1D4F8C` / `#6AA0EC` | Lake at dusk |
+| `trail` | Something went wrong; destructive hovers | `#DE5F31` / `#EC7347` | `#D4501C` / `#EF7A45` | Ember, a touch deeper |
+| `sun` | Needs you | `#F2B13C` / `#F3B955` | `#F2B705` / `#F6C63C` | Lantern, brighter and yellower |
+| `sky` | Working on it · You | `#457F9C` / `#7DB3CF` | `#3290CC` / `#A7D8F5` | Glacier, lighter than the lake |
+| `berry` | Them | `#9A4F6B` / `#CC85A0` | `#5C2E1C` / `#D9C4AA` | Cedar (dark by day, birch by night) |
+
+Closest pair of meanings, as dots and buttons (CIEDE2000, under ~10 they look alike): Day 13.7 → 21.4 protan,
+10.0 → 19.6 deutan; Dusk 10.9 → 16.4 protan, 5.9 → 12.6 deutan. Tinted chips: Day 2.0 → 3.5 protan (5.8 between
+everything but cedar), Dusk 2.2 → 6.2 deutan. Lake and glacier differ by lightness, which is all two blues can do
+for these eyes; a chip always carries its word, and "Reading" also has a live dot.
+
+White on lake is 8.2:1 (spruce was 7.6). White on ember is 4.2:1 (was 3.6). Glacier is 3.2:1 on the page, enough for
+spinners and dots. Surfaces, ink, lines and shadows are unchanged: warm linen by day, a spruce-blue night by the lake.
+To check a change, simulate it: the script and the comparison page are linked from PLAN.md chunk 21.
+
+The mark's tile is lake too (`#3B72B8 → #1D4F8C`), so the icon stands apart from Trailmix's green one in the Dock.
 
 ## Artwork and atmosphere
 
 | | Trailmix | The Lodge |
 | --- | --- | --- |
-| Mark | Low sun and a cream trail | Low sun and a cream A-frame (`Logo`) |
+| Mark | Low sun and a cream trail on a forest tile | Low sun and a cream A-frame on a lake tile (`Logo`) |
 | Hero art | `TrailScene`: rolling hills and a winding trail | `Scene`: snow-capped peaks, a lake with the far shore reflected, an A-frame tucked into pines, a fire with two log seats, a dock and a canoe. The cream path from Trailmix's scene leads up to the lodge door |
 | Time of day | Day theme shows day, Dusk theme shows dusk | The scene keeps the clock on both themes (below) |
 | Motion | A hiker walks the trail while recording | Smoke from the stove sways slowly (Home only, and never with reduced motion) |
