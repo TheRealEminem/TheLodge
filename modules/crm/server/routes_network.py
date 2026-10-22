@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field
 
 from core.server import db
 
-from . import people_net, store
+from . import people_net, presets, store
 
 router = APIRouter(prefix="/network")
 
@@ -101,3 +101,74 @@ def save_view(body: ViewIn):
 def delete_view(view_id: str):
     if not db.execute("DELETE FROM crm_views WHERE id = ?", (view_id,)):
         raise HTTPException(404, "View not found")
+
+
+# ── Presets ───────────────────────────────────────────────────────────
+
+def _bad(e: presets.PresetError) -> HTTPException:
+    return HTTPException(400, str(e))
+
+
+class PresetIn(BaseModel):
+    name: str = Field(min_length=1, max_length=80)
+    about: str = Field("", max_length=240)
+    spec: dict
+
+
+class AskIn(BaseModel):
+    request: str = Field("", max_length=presets.MAX_REQUEST)
+
+
+@router.get("/presets")
+def list_presets():
+    """The presets you saved."""
+    return presets.saved()
+
+
+@router.get("/presets/choices")
+def preset_choices():
+    """What a preset can be about: every group and every meeting or document with people on it."""
+    return presets.choices()
+
+
+@router.post("/presets/run")
+def run_preset(spec: dict):
+    """Who a preset finds right now, each with the reasons. Changes nothing."""
+    try:
+        return presets.run(spec)
+    except presets.PresetError as e:
+        raise _bad(e) from e
+
+
+@router.post("/presets", status_code=201)
+def save_preset(body: PresetIn):
+    try:
+        return presets.save(body.name, body.about, body.spec)
+    except presets.PresetError as e:
+        raise _bad(e) from e
+
+
+@router.delete("/presets/{preset_id}", status_code=204)
+def delete_preset(preset_id: str):
+    if not presets.delete(preset_id):
+        raise HTTPException(404, "Preset not found")
+
+
+@router.get("/presets/asks")
+def preset_asks():
+    """What you asked the AI for lately, and the presets it wrote."""
+    return presets.asks()
+
+
+@router.post("/presets/asks", status_code=202)
+def ask_for_presets(body: AskIn):
+    """Ask the AI for a list, or (with no request) for a few presets worth having."""
+    try:
+        return presets.ask(body.request)
+    except presets.PresetError as e:
+        raise _bad(e) from e
+
+
+@router.delete("/presets/asks/{ask_id}", status_code=204)
+def dismiss_ask(ask_id: str):
+    presets.dismiss(ask_id)

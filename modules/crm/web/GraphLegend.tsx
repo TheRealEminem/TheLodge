@@ -1,7 +1,7 @@
 import { GROUP_META, GROUP_ORDER, GroupGlyph } from "./groups";
 
 /** What the network's marks mean: how well you know someone (fill), what a line says, and what a group's outline is. */
-export function GraphLegend({ wells, events }: { wells: boolean; events: boolean }) {
+export function GraphLegend({ wells, preset = false, events }: { wells: boolean; preset?: boolean; events: boolean }) {
   return (
     <div className="space-y-1 text-meta text-ink-soft">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
@@ -18,10 +18,10 @@ export function GraphLegend({ wells, events }: { wells: boolean; events: boolean
         <span className="inline-flex items-center gap-1.5"><i className="inline-block h-0 w-5 border-t border-dotted border-ink-soft" /> came up there</span>
         {events && <span>Click a person to see their meetings and documents.</span>}
       </div>
-      {wells && (
+      {(wells || preset) && (
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
           <span>Groups:</span>
-          {GROUP_ORDER.map((k) => (
+          {[...GROUP_ORDER, ...(preset ? ["preset" as const] : [])].map((k) => (
             <span key={k} className="inline-flex items-center gap-1.5"><GroupGlyph kind={k} className="text-forest" /> {GROUP_META[k].one.toLowerCase()}</span>
           ))}
         </div>

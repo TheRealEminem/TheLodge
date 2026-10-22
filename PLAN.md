@@ -32,6 +32,8 @@ decided, and the order we build it in.
 | 17 | **Shared Google Sheet: a second way in for anyone** (asked for 2026-10-18) | M | ☑ 2026-10-18 (not yet run against a real Google Sheet) |
 | 18 | **Bulk research import, Gemini-shaped briefs, flagged duplicates** (asked for 2026-10-18) | M–L | ☑ 2026-10-19 (not yet run on a real Gemini report) |
 | 19 | **The Lodge runs Gemini research itself** (asked for 2026-10-18) | M | ☑ 2026-10-19 (usual level: Better through Batch) |
+| 20 | **Network presets: focused questions, and lists the AI writes** (asked for 2026-10-21) | M | ☑ 2026-10-21 (AI lists not yet run against a real model) |
+| 21 | **Lake and lantern: a colorblind-safe palette for The Lodge** (asked for 2026-10-21) | S–M | ☐ approved, building |
 
 Milestones: **A** "it runs" = 0 · **B** "your data, natively" = 1–3 · **C** "browse and rate in the app" = 4–6
 (The owner can stop using Docker for reading; AI intake still needs the old app) · **D** "feature parity" = 7–10 ·
@@ -786,6 +788,48 @@ searches a month, which this key may well cover.
 `crm.research_batch = true`); Quick and Best stay as choices in the dialog. **Open:** Gemini 4 Argon and 3.8 Flash were offered
 to this key; another key might not have them, and the error says which model. Not tried: the Google Deep Research
 agent (~$1–3 a person, by Google's estimate) as a fourth level.
+
+### Chunk 20 · Network presets: focused questions, and lists the AI writes (M) — DONE
+
+The owner (2026-10-21): the Network "still isn't doing what I need it to do". Switching groups on shows clusters, but it
+doesn't answer the questions he brings to it. He picked six presets from a shortlist (he left out "strong ties gone
+quiet"), and for the AI chose **rules plus picks**: a rule the app matches against the book, plus people the AI finds
+in summaries, each with a reason.
+
+- **`presets.py`**: each preset is a list of people with the reasons beside every name, worked out fresh from the
+  book each time it runs (nothing is written to the graph). Built in:
+  - **Who you know at…** an organization (staff, former staff, advisors, investors, anyone linked), a topic or a tag;
+    the people you know best first.
+  - **Who could introduce you to…** a person (people you know who know them, met them or work alongside them, ranked
+    by your tie times theirs) or an organization (people you know there, then people you know who know someone there).
+  - **Investors and advisors**: tags (investor, advisor, vc, angel…), invested-in and advises ties, and titles.
+  - **Everyone from an event**: a meeting, meetings with the same name, and anyone tagged with its name
+    (Northwest Innovation Showcase finds 22, BVC 18).
+  - **In two groups at once**: the people who bridge two groups.
+  - **Follow-ups waiting**: prospects, leads, thank-you notes, soft contacts and "Met at event", the ones you haven't
+    met or rated first (strong ties left out).
+  - **A rule**: tags, topics, organizations, events, words in titles or summaries, plus hand-picked people with reasons.
+- **The AI writes rules** (job `crm/write_presets`, the "profiles" AI job, interactive lane): from a request ("everyone
+  who could help with cold-chain funding") or, with none, 4–6 suggestions that don't repeat the built-in ones. It's
+  given the book compactly (tags, topics, organizations, meetings with ids; each person with tier, role, tags, groups
+  and a cut of their summary; about 36k characters for the real data). Ids it makes up are dropped, and an idea that
+  finds nobody is left out. The last 6 asks are kept.
+- **Tables** (migration step 8): `crm_presets` (saved: name, about, spec, source) and `crm_preset_asks`. Saved presets are
+  in the export. API under `/api/crm/network/presets` (run, choices, saved, asks).
+- **Screen:** an "Ask the network" row on the Network page: the six presets (the ones that need something open a
+  small picker), "Ask for a list…" (the AI panel: write a request or "Suggest some"; each idea shows how many it finds
+  and a few names, with Show and Save), and Saved presets. A preset's answer is a side panel (people, tier, reasons;
+  Save preset, Pick everyone to tag them, Delete for a saved one) and is drawn on the canvas as one more group, with
+  its own outline (long and short dashes) so everyone else fades. The List view shows the same people.
+- 17 new tests (`test_presets.py`); `scripts/check` green with 261 tests.
+
+**Verified in a browser on a copy of the real data:** Who could introduce you to Mercy Corps (Lena Lowell there, then
+Elijah and Isaiah from the outreach call), Everyone from BVC (18), the canvas drawing a preset as a group, the AI
+panel's error when no AI is ready ("Add an API key for Google Gemini in Settings"), and a sample AI answer (inserted
+by hand, 23 people) shown and drawn. **Not verified:** a real AI writing a list. The copy has no Gemini key, and the
+profiles job uses Gemini for the owner. The first "Suggest some" in the installed app is the check. Known rough edges: the
+canvas legend covers part of a narrow canvas, and a React warning about state set during render comes from the graph
+library's hover handling (it was there before this chunk).
 
 ## 6. Risks and spikes
 

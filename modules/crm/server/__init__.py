@@ -6,7 +6,7 @@ Everything is a node (crm_entities) or an edge (crm_relationships). See store.py
 from core.server import jobs, schedule
 from core.server.module import Module
 
-from . import calendar_sync, duplicates, exporting, gemini_research, granola, ingest, profiles, roles, routes, sheet_sync, store
+from . import calendar_sync, duplicates, exporting, gemini_research, granola, ingest, presets, profiles, roles, routes, sheet_sync, store
 
 def on_settings_changed(payload: dict) -> None:
     """Pasting a key or an address is the cue to try it, so the first sync doesn't wait for its turn."""
@@ -32,10 +32,11 @@ MODULE = Module(
     jobs={"extract": ingest.handle_extract, "granola_sync": granola.handle_sync, "calendar_sync": calendar_sync.handle_sync,
           "overview": profiles.write_overview, "overview_now": profiles.write_overview, "answer": profiles.answer,
           "overview_sweep": profiles.sweep, "sheet_sync": sheet_sync.handle_sync,
-          "duplicates_check": duplicates.handle_check, "research_advance": gemini_research.handle_advance},
+          "duplicates_check": duplicates.handle_check, "research_advance": gemini_research.handle_advance,
+          "write_presets": presets.write},
     lanes={"extract": ingest.lane, "granola_sync": "cloud", "calendar_sync": "cloud",
            "overview": profiles.overview_lane, "overview_now": "interactive", "answer": "interactive", "overview_sweep": "cloud",
-           "sheet_sync": "cloud", "duplicates_check": "cloud", "research_advance": "cloud"},
+           "sheet_sync": "cloud", "duplicates_check": "cloud", "research_advance": "cloud", "write_presets": "interactive"},
     recurring={"granola_sync": granola.seconds, "calendar_sync": calendar_sync.seconds, "overview_sweep": profiles.sweep_seconds,
                "sheet_sync": sheet_sync.seconds, "duplicates_check": duplicates.seconds,
                "research_advance": gemini_research.seconds},
