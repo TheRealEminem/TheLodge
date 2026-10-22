@@ -6,11 +6,14 @@ Each module declares its own settings under its id as namespace ("notes.auto_sum
 
 Secrets (names ending in _api_key, _token or _secret) are write-only from the web app's point of view: they're never
 sent back, only a hint of what's stored ("…1234").
+
+A few settings are shared with the other family apps on this Mac (family.py: the AI settings, your name, the
+appearance): reading one gives the family's value, and saving one saves it for every family app as well as here.
 """
 import json
 import os
 
-from . import config, db
+from . import config, db, family
 
 _defaults: dict[str, object] = {}
 _choices: dict[str, tuple] = {}
@@ -47,9 +50,16 @@ def _env_default(key: str, default):
     return raw
 
 
+def stored_here() -> dict:
+    """What this app itself has saved, before the family's shared values are laid over it."""
+    return {r["key"]: json.loads(r["value"]) for r in db.query("SELECT key, value FROM core_settings")}
+
+
 def get_all() -> dict:
     """Every setting with its effective value, secrets included. For server use only."""
-    stored = {r["key"]: json.loads(r["value"]) for r in db.query("SELECT key, value FROM core_settings")}
+    stored = stored_here()
+    if family.sharing(stored):
+        stored.update({k: v for k, v in family.values().items() if k in _defaults})
     out = {}
     for key, default in _defaults.items():
         value = stored.get(key)
@@ -90,12 +100,15 @@ def update(changes: dict) -> dict:
             if not value.startswith(("http://", "https://")):
                 raise ValueError(f"{key} must start with http:// or https://")
             changes[key] = value.rstrip("/")
+    clean = {key: (value.strip() if is_secret(key) else value) for key, value in changes.items()}
     with db.connect() as conn:
-        for key, value in changes.items():
+        for key, value in clean.items():
             conn.execute(
                 "INSERT INTO core_settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-                (key, json.dumps(value.strip() if is_secret(key) else value)),
+                (key, json.dumps(value)),
             )
+    if family.sharing(stored_here()):
+        family.put(clean)                       # the shared ones, for every family app on this Mac
     return public()
 
 

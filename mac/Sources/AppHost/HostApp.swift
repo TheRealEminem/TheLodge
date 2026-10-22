@@ -63,30 +63,70 @@ struct MenuContent: View {
             Text("Starting…")
         }
         Divider()
-        switch updater.state {
-        case .available(let version):
-            Button("Install Version \(version)…") { updater.install() }
-        case .downloading(let version, let progress):
-            Text("Downloading \(version)… \(progress.map { "\(Int($0 * 100))%" } ?? "")")
-        case .installing(let version):
-            Text("Installing \(version)…")
-        case .failed(let why):
-            Text(why)
-            Button("Check for Updates…") { Task { await updater.check(manual: true) } }
-        default:
-            if Updater.enabled {
-                Button(updater.state == .upToDate ? "Up to Date · Check Again" : "Check for Updates…") {
-                    Task { await updater.check(manual: true) }
-                }
-            }
+        if Updater.enabled {
+            UpdateItems(updater: updater)
         }
-        Toggle("Open at Login", isOn: Binding(get: { host.openAtLogin }, set: { host.setOpenAtLogin($0) }))
+        Toggle("Open at login", isOn: Binding(get: { host.openAtLogin }, set: { host.setOpenAtLogin($0) }))
         Divider()
-        Button("Show Data Folder") { NSWorkspace.shared.activateFileViewerSelecting([Bundled.dataDirectory]) }
-        Button("Show Server Log") { NSWorkspace.shared.open(Bundled.logFile) }
+        Button("Show data folder") { NSWorkspace.shared.activateFileViewerSelecting([Bundled.dataDirectory]) }
+        Button("Show server log") { NSWorkspace.shared.open(Bundled.logFile) }
         Divider()
         Button("Quit \(AppConfig.name)") { NSApp.terminate(nil) }
             .keyboardShortcut("q")
+    }
+}
+
+/// What's on offer, then "Updates" with the rest: beta updates, a skipped version, and going back.
+struct UpdateItems: View {
+    @ObservedObject var updater: Updater
+
+    var body: some View {
+        switch updater.state {
+        case .available(let version):
+            Button("Install version \(version)…") { updater.install() }
+            Button("Skip this version") { updater.skip() }
+        case .downloading(let version, let progress):
+            Text("Downloading \(version)…\(progress.map { " \(Int($0 * 100))%" } ?? "")")
+        case .installing(let version):
+            Text("Installing \(version)…")
+        case .goingBack(let version):
+            Text("Going back to \(version)…")
+        case .failed(let why):
+            Text(why)
+            Button("Try again") { updater.tryAgain() }
+        case .checking:
+            Text("Checking for updates…")
+        case .offline:
+            Button("Couldn’t reach GitHub · Try again") { Task { await updater.check(manual: true) } }
+        case .upToDate:
+            Button("Up to date · Check again") { Task { await updater.check(manual: true) } }
+        case .idle:
+            Button("Check for updates…") { Task { await updater.check(manual: true) } }
+        }
+        Menu("Updates") {
+            Toggle("Beta updates", isOn: Binding(get: { updater.beta }, set: { updater.beta = $0 }))
+            if let skipped = updater.skipped {
+                Button("Offer \(skipped) again") { updater.unskip() }
+            }
+            if let previous = updater.previous {
+                Divider()
+                Button("Go back to \(previous)…") { Self.confirmGoBack(to: previous, updater: updater) }
+            }
+        }
+        .disabled(updater.working)
+    }
+
+    /// Going back replaces the app and restarts it, so it asks first.
+    static func confirmGoBack(to previous: String, updater: Updater) {
+        let name = AppConfig.name, current = Updater.current
+        NSApp.activate()
+        let alert = NSAlert()
+        alert.messageText = "Go back to \(name) \(previous)?"
+        alert.informativeText = "\(name) \(current) is replaced with \(previous), the version it updated from, and restarts. "
+            + "Your data stays. \(current) won’t be offered again; the next version will."
+        alert.addButton(withTitle: "Go back to \(previous)")
+        alert.addButton(withTitle: "Cancel")
+        if alert.runModal() == .alertFirstButtonReturn { updater.goBack() }
     }
 }
 

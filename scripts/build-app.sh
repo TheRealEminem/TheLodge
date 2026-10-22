@@ -50,6 +50,8 @@ cp "$ROOT/identity/mac/Mark.swift" "$ROOT/mac/Sources/AppHost/Mark.swift"
 swift build -c release --package-path "$ROOT/mac" 2>&1 | grep -E "error|Build complete" | tail -n 3 || true
 BIN="$(swift build -c release --package-path "$ROOT/mac" --show-bin-path)/AppHost"
 [ -x "$BIN" ] || die "The menu bar app didn't build. Run: swift build -c release --package-path mac"
+# The updater's decisions (which version to offer, skipping, going back), so no build ships with them broken.
+"$(dirname "$BIN")/UpdateChecks" >/dev/null || die "The updater's checks failed. Run: swift run --package-path mac UpdateChecks"
 
 # ── Bundle ─────────────────────────────────────────────────────────────
 say "Assembling $NAME.app…"
@@ -117,7 +119,8 @@ find "$RES/python" -name __pycache__ -type d -prune -exec rm -rf {} +
 # Server code: core/ and every module (Python files and any assets/ folders; no web sources or tests).
 rsync -a --prune-empty-dirs --exclude='tests/' --exclude='web/' --exclude='__pycache__/' \
   --include='*/' --include='*.py' --include='assets/**' --exclude='*' "$ROOT/core" "$ROOT/modules" "$RES/app/"
-cp "$ROOT/app.json" "$ROOT/VERSION" "$RES/app/"
+cp "$ROOT/app.json" "$RES/app/"
+echo "$VERSION" >"$RES/app/VERSION"   # the version the build was given, so the server and Info.plist agree
 rsync -a --delete "$ROOT/dist/" "$RES/ui/"
 
 # Compile ahead of time, never re-checked against the source: the app is never written to while it runs

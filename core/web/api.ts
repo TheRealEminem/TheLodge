@@ -87,9 +87,63 @@ export const inApp = !!bridge;
 export const quitApp = () => bridge?.postMessage("quit");
 export const revealInFinder = (path: string) => bridge?.postMessage(`reveal:${path}`);
 
+/** Where the Mac app's updates stand (Updater.report in mac/), sent by its window as an "app-updates" event. */
+export interface UpdateReport {
+  enabled: boolean;
+  current: string;
+  state: "idle" | "checking" | "up-to-date" | "offline" | "available" | "downloading" | "installing" | "going-back" | "failed";
+  version?: string;
+  progress?: number | null;
+  error?: string;
+  prerelease?: boolean;
+  beta: boolean;
+  skipped?: string | null;
+  previous?: string | null;
+  working: boolean;
+  checked_at?: string | null;
+}
+export type UpdateCommand = "get" | "check" | "install" | "skip" | "unskip" | "beta-on" | "beta-off" | "go-back" | "try-again";
+export const sendUpdates = (what: UpdateCommand) => bridge?.postMessage(`updates:${what}`);
+
+/** A family app installed on this Mac (core/server/family.py). */
+export interface FamilyApp {
+  id: string;
+  name: string;
+  version: string;
+  running: boolean;
+  offers: string[];
+  seen_at: string;
+  self: boolean;
+}
+export interface FamilyStatus {
+  enabled: boolean;
+  folder: string | null;
+  sharing: boolean;
+  apps: FamilyApp[];
+}
+
+/** Someone from the people directory (core/server/people.py): you as "core:me", or a module's or family app's ref. */
+export interface Person {
+  ref: string;
+  name: string;
+  email: string | null;
+  detail: string | null;
+  module: string; // the module that knows them, "core" for you, "family" for another family app
+}
+export interface PeopleResult {
+  people: Person[];
+  /** How to see people another family app knows, when it's closed ("Open The Lodge to see this here."). */
+  note: string | null;
+}
+/** What a PersonPicker gives back: a ref from the directory, or null for a name typed in by hand. */
+export interface PersonChoice {
+  ref: string | null;
+  name: string;
+}
+
 export interface BackupItem {
   name: string;
-  kind: "auto" | "manual" | "before-restore";
+  kind: "auto" | "manual" | "before-restore" | "before-update";
   created_at: string;
   bytes: number;
 }
@@ -110,11 +164,13 @@ export const api = {
 
   settings: () => request<SettingsState>("/settings"),
   putSettings: (changes: Record<string, SettingValue>) => request<SettingsState>("/settings", json("PUT", changes)),
+  family: () => request<FamilyStatus>("/family"),
   providers: () => request<ProviderInfo[]>("/ai/providers"),
   providerModels: (id: ProviderId) => request<{ models: string[] }>(`/ai/providers/${id}/models`),
   providerTest: (id: ProviderId) => request<{ message: string }>(`/ai/providers/${id}/test`, json("POST")),
 
   search: (q: string) => request<SearchGroup[]>(`/search?q=${encodeURIComponent(q)}`),
+  people: (q: string, limit = 8) => request<PeopleResult>(`/people?q=${encodeURIComponent(q)}&limit=${limit}`),
   links: (ref: string) => request<Linked[]>(`/links?ref=${encodeURIComponent(ref)}`),
   jobGo: (id: string, force = false) => request<{ ok: true }>(`/jobs/${id}/go`, json("POST", { force })),
   jobRetry: (id: string) => request<{ ok: true }>(`/jobs/${id}/retry`, json("POST")),

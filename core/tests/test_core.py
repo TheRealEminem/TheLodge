@@ -61,6 +61,23 @@ def test_a_job_can_park_itself_and_be_forced_past_it():
     assert jobs.latest("testmod", ["t2"])["t2"]["status"] == "done"
 
 
+def test_the_app_is_busy_while_a_job_runs_but_not_while_one_waits_for_you(client):
+    import threading
+
+    started, release = threading.Event(), threading.Event()
+    jobs.register("testmod", "long", lambda job: (started.set(), release.wait(10)))
+    jobs.register("testmod", "asks", lambda job: None)
+    jobs.enqueue("testmod", "asks", "t5", approve=True)
+    jobs.drain()
+    assert client.get("/api/jobs/busy").json() == {"busy": False}  # parked for you isn't busy
+    jobs.enqueue("testmod", "long", "t4")
+    assert started.wait(5)
+    assert client.get("/api/jobs/busy").json() == {"busy": True}
+    release.set()
+    jobs.drain()
+    assert client.get("/api/jobs/busy").json() == {"busy": False}
+
+
 def test_failed_jobs_show_the_error_and_can_be_retried():
     attempts = []
 

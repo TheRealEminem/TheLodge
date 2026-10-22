@@ -46,7 +46,7 @@ DEFAULTS = {
     "anthropic_api_key": "",
     "openai_model": "gpt-5-mini",
     "openai_api_key": "",
-    "gemini_model": "gemini-2.5-flash",
+    "gemini_model": "gemini-flash-latest",   # gemini-2.5-flash is closed to new accounts (as Trailmix found)
     "gemini_api_key": "",
     "deepseek_model": "deepseek-chat",
     "deepseek_api_key": "",

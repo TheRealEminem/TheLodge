@@ -3,8 +3,8 @@
 A backup is a complete copy of the database made with SQLite's own online backup, so it is consistent even while the
 app is writing, and it holds everything every module keeps, plus settings and keys. They live in the data
 folder's `backups/` (private to you, like the database) and are not sent anywhere. One is made a day, kept for
-two weeks; "Back up now" makes another, and a restore first makes one of the state it replaces, so a restore can
-itself be undone.
+two weeks; "Back up now" makes another, a restore first makes one of the state it replaces, so a restore can
+itself be undone, and the first start of a new version makes one before its migrations change anything.
 
 Restoring copies a backup over the live database (SQLite takes the lock for the moment it needs), brings an older
 one up to date with the app's migrations, and tells modules to drop what they had cached.
@@ -24,9 +24,9 @@ log = logging.getLogger("core.backup")
 
 DIR = config.DATA_DIR / "backups"
 EXPORT_DIR = config.DATA_DIR / "exports"
-KEEP = {"auto": 14, "manual": 20, "before-restore": 5}
+KEEP = {"auto": 14, "manual": 20, "before-restore": 5, "before-update": 3}
 DAILY_AFTER_HOURS = 20          # the daily one is skipped if there is already one this recent (the app restarts often)
-_NAME = re.compile(rf"^{re.escape(config.APP_ID)}-\d{{8}}-\d{{6}}(?:-(manual|before-restore))?\.db$")
+_NAME = re.compile(rf"^{re.escape(config.APP_ID)}-\d{{8}}-\d{{6}}(?:-(manual|before-restore|before-update))?\.db$")
 
 router = APIRouter()
 
@@ -176,6 +176,37 @@ def restore(name: str) -> dict:
     events.publish("core.restored", {"name": name})
     log.info("restored %s (kept %s)", name, before["name"])
     return {"restored": name, "kept": before["name"], **info}
+
+
+# ── Each new version ──────────────────────────────────────────────────
+
+VERSION_KEY = "core.opened_by_version"   # in core_settings, undeclared, so it never shows in Settings
+
+
+def before_update() -> dict | None:
+    """At startup, before any migration: when this version of the app hasn't opened the database before, keep a
+    copy of it as the previous version left it (kind "before-update", three kept), so an update can be undone.
+    Nothing on a fresh install. A backup that fails is logged and the app starts anyway."""
+    if not db.DB_PATH.exists():
+        return None
+    try:
+        with sqlite3.connect(f"file:{db.DB_PATH}?mode=ro", uri=True) as c:
+            row = c.execute("SELECT value FROM core_settings WHERE key = ?", (VERSION_KEY,)).fetchone()
+    except sqlite3.Error:
+        row = None                                   # no settings table yet: an old database, so back it up
+    if row and json.loads(row[0]) == config.VERSION:
+        return None
+    try:
+        return make("before-update")
+    except Exception:  # noqa: BLE001 - never stop the app from starting over a backup
+        log.exception("couldn't back up before the update to %s", config.VERSION)
+        return None
+
+
+def record_version() -> None:
+    """After startup's migrations: this version has now opened the database."""
+    db.execute("INSERT INTO core_settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+               (VERSION_KEY, json.dumps(config.VERSION)))
 
 
 # ── Each day ──────────────────────────────────────────────────────────

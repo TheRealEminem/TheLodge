@@ -378,7 +378,7 @@ def test_describe_says_who_would_answer_and_whether_they_are_ready(cfg):
     d = ai.describe("auto")
     assert (d["provider"], d["ready"], d["model"], d["local"]) == ("anthropic", False, "", False) and "API key" in d["reason"]
     d = ai.describe("gemini")
-    assert (d["provider"], d["ready"], d["model"]) == ("gemini", True, "gemini-2.5-flash")
+    assert (d["provider"], d["ready"], d["model"]) == ("gemini", True, "gemini-flash-latest")
 
 
 def test_the_test_button_does_a_real_structured_round_trip(http, cfg):
