@@ -190,6 +190,27 @@ MIGRATIONS = [
     CREATE INDEX crm_research_runs_entity ON crm_research_runs(entity_id, created_at);
     CREATE INDEX crm_research_runs_status ON crm_research_runs(status);
     """,
+    # Network presets (presets.py): the ones you saved, and the lists you asked the AI to write.
+    """
+    CREATE TABLE crm_presets (
+        id          TEXT PRIMARY KEY,
+        name        TEXT NOT NULL,
+        about       TEXT NOT NULL DEFAULT '',
+        spec        TEXT NOT NULL,                  -- JSON: {"kind": "at" | "intro" | … | "rule", …what it's about}
+        source      TEXT NOT NULL DEFAULT 'you',    -- you | ai
+        created_at  TEXT NOT NULL
+    );
+    CREATE TABLE crm_preset_asks (
+        id          TEXT PRIMARY KEY,
+        request     TEXT NOT NULL DEFAULT '',       -- what you asked for; empty = "suggest some"
+        status      TEXT NOT NULL DEFAULT 'queued', -- queued | done | error
+        ideas       TEXT NOT NULL DEFAULT '[]',     -- JSON: the presets the AI wrote, each with how many it finds
+        error       TEXT,
+        written_by  TEXT,
+        created_at  TEXT NOT NULL,
+        answered_at TEXT
+    );
+    """,
 ]
 
 _version = 0

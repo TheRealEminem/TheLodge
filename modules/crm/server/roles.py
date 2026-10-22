@@ -2,8 +2,9 @@
 
     extraction  reading notes and documents into the graph. Quality matters (Claude Opus by default).
     utility     triage and spreadsheet column mapping. Cheap and fast (Gemini Flash by default).
-    profiles    each person's overview, and answers to questions about them. Same as the app by default, which is
-                the local model unless you chose otherwise. There is no "rules" reading of this one.
+    profiles    each person's overview, answers to questions about them, and lists for the network (presets). Same
+                as the app by default, which is the local model unless you chose otherwise. There is no "rules"
+                reading of this one.
 
 Each job's provider is a setting (`crm.extraction_provider`, `crm.utility_provider`): "auto" follows the
 app-wide provider and fallback chosen in Settings → AI, any one provider by id, or "rules" (no AI: a plain-text
@@ -17,7 +18,7 @@ from core.server import ai, settings
 ROLES = {
     "extraction": {"label": "Reading notes and documents", "hint": "Finds the people, organizations and relationships in what you add."},
     "utility": {"label": "Sorting and column mapping", "hint": "Decides what's worth reading, and what the columns in a spreadsheet mean."},
-    "profiles": {"label": "Overviews and questions", "hint": "Writes each person's overview and answers what you ask about them.", "rules": False},
+    "profiles": {"label": "Overviews and questions", "hint": "Writes each person's overview, answers what you ask about them, and writes lists for the network.", "rules": False},
 }
 SETTINGS = {"extraction_provider": "anthropic", "utility_provider": "gemini", "profiles_provider": "auto"}
 CHOICES = {f"{role}_provider": ("auto", *ai.PROVIDERS, *(("rules",) if info.get("rules", True) else ())) for role, info in ROLES.items()}
