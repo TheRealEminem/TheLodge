@@ -5,7 +5,7 @@
   "bundleId": "com.thelodge.app",
   "envPrefix": "LODGE",
   "port": 8791,
-  "updateRepo": "",
+  "updateRepo": "TheRealEminem/TheLodge",
   "modules": [
     "crm",
     "tasks"
