@@ -45,6 +45,21 @@ linked back to the note.
 > import one module from another (use events, contracts, links and search through the host), and run
 > scripts/check before you finish.
 
+## Releasing The Lodge
+
+Built on this Mac and published to GitHub, the way Trailmix ships. The download page is `docs/index.html`, served
+by GitHub Pages at https://therealeminem.github.io/TheLodge/, and its button always fetches the latest release.
+
+1. Set `VERSION` (say `0.3.0`), commit and push.
+2. Release it:
+   ```bash
+   scripts/release.sh v0.3.0
+   ```
+   This checks, builds the disk image, tries the app, and publishes the release with the disk image, its checksum (the
+   app's updater checks it) and `TheLodge-arm64.dmg`, the copy the download page links to. Installed apps offer the update.
+3. To try a version before everyone gets it, add `--beta` (a pre-release, which the page and the updater skip), then
+   `scripts/promote.sh v0.3.0` when it's good.
+
 ## License
 
 GNU Affero General Public License v3.0 (AGPL-3.0), copyright (C) 2026 The Lodge contributors; see [LICENSE](LICENSE). The app
