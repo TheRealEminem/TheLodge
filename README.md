@@ -44,3 +44,8 @@ linked back to the note.
 > module). Put new features in a module (scripts/new-module), follow the rules in ARCHITECTURE.md §3, never
 > import one module from another (use events, contracts, links and search through the host), and run
 > scripts/check before you finish.
+
+## License
+
+GNU Affero General Public License v3.0 (AGPL-3.0), copyright (C) 2026 The Lodge contributors; see [LICENSE](LICENSE). The app
+bundles the Geist, Geist Mono and Fraunces fonts (SIL OFL) and other open-source packages under their own licenses.
