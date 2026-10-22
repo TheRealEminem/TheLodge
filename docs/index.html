@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>The Lodge · who you know, and how well</title>
+  <meta name="description" content="The Lodge keeps the people you know, how well you know them and what you know about them, on your Mac. Free and open source." />
+  <link rel="icon" href="assets/logo.svg" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600&family=Geist:wght@400;500;600&display=swap" rel="stylesheet" />
+  <style>
+    /* The Lodge's palette, lake and lantern (identity/tokens.css): Day here, Dusk when the Mac is in dark mode */
+    :root {
+      --bg: #f7f4ec; --bg-top: #fcfaf5; --surface: #fffdf8; --ink: #21271f; --soft: #666a5f; --line: rgba(56, 52, 36, 0.11);
+      --lake: #1d4f8c; --lake-hover: #173f72; --lake-soft: #d2ddf2; --lake-ink: #173c6c; --lantern: #f2b705; --on-lake: #ffffff;
+      --grain: rgba(120, 86, 46, 0.07); --glow-lake: rgba(29, 79, 140, 0.07); --glow-warm: rgba(245, 184, 58, 0.12); --glow-hearth: rgba(240, 166, 64, 0.09);
+      --cta-shadow: rgba(29, 79, 140, 0.25);
+    }
+    @media (prefers-color-scheme: dark) {
+      :root:not([data-theme="light"]) {
+        --bg: #0e1416; --bg-top: #121a1d; --surface: #172023; --ink: #eceae3; --soft: #a9aaa1; --line: rgba(214, 228, 226, 0.08);
+        --lake: #6aa0ec; --lake-hover: #84b2f0; --lake-soft: #1a2c50; --lake-ink: #b4cff7; --lantern: #f6c63c; --on-lake: #0c1214;
+        --grain: rgba(236, 220, 190, 0.05); --glow-lake: rgba(106, 160, 236, 0.08); --glow-warm: rgba(242, 190, 78, 0.04); --glow-hearth: rgba(240, 140, 60, 0.08);
+        --cta-shadow: rgba(0, 0, 0, 0.35);
+      }
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--bg); color: var(--ink); font: 17px/1.6 Geist, -apple-system, system-ui, sans-serif; }
+    a { color: var(--lake); }
+    .wrap { max-width: 1040px; margin: 0 auto; padding: 0 20px; }
+    header { display: flex; align-items: center; justify-content: space-between; padding: 22px 0; }
+    .brand { display: flex; align-items: center; gap: 10px; font: 600 22px Fraunces, serif; color: var(--ink); text-decoration: none; }
+    .brand img { width: 34px; height: 34px; }
+    .gh { color: var(--soft); text-decoration: none; font-weight: 500; }
+    .hero { padding: 48px 0 28px; text-align: center; }
+    .hero .mark { width: 96px; height: 96px; margin-bottom: 22px; filter: drop-shadow(0 14px 30px var(--cta-shadow)); }
+    h1 { font: 600 clamp(38px, 6vw, 64px)/1.05 Fraunces, serif; letter-spacing: -0.02em; margin: 0 auto 18px; max-width: 14ch; }
+    .lead { color: var(--soft); font-size: 19px; max-width: 40rem; margin: 0 auto 30px; }
+    .cta { display: inline-flex; align-items: center; gap: 10px; background: var(--lake); color: var(--on-lake); text-decoration: none; font-weight: 600;
+      padding: 15px 26px; border-radius: 14px; font-size: 18px; box-shadow: 0 6px 20px var(--cta-shadow); }
+    .cta:hover { background: var(--lake-hover); }
+    .cta svg { width: 20px; height: 20px; }
+    .meta { color: var(--soft); font-size: 14px; margin-top: 12px; }
+    section { padding: 56px 0 8px; }
+    h2 { font: 600 32px/1.15 Fraunces, serif; margin: 0 0 8px; letter-spacing: -0.01em; }
+    .sub { color: var(--soft); margin: 0 0 26px; }
+    .steps { display: grid; gap: 16px; counter-reset: step; }
+    .step { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 22px 24px 22px 74px; position: relative; }
+    .step::before { counter-increment: step; content: counter(step); position: absolute; left: 22px; top: 20px; width: 34px; height: 34px;
+      border-radius: 50%; background: var(--lake-soft); color: var(--lake-ink); font-weight: 600; display: grid; place-items: center; }
+    .step h3 { margin: 0 0 6px; font-size: 18px; }
+    .step p, .step ol { margin: 6px 0 0; color: var(--soft); }
+    .step ol { padding-left: 20px; }
+    .step li { margin: 3px 0; }
+    b { color: var(--ink); font-weight: 600; }
+    code { font-size: 14px; background: var(--lake-soft); color: var(--lake-ink); padding: 1px 6px; border-radius: 6px; overflow-wrap: anywhere; }
+    .why { font-size: 14px; border-left: 3px solid var(--lantern); padding-left: 12px; margin-top: 12px !important; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(270px, 1fr)); gap: 16px; }
+    .card { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 20px 22px; }
+    .card h3 { margin: 0 0 6px; font-size: 17px; }
+    .card p { margin: 0; color: var(--soft); font-size: 15.5px; }
+    details { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 16px 20px; margin-bottom: 10px; }
+    summary { cursor: pointer; font-weight: 600; }
+    details p { color: var(--soft); margin: 10px 0 0; }
+    /* The app's backdrop: a soft gradient, a sun glow top right, a hearth glow low on the left, and watermark-faint growth rings */
+    .ambient { position: fixed; inset: 0; z-index: -1; pointer-events: none; overflow: hidden;
+      background: radial-gradient(34% 28% at 84% 2%, var(--glow-warm), transparent 72%),
+        radial-gradient(48% 44% at 26% 104%, var(--glow-hearth), transparent 72%),
+        radial-gradient(55% 50% at 60% 62%, var(--glow-lake), transparent 70%),
+        linear-gradient(180deg, var(--bg-top) 0%, var(--bg) 42%); }
+    .ambient svg { position: absolute; inset: 0; width: 100%; height: 100%;
+      -webkit-mask-image: radial-gradient(95% 95% at 78% 18%, #000 30%, transparent 88%); mask-image: radial-gradient(95% 95% at 78% 18%, #000 30%, transparent 88%); }
+    footer { color: var(--soft); font-size: 14px; padding: 56px 0 40px; text-align: center; }
+    @media (max-width: 560px) { .step { padding-left: 22px; padding-top: 66px; } .hero { padding-top: 24px; } }
+  </style>
+</head>
+<body>
+  <div class="ambient" aria-hidden="true"><svg viewBox="0 0 1600 1000" preserveAspectRatio="xMidYMid slice"><g id="rings" fill="none" stroke="var(--grain)"></g></svg></div>
+  <div class="wrap">
+    <header>
+      <a class="brand" href="./"><img src="assets/logo.svg" alt="" />The Lodge</a>
+      <a class="gh" href="https://github.com/TheRealEminem/TheLodge">GitHub</a>
+    </header>
+
+    <div class="hero">
+      <img class="mark" src="assets/logo.svg" alt="" />
+      <h1>Who you know, and how well</h1>
+      <p class="lead">The Lodge keeps your people in one place: how well you know each of them, how they're connected, and everything you've
+        learned along the way. Drop in notes, meetings and spreadsheets and it files them under the right people. It all lives on your Mac.</p>
+      <a class="cta" href="https://github.com/TheRealEminem/TheLodge/releases/latest/download/TheLodge-arm64.dmg">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12m0 0-5-5m5 5 5-5M5 21h14"/></svg>
+        Download for Mac
+      </a>
+      <div class="meta">Free and open source · Apple silicon (M1 or newer) · macOS 14 or later</div>
+    </div>
+
+    <section id="install">
+      <h2>Install in three steps</h2>
+      <p class="sub">A couple of minutes. Nothing else to install.</p>
+      <div class="steps">
+        <div class="step">
+          <h3>Open the download and drag The Lodge to Applications</h3>
+          <p>Double-click <b>TheLodge-arm64.dmg</b> in your Downloads, then drag The Lodge onto the Applications folder next to it.</p>
+        </div>
+        <div class="step">
+          <h3>Open it the first time with “Open Anyway”</h3>
+          <p>Open The Lodge from Applications. macOS says it “can't verify” The Lodge and offers only <b>Done</b> or <b>Move to Trash</b>: click <b>Done</b>. Then:</p>
+          <ol>
+            <li>Open <b>System Settings</b> (Apple menu) → <b>Privacy &amp; Security</b>.</li>
+            <li>Scroll down to <b>“The Lodge” was blocked to protect your Mac</b> and click <b>Open Anyway</b>.</li>
+            <li>Enter your Mac password if asked, then click <b>Open Anyway</b> once more.</li>
+          </ol>
+          <p class="why">Why: The Lodge isn't signed with a paid Apple developer certificate yet, so macOS asks you to confirm once. Updates install from inside the app without this step.</p>
+        </div>
+        <div class="step">
+          <h3>Bring your people in</h3>
+          <p>A window opens and a small A-frame appears in your menu bar. Add people by hand, or import a spreadsheet or your LinkedIn connections.
+            For the AI parts (reading notes, research, lists), add a Claude or Gemini key in <b>Settings</b>.</p>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h2>What it does</h2>
+      <p class="sub">A relationship CRM for one person: the people you know, and what you know about them.</p>
+      <div class="grid">
+        <div class="card"><h3>How well, not just who</h3><p>Rate how close you are to each person. Their profile keeps what you know, where you met and every note, in order.</p></div>
+        <div class="card"><h3>See your network</h3><p>A map of your people, gathered around the groups they belong to. Ask who could introduce you to someone, and see the path.</p></div>
+        <div class="card"><h3>Notes that file themselves</h3><p>Paste notes or drop in documents. The AI picks out the people, organizations and facts, and puts them where they belong. You review anything it isn't sure of.</p></div>
+        <div class="card"><h3>Meetings come to you</h3><p>Connect Granola or a calendar and new meetings arrive on their own, matched to the people who were in them.</p></div>
+        <div class="card"><h3>Research someone</h3><p>Flag someone you'd like to know better, and The Lodge researches them with Gemini and Google Search, then files the brief on their profile.</p></div>
+        <div class="card"><h3>One of everyone</h3><p>It spots people who are probably the same person and says why. Merges can always be undone.</p></div>
+        <div class="card"><h3>Lists on request</h3><p>Ask a focused question, like “who do I know in climate tech?”, and get a list written from your own book.</p></div>
+        <div class="card"><h3>A sheet others can add to</h3><p>Share a Google Sheet so people without the app can read, correct and add to your people.</p></div>
+      </div>
+      <p class="sub" style="margin-top:22px">Want the details: how it's built, where data lives, how to run it as a server? <a href="https://github.com/TheRealEminem/TheLodge/blob/main/ARCHITECTURE.md">It's all on GitHub.</a></p>
+    </section>
+
+    <section>
+      <h2>Questions</h2>
+      <details><summary>What do I need?</summary><p>A Mac with Apple silicon (M1 or newer) on macOS 14 or later. The AI features need your own Claude or Gemini API key; everything else works without one.</p></details>
+      <details><summary>Does anything leave my Mac?</summary><p>Your people and notes are stored on your Mac, in <code>~/Library/Application Support/The Lodge</code>, readable only by you.
+        Something leaves only when you ask for it: text you have the AI read goes to the AI provider you chose, research sends a person's name and details to Gemini, and a shared Google Sheet holds what you share in it.</p></details>
+      <details><summary>How do updates work?</summary><p>The Lodge checks for new versions and offers to install them from its menu. Your data is backed up on your Mac once a day and kept for two weeks, and you can make a backup any time in <b>Settings → Your data</b>.</p></details>
+      <details><summary>Windows, Linux or an Intel Mac?</summary><p>Not as an app. The server also runs in Docker on Linux; ARCHITECTURE.md on GitHub says how.</p></details>
+    </section>
+
+    <footer>The Lodge is free and open source (AGPL-3.0) · <a href="https://github.com/TheRealEminem/TheLodge">Source on GitHub</a> · <a href="https://github.com/TheRealEminem/TheLodge/releases">All releases</a> · A sibling of <a href="https://therealeminem.github.io/trailmix/">Trailmix</a></footer>
+  </div>
+  <script>
+    // Growth rings, the same as the app's (identity/art.tsx): the end of a log top right and a smaller one bottom left.
+    const noise = (i, seed) => { const x = Math.sin(i * 12.9898 + seed * 78.233) * 43758.5453; return x - Math.floor(x); };
+    function growthRings(cx, cy, n, first, avg, seed, lean = 0.06) {
+      const out = [];
+      let r = first;
+      for (let ring = 0; ring < n; ring++) {
+        const age = 1.45 - 0.8 * (ring / n);
+        const spell = Math.sin(ring * 0.37 + seed * 3) > 0.55 ? 0.45 : 1;
+        r += Math.max(avg * 0.3, avg * age * spell * (0.6 + 0.8 * noise(ring, seed)));
+        const ox = cx + Math.cos(seed) * r * lean, oy = cy + Math.sin(seed) * r * lean;
+        let d = "";
+        for (let k = 0; k <= 144; k++) {
+          const t = (k / 144) * Math.PI * 2;
+          const wob = 1 + 0.024 * Math.sin(2 * t + seed + r * 0.0016) + 0.016 * Math.sin(3 * t - seed * 1.3 + r * 0.0031) + 0.008 * Math.sin(5 * t + seed * 0.7 + r * 0.006);
+          d += `${k ? "L" : "M"}${(ox + Math.cos(t) * r * wob).toFixed(1)} ${(oy + Math.sin(t) * r * wob).toFixed(1)}`;
+        }
+        out.push({ d: d + "Z", late: spell < 1 || noise(ring + 97, seed) > 0.8 });
+      }
+      return out;
+    }
+    document.getElementById("rings").innerHTML = [...growthRings(1430, 70, 44, 12, 22, 0.9), ...growthRings(120, 990, 15, 10, 17, 2.4, 0.09)]
+      .map((r) => `<path d="${r.d}" stroke-width="${r.late ? 1.7 : 1}" vector-effect="non-scaling-stroke"/>`).join("");
+  </script>
+</body>
+</html>
