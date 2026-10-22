@@ -25,7 +25,8 @@ SHARED=(
   scripts/build-app.sh scripts/install-app.sh scripts/check-app.py
   ARCHITECTURE.md DESIGN.md conftest.py pytest.ini Dockerfile .dockerignore
   vite.config.ts tsconfig.json tailwind.config.js postcss.config.js
-  .github/workflows/test.yml .github/workflows/release.yml
+  .github/workflows/test.yml .github/workflows/release.yml .github/workflows/promote.yml
+  scripts/promote-beta.sh scripts/smoke-test.sh
 )
 # Never shared, wherever they turn up: caches, build output, and the copy of the app's mark the Mac build makes.
 IGNORE=(--exclude=__pycache__/ --exclude=.pytest_cache/ --exclude=.DS_Store --exclude=.build/
@@ -69,7 +70,7 @@ compare_with() {
       # Content only: a file that's new, deleted, or whose checksum (c) or size (s) differs. Times don't count.
       out="$(rsync -rlnc --delete --itemize-changes "${IGNORE[@]}" "$src/" "$dst/" | grep -E '^\*deleting|^[<>ch.][fL](\+|c|.s)' || true)"
       if [ -n "$out" ]; then
-        echo "$out" | sed -E "s#^\*deleting +(.*)#  ${path}\1  (only in this app)#; s#^[<>ch][^ ]* (.*)#  ${path}\1  (changed here)#"
+        echo "$out" | sed -E "s#^\*deleting +(.*)#  ${path}\1  (only in this app)#; s#^[<>ch.][fL]\+[^ ]* (.*)#  ${path}\1  (not in this app)#; s#^[<>ch][^ ]* (.*)#  ${path}\1  (changed here)#"
         differ=1
       fi
     elif [ ! -e "$dst" ] || ! cmp -s "$src" "$dst"; then

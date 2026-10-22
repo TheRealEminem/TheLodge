@@ -47,18 +47,21 @@ linked back to the note.
 
 ## Releasing The Lodge
 
-Built on this Mac and published to GitHub, the way Trailmix ships. The download page is `docs/index.html`, served
-by GitHub Pages at https://therealeminem.github.io/TheLodge/, and its button always fetches the latest release.
+The way Trailmix ships: every version goes out as a beta first, and becomes the release everyone gets a few days
+later. GitHub builds and publishes it (free for a public repo); day to day, `scripts/install-app.sh` still builds
+on this Mac. The download page is `docs/index.html`, served by GitHub Pages at
+https://therealeminem.github.io/TheLodge/, and its button always fetches the newest full release.
 
-1. Set `VERSION` (say `0.3.0`), commit and push.
-2. Release it:
+1. Set `VERSION` (say `0.4.0`), commit and push, then tag that commit:
    ```bash
-   scripts/release.sh v0.3.0
+   git tag v0.4.0 && git push origin v0.4.0
    ```
-   This checks, builds the disk image, tries the app, and publishes the release with the disk image, its checksum (the
-   app's updater checks it) and `TheLodge-arm64.dmg`, the copy the download page links to. Installed apps offer the update.
-3. To try a version before everyone gets it, add `--beta` (a pre-release, which the page and the updater skip), then
-   `scripts/promote.sh v0.3.0` when it's good.
+   `.github/workflows/release.yml` builds it, runs the updater smoke test and publishes a pre-release: the disk
+   image, its checksum (the updater checks it) and `TheLodge-arm64.dmg`, the copy the download page links to.
+2. People with **Beta updates** on (Settings → Updates, or the menu bar's Updates menu) are offered it right away.
+3. Every day `.github/workflows/promote.yml` makes the newest beta the full release once it's been out 3 days, unless
+   an open issue is labelled `blocks release`. Then everyone is offered it, and the download page serves it. To
+   promote one sooner, run "Promote beta" in the Actions tab with its tag, or `scripts/promote-beta.sh v0.4.0`.
 
 ## License
 

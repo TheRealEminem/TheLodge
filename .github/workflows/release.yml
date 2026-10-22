@@ -1,9 +1,20 @@
-# Builds the Mac app on GitHub. Only started by hand: Mac builders cost ten times the Linux ones, so the app is
-# normally built and installed on this Mac with scripts/install-app.sh.
-#   Actions tab -> "Build Mac app" -> Run  -> builds it and keeps it as a downloadable artifact
+# Builds the Mac app on GitHub, tries its updater, and publishes it as a *pre-release* (a beta) to app.json's
+# "updateRepo", the repo installed apps look in.
+#   bump VERSION and commit, then: git tag v0.2.0 && git push origin v0.2.0
+#       -> builds, runs scripts/smoke-test.sh, publishes <Name>-0.2.0-arm64.dmg (+ .sha256, and <Name>-arm64.dmg for
+#          a download page; spaces left out of the names) as a pre-release
+#   Actions tab -> "Build Mac app" -> Run   -> builds and tests it, keeps it as a downloadable artifact only
+#
+# A pre-release reaches only the people with "Beta updates" on. promote.yml makes it the release everyone gets
+# after a few days, unless an open issue is labelled "blocks release". With no updateRepo in app.json, updates are
+# off and nothing is published. To publish to a repo other than this one (a public one, for a private app's
+# code), put a token that can write to it in the RELEASE_TOKEN secret.
+# Mac builders cost ten times the Linux ones: day to day, build and install on this Mac with scripts/install-app.sh.
 name: Build Mac app
 
 on:
+  push:
+    tags: ["v*"]
   workflow_dispatch:
 
 permissions:
@@ -18,18 +29,49 @@ jobs:
         with:
           node-version: 20
           cache: npm
-      - name: Build the app and the disk image
+      - name: Read app.json
+        id: app
         run: |
-          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then export VERSION="${GITHUB_REF_NAME#v}"; fi
-          scripts/build-app.sh --dmg
+          echo "name=$(jq -r .name app.json)" >>"$GITHUB_OUTPUT"
+          echo "repo=$(jq -r '.updateRepo // ""' app.json)" >>"$GITHUB_OUTPUT"
+      - name: The tag matches VERSION
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          version="$(tr -d '[:space:]' <VERSION)"
+          if [ "${GITHUB_REF_NAME#v}" != "$version" ]; then
+            echo "::error::The tag is $GITHUB_REF_NAME but VERSION says $version. Bump VERSION, commit, and tag that commit."
+            exit 1
+          fi
+      - name: Build the app and the disk image
+        run: scripts/build-app.sh --dmg
       - uses: actions/upload-artifact@v4
         with:
           name: mac-app
           path: |
             dist-app/*.dmg
             dist-app/*.sha256
-      - name: Publish the release
-        if: startsWith(github.ref, 'refs/tags/v')
+      - name: "Smoke test: updating, going back, beta updates, busy and skip"
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release create "$GITHUB_REF_NAME" dist-app/*-arm64.dmg dist-app/*-arm64.dmg.sha256 --generate-notes
+          NAME: ${{ steps.app.outputs.name }}
+        run: scripts/smoke-test.sh "dist-app/$NAME.app" dist-app/*-arm64.dmg
+      - name: Publish the pre-release
+        if: startsWith(github.ref, 'refs/tags/v') && steps.app.outputs.repo != ''
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_TOKEN || secrets.GITHUB_TOKEN }}
+          REPO: ${{ steps.app.outputs.repo }}
+          NAME: ${{ steps.app.outputs.name }}
+        # The files go up without spaces in their names (GitHub would turn "The Lodge" into "The.Lodge"), plus a copy
+        # with a fixed name, so a download page can always link to releases/latest/download/<Name>-arm64.dmg
+        # ("latest" skips pre-releases, so the page keeps offering the last promoted version). The updater only
+        # takes the copy named with its version.
+        run: |
+          slug="${NAME// /}" version="${GITHUB_REF_NAME#v}"
+          mkdir publish
+          cp "dist-app/$NAME-$version-arm64.dmg" "publish/$slug-$version-arm64.dmg"
+          cp "dist-app/$NAME-$version-arm64.dmg" "publish/$slug-arm64.dmg"
+          (cd publish && shasum -a 256 "$slug-$version-arm64.dmg" >"$slug-$version-arm64.dmg.sha256")
+          gh release create "$GITHUB_REF_NAME" publish/* --repo "$REPO" \
+            --title "$NAME $version" --generate-notes --prerelease
+      - name: Updates are off
+        if: startsWith(github.ref, 'refs/tags/v') && steps.app.outputs.repo == ''
+        run: echo "::notice::app.json has no updateRepo, so nothing was published. The build is kept as the mac-app artifact."

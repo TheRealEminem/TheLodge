@@ -1,5 +1,5 @@
-"""Test setup shared by core/tests and every module's tests: a throwaway data folder, the whole app loaded
-once, a stand-in module for testing the host on its own, and a fake AI so nothing reaches a real model.
+"""Test setup shared by core/tests and every module's tests: a throwaway data folder and family folder, the whole
+app loaded once, a stand-in module for testing the host on its own, and a fake AI so nothing reaches a real model.
 Tests of modules that app.json doesn't turn on are skipped."""
 import json
 import os
@@ -11,6 +11,7 @@ import pytest
 _prefix = json.loads((Path(__file__).parent / "app.json").read_text())["envPrefix"]
 os.environ[f"{_prefix}_DATA_DIR"] = tempfile.mkdtemp(prefix="family-test-")
 os.environ[f"{_prefix}_UI_DIR"] = "/nonexistent"
+os.environ["TRAILMIX_FAMILY_DIR"] = tempfile.mkdtemp(prefix="family-link-test-")   # never the Mac's real family folder
 
 from fastapi.testclient import TestClient  # noqa: E402
 
@@ -21,7 +22,10 @@ ENABLED = config.enabled_modules()
 
 
 def pytest_ignore_collect(collection_path, config):  # noqa: A002 - pytest's name
-    parts = Path(collection_path).resolve().relative_to(Path(__file__).parent).parts
+    try:
+        parts = Path(collection_path).resolve().relative_to(Path(__file__).resolve().parent).parts
+    except ValueError:                  # a link to somewhere outside the app (node_modules in a worktree): not tests
+        return True
     return len(parts) > 1 and parts[0] == "modules" and parts[1] not in ENABLED
 
 

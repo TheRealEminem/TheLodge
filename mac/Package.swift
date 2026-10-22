@@ -7,6 +7,10 @@ let package = Package(
     name: "AppHost",
     platforms: [.macOS("14.0")],
     targets: [
-        .executableTarget(name: "AppHost", path: "Sources/AppHost"),
+        .executableTarget(name: "AppHost", dependencies: ["UpdateRules"], path: "Sources/AppHost"),
+        // The updater's decisions (which version to offer, skipping, going back), with no AppKit, so they can be
+        // checked: swift run --package-path mac UpdateChecks
+        .target(name: "UpdateRules", path: "Sources/UpdateRules"),
+        .executableTarget(name: "UpdateChecks", dependencies: ["UpdateRules"], path: "Checks/UpdateChecks"),
     ]
 )

@@ -43,6 +43,11 @@ export default function Sidebar({ modules, path, opaque }: { modules: ModuleWeb[
   const mac = navigator.platform.toLowerCase().includes("mac");
   const showHome = modules.length > 1 || modules.some((m) => m.home);
   const under = (p: string) => path === p || path.startsWith(p + "/");
+  // Only the most specific entry is current: on "tasks/projects", Projects, not My tasks ("tasks") as well.
+  const current = modules
+    .flatMap((m) => (m.nav ?? []).map((item) => item.path))
+    .filter(under)
+    .sort((a, b) => b.length - a.length)[0];
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -131,7 +136,7 @@ export default function Sidebar({ modules, path, opaque }: { modules: ModuleWeb[
                   icon={item.icon}
                   label={item.label}
                   href={`#/${item.path}`}
-                  active={under(item.path)}
+                  active={item.path === current}
                   badge={Badge ? <Badge /> : undefined}
                 />
               );

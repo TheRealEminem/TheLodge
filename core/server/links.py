@@ -50,3 +50,17 @@ def sources(target: str, kind: str | None = None) -> list[str]:
     if kind:
         return [r["from_ref"] for r in db.query("SELECT from_ref FROM core_links WHERE to_ref = ? AND kind = ?", (target, kind))]
     return [r["from_ref"] for r in db.query("SELECT from_ref FROM core_links WHERE to_ref = ?", (target,))]
+
+
+def targets(source: str, kind: str | None = None) -> list[str]:
+    """Refs that source links *to* (e.g. the Plane item a task is synced with)."""
+    if kind:
+        return [r["to_ref"] for r in db.query("SELECT to_ref FROM core_links WHERE from_ref = ? AND kind = ?", (source, kind))]
+    return [r["to_ref"] for r in db.query("SELECT to_ref FROM core_links WHERE from_ref = ?", (source,))]
+
+
+def pairs(kind: str, to_module: str) -> dict[str, str]:
+    """Every link of one kind into one module's things: {to_ref: from_ref} ("plane:<item>" → "tasks:<id>")."""
+    rows = db.query("SELECT from_ref, to_ref FROM core_links WHERE kind = ? AND to_ref LIKE ? ESCAPE '\\'",
+                    (kind, to_module.replace("_", "\\_") + ":%"))
+    return {r["to_ref"]: r["from_ref"] for r in rows}

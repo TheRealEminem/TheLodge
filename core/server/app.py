@@ -16,12 +16,15 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import ai, auth, backup, config, db, events, jobs, links, module, schedule, search, settings
+from . import ai, auth, backup, config, db, events, family, jobs, links, module, people, schedule, search, settings
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 log = logging.getLogger("core")
 
-CORE_SETTINGS = {"your_name": ""}  # shared by every module: "You" in anything that names people
+# Shared by every module. your_name: "You" in anything that names people. appearance: Day, Dusk or the system's.
+# share_with_family: whether this app shares keys and preferences with the other family apps on this Mac (family.py).
+CORE_SETTINGS = {"your_name": "", "appearance": "system", "share_with_family": True}
+CORE_CHOICES = {"appearance": ("system", "light", "dusk")}
 
 
 def _exit_with_parent() -> None:
@@ -41,12 +44,19 @@ def _exit_with_parent() -> None:
 
 def setup() -> list[module.Module]:
     """Database, settings and modules: everything except the web server. Tests call this too."""
+    backup.before_update()                      # a new version: keep a copy before its migrations change anything
     db.init()
-    settings.declare("core", CORE_SETTINGS)
+    settings.declare("core", CORE_SETTINGS, CORE_CHOICES)
     ai.declare()
     jobs.register("core", "backup", backup.handle_daily, lane="cloud")
     schedule.register("core", "backup", 24 * 3600)
-    return module.load(config.enabled_modules())
+    loaded = module.load(config.enabled_modules())
+    backup.record_version()
+    try:
+        family.seed(settings.stored_here())     # joining: this app's keys fill in what the family doesn't have yet
+    except Exception:  # noqa: BLE001 - the family link must never stop the app from starting
+        log.exception("couldn't join the family's shared settings")
+    return loaded
 
 
 @asynccontextmanager
@@ -54,7 +64,16 @@ async def lifespan(_: FastAPI):
     _exit_with_parent()
     jobs.recover()
     schedule.start()
+    try:
+        family.register()                       # other family apps on this Mac can find this one now
+        family.start_heartbeat()
+    except Exception:  # noqa: BLE001
+        log.exception("couldn't register with the family")
     yield
+    try:
+        family.leave()
+    except Exception:  # noqa: BLE001
+        log.exception("couldn't tell the family this app stopped")
 
 
 def create_app() -> FastAPI:
@@ -64,7 +83,9 @@ def create_app() -> FastAPI:
     @app.middleware("http")
     async def require_login(request: Request, call_next):
         path = request.url.path
-        if path.startswith("/api/") and path not in auth.OPEN_PATHS and not auth.is_authorized(request):
+        # A family call carries the family token instead of a sign-in; family_call checks it.
+        is_family_call = path.startswith("/api/family/call/")
+        if path.startswith("/api/") and path not in auth.OPEN_PATHS and not is_family_call and not auth.is_authorized(request):
             return JSONResponse({"detail": "Sign in required"}, status_code=401)
         return await call_next(request)
 
@@ -150,8 +171,44 @@ def shutdown():
 
 @core_router.get("/changes")
 def changes(since: int = 0):
-    """Polled by the web app: a counter that moves whenever any module publishes an event."""
-    return events.changes(since)
+    """Polled by the web app: a counter that moves whenever any module publishes an event, or another family app
+    changes a shared setting."""
+    out = events.changes(since)
+    try:
+        shared = family.seq() if family.sharing(settings.stored_here()) else 0
+    except Exception:  # noqa: BLE001 - an unreadable family file mustn't stop screens refreshing
+        shared = 0
+    return {**out, "seq": out["seq"] + shared}
+
+
+@core_router.get("/family")
+def family_status():
+    """The family apps on this Mac, for Settings: whether the link is on, where, and who's installed and open."""
+    if not family.enabled():
+        return {"enabled": False, "folder": None, "sharing": False, "apps": []}
+    return {"enabled": True, "folder": str(family.folder()), "sharing": family.sharing(settings.stored_here()),
+            "apps": family.apps()}
+
+
+@core_router.post("/family/call/{offer}")
+async def family_call(offer: str, request: Request):
+    """Another family app asks this one for data (family.call). Needs the family token; answers only offers its
+    modules declare, in Module.offers."""
+    if not family.enabled():
+        raise HTTPException(404, "The family link is off for this copy of the app")
+    if not family.check_token(request.headers.get(family.TOKEN_HEADER, "")):
+        raise HTTPException(403, "This needs the family token")
+    handler = family.local_handler(offer)
+    if handler is None:
+        raise HTTPException(404, f"{config.NAME} doesn't offer {offer}")
+    try:
+        args = await request.json()
+    except ValueError:
+        args = {}
+    try:
+        return {"result": await run_in_threadpool(handler, args if isinstance(args, dict) else {})}
+    except (ValueError, KeyError) as e:
+        raise HTTPException(400, str(e)) from e
 
 
 @core_router.get("/settings")
@@ -199,6 +256,12 @@ def search_all(q: str = "", limit: int = 8):
     return search.search(q, limit)
 
 
+@core_router.get("/people")
+async def people_find(q: str = "", limit: int = 8):
+    """The people directory (people.py): every module's people and other family apps', you first as core:me."""
+    return await run_in_threadpool(people.find, q, limit)
+
+
 @core_router.get("/links")
 def get_links(ref: str):
     return links.linked(ref)
@@ -216,6 +279,12 @@ def add_link(body: LinkBody):
 @core_router.delete("/links", status_code=204)
 def delete_link(from_ref: str, to_ref: str, kind: str | None = None):
     links.remove(from_ref, to_ref, kind)
+
+
+@core_router.get("/jobs/busy")
+def jobs_busy():
+    """Whether background work is queued or running. The Mac app doesn't update or go back while it is."""
+    return {"busy": jobs.busy()}
 
 
 @core_router.post("/jobs/{job_id}/go", status_code=202)

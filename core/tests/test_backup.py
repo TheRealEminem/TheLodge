@@ -129,3 +129,33 @@ def test_the_export_is_readable_json_without_settings_or_keys(client, monkeypatc
     assert "sk-ant-secret" not in text and "ai.anthropic_api_key" not in text
     assert data["app"] == config.APP_ID and data["modules"]["probe2"]["items"] == [{"id": "a", "title": "Kept"}]
     assert r["counts"]["probe2"]["items"] == 1 and oct((backup.EXPORT_DIR / r["name"]).stat().st_mode & 0o777) == "0o600"
+
+
+def test_a_new_version_keeps_a_copy_before_it_migrates(monkeypatch):
+    backup.record_version()
+    assert backup.before_update() is None                            # the same version again: nothing
+    monkeypatch.setattr(config, "VERSION", "99.0.0")
+    made = backup.before_update()
+    assert made["kind"] == "before-update" and made["name"].endswith("-before-update.db")
+    backup.record_version()
+    assert backup.before_update() is None                            # and only once per version
+    assert [b["kind"] for b in backup.listing()] == ["before-update"]
+
+
+def test_a_database_that_never_recorded_a_version_is_backed_up_once():
+    db.execute("DELETE FROM core_settings WHERE key = ?", (backup.VERSION_KEY,))
+    assert backup.before_update()["kind"] == "before-update"
+    backup.record_version()
+    assert backup.before_update() is None
+
+
+def test_a_fresh_install_makes_no_update_backup(monkeypatch, tmp_path):
+    monkeypatch.setattr(db, "DB_PATH", tmp_path / "nothing-yet.db")
+    assert backup.before_update() is None and backup.listing() == []
+
+
+def test_update_backups_keep_the_last_three():
+    for i in range(5):
+        (backup.DIR / f"{config.APP_ID}-20260101-0000{i:02d}-before-update.db").write_bytes(b"x")
+    backup.prune()
+    assert len([b for b in backup.listing() if b["kind"] == "before-update"]) == 3
