@@ -7,7 +7,8 @@ from core.server import db, jobs, settings
 def clean_crm():
     """Every test starts with an empty CRM, an empty inbox, no queued work, and the default AI choices."""
     jobs.drain()
-    for table in ("crm_relationships", "crm_notes", "crm_inbox", "crm_fts", "crm_entities", "crm_sync", "crm_sheet_rows"):
+    for table in ("crm_relationships", "crm_notes", "crm_inbox", "crm_fts", "crm_entities", "crm_sync", "crm_sheet_rows",
+                  "crm_presets", "crm_preset_asks"):
         db.execute(f"DELETE FROM {table}")
     db.execute("DELETE FROM core_jobs WHERE module = 'crm'")
     from modules.crm.server import ingest, roles, store

@@ -262,9 +262,9 @@ export interface GraphPath {
 
 // ---- The people-first network ----
 
-export type GroupKind = "organization" | "topic" | "tag";
+export type GroupKind = "organization" | "topic" | "tag" | "preset";
 export interface NetGroup {
-  id: string; // "org:…", "topic:…" or "tag:…"
+  id: string; // "org:…", "topic:…" or "tag:…" ("preset" is the preset on screen, drawn as a group)
   kind: GroupKind;
   name: string;
   size: number;
@@ -314,6 +314,67 @@ export interface SavedView {
   id: string;
   name: string;
   wells: string[];
+}
+
+// ---- Presets: questions the network answers ----
+
+export type PresetKind = "at" | "intro" | "investors" | "event" | "bridges" | "followups" | "rule";
+export interface PresetSpec {
+  kind: PresetKind;
+  group?: string; // at: "org:…", "topic:…" or "tag:…"
+  target?: string; // intro: a person or organization id
+  event?: string; // event: a meeting or document id
+  a?: string; // bridges: two group ids
+  b?: string;
+  name?: string; // rule
+  about?: string;
+  tags?: string[];
+  topics?: string[];
+  organizations?: string[];
+  events?: string[];
+  words?: string[];
+  picks?: { id: string; why: string }[];
+}
+export interface PresetPerson {
+  id: string;
+  name: string;
+  subtitle: string | null;
+  tier: Tier | null;
+  why: string[];
+}
+export interface PresetResult {
+  title: string;
+  about: string;
+  spec: PresetSpec;
+  people: PresetPerson[];
+}
+export interface SavedPreset {
+  id: string;
+  name: string;
+  about: string;
+  spec: PresetSpec;
+  source: "you" | "ai";
+  created_at: string;
+}
+export interface PresetChoices {
+  groups: { id: string; kind: GroupKind; name: string; size: number }[];
+  events: { id: string; kind: "meeting" | "document"; name: string; at: string | null; size: number }[];
+}
+export interface PresetIdea {
+  name: string;
+  about: string;
+  spec: PresetSpec;
+  count: number;
+  sample: string[];
+}
+export interface PresetAsk {
+  id: string;
+  request: string; // empty: "suggest some"
+  status: "queued" | "done" | "error";
+  ideas: PresetIdea[];
+  error: string | null;
+  written_by: string | null;
+  created_at: string;
 }
 
 // ---- The inbox ----
@@ -630,6 +691,14 @@ export const crmApi = {
   views: () => request<SavedView[]>("/crm/network/views"),
   saveView: (name: string, wells: string[]) => request<SavedView>("/crm/network/views", json("POST", { name, wells })),
   deleteView: (id: string) => request<void>(`/crm/network/views/${id}`, json("DELETE")),
+  presets: () => request<SavedPreset[]>("/crm/network/presets"),
+  presetChoices: () => request<PresetChoices>("/crm/network/presets/choices"),
+  runPreset: (spec: PresetSpec) => request<PresetResult>("/crm/network/presets/run", json("POST", spec)),
+  savePreset: (b: { name: string; about?: string; spec: PresetSpec }) => request<SavedPreset>("/crm/network/presets", json("POST", b)),
+  deletePreset: (id: string) => request<void>(`/crm/network/presets/${id}`, json("DELETE")),
+  presetAsks: () => request<PresetAsk[]>("/crm/network/presets/asks"),
+  askForPresets: (request_: string) => request<PresetAsk>("/crm/network/presets/asks", json("POST", { request: request_ })),
+  dismissAsk: (id: string) => request<void>(`/crm/network/presets/asks/${id}`, json("DELETE")),
   graph: (p: { center?: string; depth?: number; kinds?: string; max_nodes?: number }) => request<Graph>(`/crm/graph${qs(p)}`),
   meta: () => request<{ relationship_kinds: Record<string, RelKindInfo> }>("/crm/meta"),
   me: () => request<Entity | null>("/crm/me"),

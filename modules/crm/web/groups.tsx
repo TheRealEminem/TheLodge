@@ -1,11 +1,12 @@
 // How a group (organization, topic or tag) looks and reads. Identity is the label plus the outline style, never
-// a colour of its own: solid ring = organization, dashed = topic, dotted = tag.
+// a colour of its own: solid ring = organization, dashed = topic, dotted = tag, long-and-short = the preset on screen.
 import type { GroupKind, NetGroup } from "./api";
 
 export const GROUP_META: Record<GroupKind, { one: string; many: string; dash: number[]; verb: string }> = {
   organization: { one: "Organization", many: "Organizations", dash: [], verb: "works there" },
   topic: { one: "Topic", many: "Topics", dash: [6, 4], verb: "took part or came up" },
   tag: { one: "Tag", many: "Tags", dash: [1.5, 3.5], verb: "tagged" },
+  preset: { one: "Preset", many: "Presets", dash: [9, 3, 1.5, 3], verb: "found by the preset" },
 };
 
 export const GROUP_ORDER: GroupKind[] = ["organization", "topic", "tag"];

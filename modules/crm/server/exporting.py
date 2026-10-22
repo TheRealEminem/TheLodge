@@ -5,7 +5,7 @@ import json
 
 from core.server import db
 
-_JSON = ("attributes", "tags", "properties", "wells", "snapshot")
+_JSON = ("attributes", "tags", "properties", "wells", "snapshot", "spec")
 
 
 def _parsed(row: dict) -> dict:
@@ -18,6 +18,7 @@ def export() -> dict:
         "relationships": [_parsed(r) for r in db.query("SELECT * FROM crm_relationships ORDER BY created_at, id")],
         "notes": [_parsed(r) for r in db.query("SELECT * FROM crm_notes ORDER BY occurred_at, id")],
         "views": [_parsed(r) for r in db.query("SELECT * FROM crm_views ORDER BY created_at")],
+        "presets": [_parsed(r) for r in db.query("SELECT * FROM crm_presets ORDER BY created_at")],
         # Records merged into others, each with all it held when it was merged, so nothing a merge folded away is lost.
         "merges": [_parsed(r) for r in db.query("SELECT * FROM crm_merges ORDER BY created_at, id")],
     }

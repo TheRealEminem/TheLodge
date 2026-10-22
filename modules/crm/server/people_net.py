@@ -71,6 +71,7 @@ class PeopleNet:
     member_of: dict[str, list[str]]                 # person -> group ids
     events: dict[str, dict]                         # event id -> {"entity", "people": {pid: role}}
     tiers: dict[str, str]
+    every_group: dict[str, Group]                   # every group, including ones too small to draw (presets use them)
 
     def degree(self, pid: str) -> int:
         return len(self.adj.get(pid, ()))
@@ -220,12 +221,13 @@ def _build() -> PeopleNet:
             g = groups.setdefault(f"tag:{tag}", Group(f"tag:{tag}", "tag", tag.replace("-", " "), None))
             g.members[pid] = "Tagged"
 
+    every_group = groups
     groups = {gid: g for gid, g in groups.items() if len(g.members) >= MIN_GROUP}
     member_of: dict[str, list[str]] = defaultdict(list)
     for gid, g in sorted(groups.items(), key=lambda kv: (-len(kv[1].members), kv[1].name.lower())):
         for pid in g.members:
             member_of[pid].append(gid)
-    return PeopleNet(people, me, links, dict(adj), groups, dict(member_of), events, tiers)
+    return PeopleNet(people, me, links, dict(adj), groups, dict(member_of), events, tiers, every_group)
 
 
 # ── What the API returns ──────────────────────────────────────────────
