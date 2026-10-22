@@ -7,15 +7,15 @@ import type { CSSProperties, ReactNode } from "react";
 const reducedMotion = () =>
   typeof window !== "undefined" && (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false);
 
-/** Brand mark: a forest tile with a low sun, an A-frame lodge and two elevation lines. */
+/** Brand mark: a lake-blue tile with a low sun, an A-frame lodge and two elevation lines. */
 export function Logo({ size = 36 }: { size?: number }) {
   const id = useId();
   return (
     <svg width={size} height={size} viewBox="0 0 64 64" aria-hidden="true" className="shrink-0">
       <defs>
         <linearGradient id={`${id}-bg`} x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0" stopColor="#2F7B58" />
-          <stop offset="1" stopColor="#1B4E37" />
+          <stop offset="0" stopColor="#3B72B8" />
+          <stop offset="1" stopColor="#1D4F8C" />
         </linearGradient>
         <linearGradient id={`${id}-sun`} x1="0" y1="0" x2="0" y2="1">
           <stop offset="0" stopColor="#F8CB5A" />

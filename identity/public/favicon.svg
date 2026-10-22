@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
   <defs>
-    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2F7B58"/><stop offset="1" stop-color="#1B4E37"/></linearGradient>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#3B72B8"/><stop offset="1" stop-color="#1D4F8C"/></linearGradient>
     <linearGradient id="sun" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#F8CB5A"/><stop offset="1" stop-color="#EE8540"/></linearGradient>
     <clipPath id="c"><rect width="64" height="64" rx="16"/></clipPath>
   </defs>

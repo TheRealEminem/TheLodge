@@ -27,15 +27,15 @@ func render(size: Int) -> Data {
     ctx.saveGState()
     ctx.setShadow(offset: CGSize(width: 0, height: -2.2), blur: 3.4, color: CGColor(gray: 0, alpha: 0.28))
     ctx.addPath(tile)
-    ctx.setFillColor(hex(0x1B4E37))
+    ctx.setFillColor(hex(0x1D4F8C))
     ctx.fillPath()
     ctx.restoreGState()
 
     ctx.saveGState()
     ctx.addPath(tile)
     ctx.clip()
-    let green = CGGradient(colorsSpace: space, colors: [hex(0x2F7B58), hex(0x1B4E37)] as CFArray, locations: [0, 1])!
-    ctx.drawLinearGradient(green, start: CGPoint(x: 0, y: 0), end: CGPoint(x: 0, y: 64), options: [])
+    let lake = CGGradient(colorsSpace: space, colors: [hex(0x3B72B8), hex(0x1D4F8C)] as CFArray, locations: [0, 1])!
+    ctx.drawLinearGradient(lake, start: CGPoint(x: 0, y: 0), end: CGPoint(x: 0, y: 64), options: [])
 
     let hill = CGMutablePath()
     hill.move(to: CGPoint(x: 0, y: 42))
