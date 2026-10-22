@@ -94,7 +94,7 @@ These keep modules combinable. Breaking one now means a rewrite when the apps me
 ```
 app.json                  who the app is and which modules it's made of
 family.lock               the TrailmixFamily commit this app's shared code comes from (written by scripts/sync-family)
-VERSION                   the version number (release tags override it)
+VERSION                   the version number (a release tag must match it)
 core/
   server/                 the host's server (Python package "core.server")
     app.py                creates the FastAPI app, loads modules, the host's own API
@@ -137,11 +137,13 @@ scripts/
   check                   everything CI checks (tests, types, build, style rules)
   build-app.sh            build the Mac app (and the disk image with --dmg)
   install-app.sh          check, build, back up, and swap the new app into /Applications, with a rollback
+  smoke-test.sh           try a built app's updater end to end: update, go back, beta updates, busy, skip
+  promote-beta.sh         make the newest beta the release everyone gets, once it's been tried
   new-module              start a module from scripts/module-template
   sync-family             take a family version and pin it (--check: warn about drift; --push: send a change back)
 conftest.py, pytest.ini   test setup: throwaway data, fake AI, skips tests of modules that are off
 Dockerfile                the server for Linux
-.github/workflows/        tests on every push; build and release the Mac app on a version tag
+.github/workflows/        tests on every push; a beta of the Mac app on a version tag, promoted after a few days
 ```
 
 ## 5. Identity: app.json
@@ -170,6 +172,8 @@ the 8780–8799 range, and keep a list here:
 | Trailmix | 8765 |
 | Starter (this template) | 8790 |
 | The Lodge | 8791 |
+| (a local preview config in The Lodge) | 8792 |
+| Traverse | 8793 |
 
 ## 6. The module contract
 
@@ -188,6 +192,9 @@ the 8780–8799 range, and keep a list here:
 | `search` | `(q, limit) -> [{id, title, snippet}]`: its part of the sidebar search. |
 | `describe` | `id -> {title, href}`: how its things appear in other modules' links and in search. |
 | `startup` | Runs once after every module is loaded. |
+| `count` | `(a database) -> {"people": 381}`: what it holds, read from any copy of the database, to label backups in Settings, Your data. |
+| `offers` | `{"people.search": handler(args)}`: questions other family apps on this Mac may ask it (§8, the family link). A handler gets a dict and returns plain data. |
+| `people` | `(q, limit) -> [{id, name, email?, detail?, is_self?}]`: its part of the people directory (`core/server/people.py`, `GET /api/people`, `PersonPicker`). Refs come back as `<id>:<person id>`; `is_self` comes back as `core:me`. |
 
 ### Web half: `modules/<id>/web/index.tsx` default-exports a `ModuleWeb`
 
@@ -213,11 +220,12 @@ another module's.
 | Slow work | `jobs.enqueue(id, kind, target, approve=…)` | One worker by default (a "cloud" lane runs four side by side), resumable. `approve=True` parks it as "Needs you". A handler can `raise jobs.Wait("reason")` to park itself (low memory…), and the user can force past that. `job.stage("…")` shows progress. |
 | AI | `ai.complete(prompt, system)` → `(text, provider)` | Uses the app-wide provider and fallback from Settings → AI. Raises `ai.AIError` with readable reasons. `ai.local_first()` tells you whether it would run on this Mac. |
 | Tell others | `events.publish("<id>.thing.happened", {...})` | Handlers run immediately and must be quick. Every publish also refreshes open screens. |
-| A shared meaning | `contracts.py` (`ACTIONS_FOUND`, `ITEM_DELETED`) | Add a contract when a second module cares about the same kind of thing. |
+| A shared meaning | `contracts.py` (`ACTIONS_FOUND`, `ITEM_DELETED`, the `WORK_*` ones for work kept elsewhere too) | Add a contract when a second module cares about the same kind of thing. |
 | Point at something elsewhere | `links.add(from_ref, to_ref, kind)`, `links.linked(ref)` | The host stores the pair; each side's module describes its own things. |
 | Be searchable | `Module.search` | Results are merged into the sidebar search. |
 | Fresh screens | `useLive(load, deps)` | Refetches whenever anything changes on the server: every 2s while visible, and at once after the app's own changes. |
 | Feedback | `useShell().toast / confirm`, `JobStatus`, `JobChip`, `LinkedList`, `Section` | See `DESIGN.md` for the visual rules. |
+| Ask another family app | `family.call("people.search", q="ana")` | Its own modules first, then a running family app that offers it. Raises `family.Unavailable` with a sentence for the screen ("Open The Lodge to see this here"). Only from server code, and never as a substitute for events between modules in one app. |
 
 Backups (`core/server/backup.py`) are the host's: a daily SQLite online backup in `<data folder>/backups/` (kept 14),
 "Back up now", and restore, which makes a backup of what it replaces, copies the chosen one over the live database,
@@ -247,7 +255,26 @@ What happens when you summarize a note:
   (`actions.found`). Its shape is written down in `contracts.py`.
 - **Link:** a lasting relationship between two things, shown on both sides.
 - **Search/describe:** making your things findable and nameable elsewhere.
+- **Offer:** a question another family *app* on the same Mac may ask (`Module.offers`, answered over localhost
+  with the family token). Use it for data that lives in another app, such as The Lodge's people seen from Traverse.
 - **Never:** importing another module, querying its tables, or calling its HTTP API from the server.
+
+**The family link** (`core/server/family.py`). Family apps installed on one Mac share some settings and ask each
+other for data, while each stays its own app:
+
+- *Shared settings:* the AI settings, your name and the appearance live in `family.db` in the family folder
+  (`~/Library/Application Support/Trailmix Family/`), which every family app opens directly, so they're there even
+  while the other apps are closed. Each app also keeps its own copy, and Settings → Your family apps → "Share keys
+  and preferences" turns sharing off for one app. An app joining fills in what the family lacks, and never
+  replaces what it holds.
+- *Registry:* each running app records its port and its modules' offers in `family_apps`, with a heartbeat each
+  minute. `GET /api/family` lists the installed apps and which are open.
+- *Calls:* `POST /api/family/call/<offer>` answers another family app, only with the family token (`X-Family-Token`,
+  kept in `family.db`), so a web page can't reach an app's data through localhost. Data never leaves the Mac, and
+  no app copies another's tables.
+- The Mac app joins by default. A development copy (data in `./data`) or a server install joins only when
+  `TRAILMIX_FAMILY_DIR` names a folder (`off` turns it off); tests use a throwaway one. A development copy beside
+  the installed app sets `<PREFIX>_PORT` so it registers its own port.
 
 ## 9. Screens and navigation
 
@@ -262,11 +289,12 @@ What happens when you summarize a note:
 
 ## 10. The Mac app (`mac/`)
 
-- `HostApp.swift`: the menu bar item (Open, updates, Open at Login, Quit). It starts the server, then opens the window.
+- `HostApp.swift`: the menu bar item (Open, updates, Open at login, Quit). It starts the server, then opens the window.
 - `BundledServer.swift`: runs `python -m uvicorn core.server.app:app` from `Resources/app` with `<PREFIX>_DATA_DIR`,
   `_UI_DIR` and `_PARENT_PID` set, restarts it up to three times in two minutes, then explains the failure in the menu.
 - `MainWindow.swift`: the WebKit window, the `app` bridge, the Edit/View/Window menus, and external links opening in the browser.
-- `Updater.swift`: GitHub releases → checksum check → same bundle ID and valid signature → swap in place → relaunch.
+- `Updater.swift`: GitHub releases → checksum check → same bundle ID and valid signature → swap in place, keeping
+  the old version for Go back → relaunch; beta updates and skipping a version. Its decisions are in `UpdateRules/` (§11).
 - `Mark.swift`: the menu bar icon. Each app draws its own motif there.
 - **Native features a module needs** (global hotkeys, recording audio, notifications) live in `mac/`. They talk to
   the module through the server: the native side calls the module's API (Trailmix's recorder checks in once a second
@@ -283,9 +311,46 @@ What happens when you summarize a note:
 | New module | `scripts/new-module journal "Journal"` |
 | Build the Mac app | `scripts/build-app.sh` → `dist-app/<Name>.app`; add `--dmg` for the disk image and checksum |
 | Update the installed app | `scripts/install-app.sh` (checks, builds, backs up, swaps, verifies; all on this Mac) |
-| Release | bump `VERSION`, `git tag v0.2.0 && git push --tags`. CI builds and publishes, and installed apps offer the update. |
+| Release | bump `VERSION` and commit, then `git tag v0.2.0 && git push origin v0.2.0`. CI publishes a beta, which reaches everyone a few days later (below). |
+| Check the updater's rules | `swift run --package-path mac UpdateChecks` (`build-app.sh` runs them too) |
+| Try the updater end to end | `scripts/smoke-test.sh dist-app/<Name>.app dist-app/<Name>-<version>-arm64.dmg` (CI runs it before publishing) |
 | Server install | `docker build -t app . && docker run -p 8790:8790 -v app-data:/data -e APP_ACCESS_TOKEN=… app` |
 | Try the built app without touching real data | `env -i HOME=$HOME PATH=/usr/bin:/bin STARTER_DATA_DIR=/tmp/x STARTER_NO_OPEN=1 dist-app/Starter.app/Contents/MacOS/Starter` (prints "Would open …"; the server answers on the port) |
+
+**Releases: a beta first, then everyone.**
+1. **Tag.** Bump `VERSION`, commit, and push the tag `v<VERSION>`. `release.yml`, on a Mac builder, refuses a tag that
+   doesn't match `VERSION`, builds with `scripts/build-app.sh --dmg` (which runs the updater's checks), runs
+   `scripts/smoke-test.sh`, and publishes `<Name>-<version>-arm64.dmg` and its `.sha256` as a **pre-release** in
+   app.json's `updateRepo`. With no `updateRepo`, nothing is published and the build stays an artifact of the run.
+   A repo other than the app's own (a public one, for private code) needs a `RELEASE_TOKEN` secret that can write to it.
+2. **Beta.** Installed apps with Beta updates on are offered it; everyone else isn't.
+3. **Promote.** `promote.yml` runs `scripts/promote-beta.sh` every day. Once the newest pre-release has been out
+   3 days (`BETA_DAYS`) with no open issue labelled `blocks release` (`BLOCKING_LABEL`), it becomes the full, latest
+   release, and every installed app is offered it. Run the workflow by hand to check now: "dry run" only says what
+   it would do, and a tag promotes that pre-release however long it's been out. `DRY_RUN=1 scripts/promote-beta.sh`
+   does the same from this Mac.
+4. **Hold it back** by labelling an issue `blocks release`; close it or take the label off to let the beta through.
+   The label needs creating only the first time someone uses it.
+
+**Updates in the app** (`mac/Sources/AppHost/Updater.swift`; the decisions are in `mac/Sources/UpdateRules/`, checked
+by `mac/Checks/UpdateChecks` with the Command Line Tools alone):
+- It looks at the repo's recent releases at launch and every six hours, and offers the newest version that's newer
+  than itself: full releases, plus pre-releases with **Beta updates** on (the Updates submenu; off unless you turn it
+  on). Never a skipped version.
+- **Install version X…** downloads the disk image, checks it against the published SHA-256, checks that the app inside
+  has the same bundle ID and a valid signature, swaps it in place and restarts. The version it replaced is kept in
+  the data folder, at `updates.noindex/previous/<Name>.app` (one copy, the size of the app).
+- **Skip this version** stops it being offered; a newer version still is. **Offer X again** undoes that.
+- **Go back to X…** (Updates submenu, once an update has kept a version) asks first, then returns to the kept
+  version, checked the same way with no download, and skips the version you left. Your data stays: migrations only
+  add (rule 4), so the older version ignores steps it doesn't know, and starting a different version keeps a
+  "before-update" backup first. A fresh install has nothing to go back to.
+- **Not while busy:** before starting, and again just before swapping (waiting up to a minute), it asks the server,
+  `GET /api/jobs/busy` (background jobs queued or running). While the app is busy it says so and offers Try again.
+- Your choices are in `updates.noindex/choices.json` in the data folder, so `<PREFIX>_DATA_DIR` keeps a test apart
+  from the real app. For tests: `<PREFIX>_UPDATE_URL` (a stand-in release list), `_UPDATE_DELAY`,
+  `_UPDATE_NO_RELAUNCH`, and `_UPDATE_TEST=install` or `go-back` (does that after the first check, and writes each
+  state to stderr).
 
 Tests: `conftest.py` gives every test a throwaway data folder, the whole app (`client`), a fake AI (`fake_ai`)
 and `jobs.drain()` to wait for background work. The host's tests use a stand-in "probe" module, so they pass

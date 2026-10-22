@@ -34,6 +34,8 @@ class Module:
     describe: Callable[[str], dict | None] | None = None           # id -> {title, href} for links and search
     export: Callable[[], dict] | None = None                       # () -> {name: [records…]}: what this module holds, as plain data for the JSON export
     count: Callable[[sqlite3.Connection], dict[str, int]] | None = None  # (a database, e.g. a backup's) -> {"people": 381}: to label backups
+    offers: dict[str, Callable[[dict], object]] = field(default_factory=dict)  # "people.search" -> handler(args): what other family apps may ask it (family.py)
+    people: Callable[[str, int], list[dict]] | None = None         # (q, limit) -> [{id, name, email?, detail?, is_self?}]: its part of the people directory (people.py)
     startup: Callable[[], None] | None = None
 
 

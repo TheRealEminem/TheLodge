@@ -21,6 +21,7 @@ def env(key: str, default: str | None = None) -> str | None:
 
 
 DATA_DIR = Path(env("DATA_DIR") or ROOT / "data")
+PORT = int(env("PORT") or IDENTITY["port"])     # where this copy listens; <PREFIX>_PORT for one beside the installed app
 UI_DIR = Path(env("UI_DIR") or ROOT / "dist")
 
 

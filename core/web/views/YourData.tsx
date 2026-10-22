@@ -9,7 +9,12 @@ import { useLive } from "../live";
 import { useShell } from "../shell";
 import { exportHint, restoreBody } from "@identity/copy";
 
-const KIND: Record<BackupItem["kind"], string> = { auto: "Daily", manual: "Made by you", "before-restore": "Kept before a restore" };
+const KIND: Record<BackupItem["kind"], string> = {
+  auto: "Daily",
+  manual: "Made by you",
+  "before-restore": "Kept before a restore",
+  "before-update": "Kept before an update",
+};
 
 function size(bytes: number) {
   return bytes > 1e6 ? `${(bytes / 1e6).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1e3))} KB`;
@@ -66,7 +71,7 @@ export default function YourData() {
 
   return (
     <>
-      <Section icon={<FolderIcon size={16} />} title="Your data" blurb="A copy is made each day and kept for two weeks. They stay in this Mac's data folder, private to you, and aren't sent anywhere.">
+      <Section icon={<FolderIcon size={16} />} title="Your data" blurb="A copy is made each day and kept for two weeks, and another before an update changes anything. They stay in this Mac's data folder, private to you, and aren't sent anywhere.">
         <ControlRow label="Back up now" hint={data ? `Saved in ${data.folder}. Use Show Data Folder in the menu bar to open it.` : undefined} wrap>
           <button className="btn btn-sm btn-soft" disabled={busy !== null} onClick={() => void backUp()}>
             {busy === "backup" ? <Spinner /> : <RefreshIcon size={16} />} Back up
