@@ -23,7 +23,7 @@ SHARED=(
   core/ mac/ modules/tasks/ modules/notes/ modules/__init__.py
   scripts/module-template/ scripts/dev scripts/check scripts/new-module scripts/sync-family
   scripts/build-app.sh scripts/install-app.sh scripts/check-app.py
-  ARCHITECTURE.md DESIGN.md conftest.py pytest.ini Dockerfile .dockerignore
+  ARCHITECTURE.md DESIGN.md TRAILMIX.md conftest.py pytest.ini Dockerfile .dockerignore
   vite.config.ts tsconfig.json tailwind.config.js postcss.config.js
   .github/workflows/test.yml .github/workflows/release.yml .github/workflows/promote.yml
   scripts/promote-beta.sh scripts/smoke-test.sh
