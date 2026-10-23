@@ -4,12 +4,15 @@ The Lodge is a normal Mac app for Apple silicon (M1 or later), macOS 14 or newer
 
 ## First launch
 
-1. Open `The Lodge-<version>-arm64.dmg` and drag **The Lodge** onto **Applications**.
-2. Open it from Applications. Because the app is signed without an Apple Developer ID (it is built for you, not
-   sold), macOS will say it can't verify it. This is expected, and you only do this once per version:
-   - **Right-click (or Control-click) the app, choose Open, then Open again**, or
-   - open **System Settings, Privacy & Security**, scroll down to *"The Lodge" was blocked*, and press **Open Anyway**.
-   (A copy you built yourself on this Mac doesn't carry the download flag and opens normally.)
+1. Download `TheLodge-<version>-arm64.dmg` from the [latest release](https://github.com/TheRealEminem/TheLodge/releases/latest),
+   open it and drag **The Lodge** onto **Applications**.
+2. Open it from Applications. Because the app is signed without an Apple Developer ID, macOS says it can't verify
+   it and offers only **Done** or **Move to Trash**: click **Done**. You only do this once:
+   - open **System Settings, Privacy & Security**, scroll down to *"The Lodge" was blocked*, and press **Open Anyway**
+     (then your Mac password, and **Open Anyway** once more), or
+   - in Terminal: `xattr -dr com.apple.quarantine "/Applications/The Lodge.app"`.
+
+   Updates installed from inside the app, and a copy you built yourself on this Mac, open without this step.
 3. A window opens, and a small A-frame icon appears in the menu bar. Closing the window leaves the app in the menu bar.
 4. Go to **Settings** and add your AI keys (Claude, and Gemini if you want it for sorting and spreadsheet columns).
    They're typed in there, never into a file, and are kept only in your data folder.
@@ -55,8 +58,14 @@ Show Data Folder in the menu bar opens it.
 
 ## Updating
 
-Quit the app and replace it with the new one from a new disk image. Your data stays where it is. (Automatic updates
-are off: the updater reads public GitHub releases, and this project is private.)
+The Lodge checks this repository's releases and offers new versions in **Settings → Updates** and the menu bar's
+Updates menu. It checks each download against its published checksum before installing it, and your data stays
+where it is.
+
+- **Beta updates** (off by default) offers each new version as soon as it's out. Without it you get a version once
+  it has been a beta for 3 days with no blocker reported.
+- **Skip this version** stops it offering that one; **Go back** returns to the version you had before.
+- Replacing the app by hand with one from a newer disk image works too.
 
 ## If something's wrong
 
@@ -72,7 +81,7 @@ old one is kept in `build/previous-app.noindex/`, out of Spotlight's way, so the
 Finally it opens the new app and checks that it serves the new build with the data intact. If anything fails, it
 puts the previous app back.
 
-`scripts/build-app.sh` on its own makes `dist-app/The Lodge.app`; add `--dmg` for the disk image. Builds happen on
-this Mac, because GitHub's Mac builders cost ten times its Linux ones: the GitHub workflow that builds a release
-(`.github/workflows/release.yml`) only runs when started by hand from the Actions tab.
+`scripts/build-app.sh` on its own makes `dist-app/The Lodge.app`; add `--dmg` for the disk image. Day-to-day builds
+happen on this Mac, because GitHub's Mac builders cost ten times its Linux ones. GitHub builds only releases: pushing
+a version tag runs `.github/workflows/release.yml`, which publishes it as a beta (see "Releasing" in the README).
 `scripts/check-app.py` runs behaviour checks on the built app (restarts, quitting, two copies).
