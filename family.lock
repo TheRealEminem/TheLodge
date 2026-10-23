@@ -1,6 +1,6 @@
 {
-  "commit": "c32327713d5a57980b6eb3b9509b1c8249ff712c",
-  "subject": "Tasks: linked tasks that follow work kept elsewhere",
+  "commit": "eb6f55db5aeb0cacde8e4ddc38729223a7131626",
+  "subject": "Settings \u2192 Updates in the window, and release files a download page can link to",
   "synced_on": "2026-10-22",
   "note": "The TrailmixFamily commit this app's shared code comes from. Change it with scripts/sync-family."
 }
