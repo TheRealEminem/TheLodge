@@ -95,6 +95,7 @@ These keep modules combinable. Breaking one now means a rewrite when the apps me
 app.json                  who the app is and which modules it's made of
 family.lock               the TrailmixFamily commit this app's shared code comes from (written by scripts/sync-family)
 VERSION                   the version number (a release tag must match it)
+TRAILMIX.md               Trailmix's features and conventions, and what an app keeps the same to stay compatible with it
 core/
   server/                 the host's server (Python package "core.server")
     app.py                creates the FastAPI app, loads modules, the host's own API
@@ -398,7 +399,8 @@ The plan, and how far this template gets you:
 
 1. **Now: build each new app on this template, as modules.** Each ships as its own app (its own `app.json`)
    while staying a module.
-2. **Port Trailmix into a `meetings` module.** Trailmix predates this template, so here's how its parts map over:
+2. **Port Trailmix into a `meetings` module.** Trailmix predates this template, so here's how its parts map over
+   (`TRAILMIX.md` has the rest: its settings, data, API and where it differs from this host today):
    - **Data:** the `meetings` table becomes `meetings_items`, keyed by the existing `uid` column (Trailmix already
      gives every meeting one) instead of the integer id. Audio goes in `DATA_DIR/meetings/`.
    - **Settings:** Trailmix's `summary_provider`, keys and models move to the shared `ai.*`; the rest become `meetings.*`.
