@@ -381,6 +381,20 @@ def test_describe_says_who_would_answer_and_whether_they_are_ready(cfg):
     assert (d["provider"], d["ready"], d["model"]) == ("gemini", True, "gemini-flash-latest")
 
 
+@pytest.mark.parametrize("blank", ["", "  "])
+def test_a_cleared_model_setting_means_the_default_model(http, cfg, blank):
+    # A model field emptied in Settings once sent Gemini a request for a model named "", which it answers with 404.
+    cfg(provider="gemini", gemini_api_key="g", gemini_model=blank, anthropic_model=blank)
+    assert ai.describe("gemini")["model"] == ai.model_for("gemini", ai.settings.section("ai")) == "gemini-flash-latest"
+    assert ai.model_for("anthropic", ai.settings.section("ai")) == ai.DEFAULTS["anthropic_model"]
+    http.replies = [completion(GOOD), (200, {"candidates": [{"content": {"parts": [{"text": "Hello"}]}}]})]
+    ai.structured("x", "sys", Extraction)
+    assert ai.complete("x")[0] == "Hello"
+    structured_call, complete_call = http.calls
+    assert structured_call["json"]["model"] == "gemini-flash-latest"
+    assert "/models/gemini-flash-latest:generateContent" in complete_call["url"]
+
+
 def test_the_test_button_does_a_real_structured_round_trip(http, cfg):
     cfg(gemini_api_key="g")
     http.replies = [completion('{"answer": "OK", "number": 7}')]
