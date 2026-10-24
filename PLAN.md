@@ -34,7 +34,7 @@ decided, and the order we build it in.
 | 19 | **The Lodge runs Gemini research itself** (asked for 2026-10-18) | M | ☑ 2026-10-19 (usual level: Better through Batch) |
 | 20 | **Network presets: focused questions, and lists the AI writes** (asked for 2026-10-21) | M | ☑ 2026-10-21 (AI lists not yet run against a real model) |
 | 21 | **Lake and lantern: a colorblind-safe palette for The Lodge** (asked for 2026-10-21) | S–M | ☑ 2026-10-21 |
-| 22 | **On this Mac: a local-only path, recommended from the Mac's specs** (asked for 2026-10-23; family first) | L | ◐ 22a–f built 2026-10-23 here; the family half still has to be pushed to TrailmixFamily (see the result) |
+| 22 | **On this Mac: a local-only path, recommended from the Mac's specs** (asked for 2026-10-23; family first) | L | ☑ 22a–f built 2026-10-23, in the family at c6f4648 (release 0.4.0 not cut yet) |
 
 Milestones: **A** "it runs" = 0 · **B** "your data, natively" = 1–3 · **C** "browse and rate in the app" = 4–6
 (The owner can stop using Docker for reading; AI intake still needs the old app) · **D** "feature parity" = 7–10 ·
@@ -880,7 +880,7 @@ Inbox, the network canvas with a group and a preset switched on (fills, rings, o
 icon. `scripts/check` green. **Not checked by eye:** every status chip tone on a live screen (the comparison page
 draws them from the same values), and the Scene artwork, whose pines and lake keep their own colors.
 
-### Chunk 22 · On this Mac: a local-only path, recommended from the Mac's specs (L) — BUILT HERE; FAMILY PUSH PENDING
+### Chunk 22 · On this Mac: a local-only path, recommended from the Mac's specs (L) — BUILT (family commit c6f4648)
 
 The owner (2026-10-23): why isn't there a local-only version? Every family app could work that way. Give people the
 choice, accept that some features (Gemini research) need a cloud provider, and have the app read the Mac's specs and
@@ -1143,12 +1143,10 @@ onboards people) and to keep personal information and API keys out of the public
 - **Thresholds.** 24 GB is a guess from 22a's "Mixed at 16 GB": a 14B model wasn't measured. 15 GB for the 7B is
   Trailmix's rule. The advice turns to "cloud" only under 8 GB of free disk; a fuller disk just gets a warning.
 - **Not built:** reading long documents on a local model in parts (basic mode asks for the notes only, the answer cap
-  and the new timeout bound a stuck one, and a failed read falls back to rules). Release 0.4.0 (waits on the family push).
-- **Not yet in TrailmixFamily.** `scripts/sync-family --push` was refused in this session (it writes into
-  `~/Code/TrailmixFamily`, outside this repo), so `core/`, `mac/` and `TRAILMIX.md` here are ahead of `family.lock`.
-  Push them with `scripts/sync-family --push`, commit there, and run `scripts/sync-family` here; until then a plain
-  `scripts/sync-family` would overwrite this work. Traverse needs `psutil` in its `requirements.txt`, `localAiMinGb` in
-  its `app.json`, and `welcomeTitle`/`welcomeLead` in its `identity/copy.ts`.
+  and the new timeout bound a stuck one, and a failed read falls back to rules). Release 0.4.0 (the owner's call).
+- **In TrailmixFamily (2026-10-24):** pushed as one commit, `c6f4648` (b to e together, not one commit each), and this
+  app is pinned to it. Not pushed to a remote. Traverse picks it up when it next syncs, and needs `psutil` in its
+  `requirements.txt`, `localAiMinGb` in its `app.json`, and `welcomeTitle`/`welcomeLead` in its `identity/copy.ts`.
 - **Keys.** A key typed into one family app is already shared (`ai.*`). The Anthropic key in the family file on this Mac
   is 24 characters (Anthropic keys are about 100) and was saved from Traverse on 2026-10-20, which is why Claude
   rejected it in 22a; it needs to be entered again in any family app.
