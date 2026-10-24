@@ -11,6 +11,8 @@ export interface Shell {
   toast: (text: string, tone?: "success" | "error") => void;
   confirm: (o: { title: string; body: string; confirmLabel: string; tone?: "danger" | "primary" }) => Promise<boolean>;
   theme: { pref: ThemePref; setPref: (p: ThemePref) => void; dusk: boolean };
+  /** Show the first-run screens again (Settings → App). Nothing is deleted. */
+  reopenSetup: () => Promise<void>;
 }
 
 const ShellContext = createContext<Shell | null>(null);

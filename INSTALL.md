@@ -18,7 +18,8 @@ The Lodge is a normal Mac app for Apple silicon (M1 or later), macOS 14 or newer
    **On this Mac** (private and free; The Lodge can install Ollama and download a model for you), **Mixed** (most jobs
    here, the careful reading with a cloud AI), or **A cloud AI** (the best results). Keys are typed in there or in
    **Settings**, never into a file, and are kept only in your data folder. A key entered in another Trailmix family
-   app on this Mac is already there. Everything can be changed later in **Settings**.
+   app on this Mac is already there. Everything can be changed later in **Settings**. To see the setup again (an existing install
+   never sees it on its own), use **Settings → The Lodge → Run setup again**; nothing is deleted.
 
 ## Where things live
 

@@ -103,7 +103,11 @@ export default function App() {
   useEffect(() => setDrawer(false), [path]);
 
   const toastFn = useCallback((text: string, tone: "success" | "error" = "success") => setToast({ text, tone }), []);
-  const shell: Shell | null = useMemo(() => (info ? { app: info, toast: toastFn, confirm, theme } : null), [info, toastFn, confirm, theme]);
+  const reopenSetup = useCallback(async () => {
+    await api.setupReopen();
+    setInfo((i) => (i ? { ...i, setup_done: false } : i));
+  }, []);
+  const shell: Shell | null = useMemo(() => (info ? { app: info, toast: toastFn, confirm, theme, reopenSetup } : null), [info, toastFn, confirm, theme, reopenSetup]);
 
   if (auth === "needed") return <Login onDone={() => setAuth("ok")} dusk={theme.dusk} />;
   if (!shell) {
