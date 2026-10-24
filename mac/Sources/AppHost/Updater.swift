@@ -96,9 +96,20 @@ final class Updater: ObservableObject {
         }
     }
 
-    /// Looks for a new version. `manual`: you asked (Check for updates…), so show "Checking…" meanwhile.
+    /// Lockdown (the family's rule 9: nothing leaves this computer). The server reports it in /api/app.
+    private func lockdownOn() async -> Bool {
+        var request = URLRequest(url: AppConfig.serverURL.appendingPathComponent("api/app"))
+        request.timeoutInterval = 3
+        guard let (data, _) = try? await URLSession.shared.data(for: request),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return false }
+        return json["lockdown"] as? Bool ?? false
+    }
+
+    /// Looks for a new version. `manual`: you asked (Check for updates…), so show "Checking…" meanwhile. Under
+    /// Lockdown only that goes out: the automatic checks stay home.
     func check(manual: Bool = false) async {
         guard let feed = Self.feed, !working else { return }
+        if !manual, await lockdownOn() { return }
         if manual, latest == nil { state = .checking }
         var request = URLRequest(url: feed)
         request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")

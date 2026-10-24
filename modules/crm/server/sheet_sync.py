@@ -32,7 +32,7 @@ from datetime import date
 
 import httpx
 
-from core.server import db, jobs, settings
+from core.server import db, jobs, lockdown, settings
 from core.server.tags import normalize_tags
 
 from . import capture, snapshot, store
@@ -103,9 +103,14 @@ def configured() -> bool:
     return bool(link())
 
 
+def locked() -> str | None:
+    """Why the shared sheet is off right now (Lockdown), or None."""
+    return lockdown.blocked("The shared Google Sheet")
+
+
 def seconds() -> int:
     """Nothing until there's a link; then soon after a change here, and every couple of minutes otherwise."""
-    if not configured():
+    if not configured() or locked():
         return 0
     return SOON_SECONDS if store.version() != _synced_version else EVERY_SECONDS
 
@@ -147,6 +152,8 @@ def call(body: dict) -> dict:
 
 def test() -> dict:
     """Does the link work? Says which spreadsheet it opens, changes nothing."""
+    if (why := locked()):
+        raise SheetError(why)
     return {"ok": True, "spreadsheet": call({"action": "hello"}).get("spreadsheet")}
 
 
@@ -527,6 +534,8 @@ def _wire(tab: Tab) -> dict:
 def sync() -> dict:
     """One pass. Never raises for what's wrong with the sheet or the link: it records it for the Settings page."""
     global _synced_version
+    if locked():
+        return {"skipped": "lockdown"}
     if not configured():
         return {"skipped": "no link"}
     from .ingest import _apply_lock   # the same lock the inbox uses when it writes

@@ -18,6 +18,7 @@ import {
   KeyRound,
   Laptop,
   Leaf,
+  Lock,
   ListChecks,
   Menu,
   MessageSquareText,
@@ -114,6 +115,7 @@ export const KeyIcon = icon(KeyRound);
 export const PowerIcon = icon(Power);
 export const CloudIcon = icon(Cloud);
 export const LaptopIcon = icon(Laptop);
+export const LockIcon = icon(Lock);
 export const MenuIcon = icon(Menu);
 export const ArrowUpIcon = icon(ArrowUp);
 export const BackIcon = icon(ArrowLeft);

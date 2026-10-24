@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import { Avatar as CoreAvatar } from "@core/components/blocks";
+import { LockIcon } from "@core/components/icons";
 import type { EntityKind } from "./api";
 import { pictureUrl, usePictures } from "./pictures";
 
@@ -36,6 +37,16 @@ export function Avatar({ name, kind = "person", size = 36, id }: { name: string;
     );
   }
   return <CoreAvatar name={name} round={kind === "person"} size={size} />;
+}
+
+/** Says why a feature is off while Lockdown is on (the server's sentence), or nothing when it isn't. */
+export function LockedNote({ why }: { why: string | null | undefined }) {
+  if (!why) return null;
+  return (
+    <p className="flex items-start gap-1.5 py-3.5 text-hint text-ink-soft">
+      <LockIcon size={16} className="shrink-0" /> {why}
+    </p>
+  );
 }
 
 /** "Founder · Acme", without repeating the organization when the title already names it. */

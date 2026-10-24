@@ -45,4 +45,6 @@ MODULE = Module(
     count=exporting.count,
     search=store.search,
     describe=store.describe,
+    ai_jobs=roles.ai_jobs(),
+    startup=roles.keep_what_people_have,
 )

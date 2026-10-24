@@ -16,7 +16,7 @@ import httpx
 from pydantic import BaseModel, ValidationError
 
 from .ai import (AIError, PROVIDERS, TIMEOUT, _CLAUDE_FALLBACK_MODELS, _error_text, claude_error, configured, label,
-                 model_for, too_long)
+                 model_for, too_long, wait_for_memory)
 from .ai_schema import blank_to_none, parse_json_text, portable_schema, strict_schema
 
 log = logging.getLogger("core.ai")
@@ -26,6 +26,7 @@ OTHER_MAX_TOKENS = 16000
 DEEPSEEK_MAX_TOKENS = 8000  # its ceiling
 OLLAMA_OUTPUT_BUDGET = 4096
 OLLAMA_MAX_CONTEXT = 32768
+OLLAMA_TIMEOUT_SECONDS = 900   # with the answer capped, a model that never stops writing costs minutes, not half an hour
 OLLAMA_KEEP_ALIVE = "5m"    # a batch of documents shouldn't reload the model for each one
 GEMINI_OPENAI_BASE = "https://generativelanguage.googleapis.com/v1beta/openai"
 
@@ -117,6 +118,7 @@ def ollama_context(chars: int) -> int:
 
 
 def _ollama(cfg: dict, system: str, prompt: str, schema: type[BaseModel]) -> BaseModel:
+    wait_for_memory(cfg)
     model = model_for("ollama", cfg)
     url = cfg["ollama_url"]
     body = {
@@ -125,10 +127,11 @@ def _ollama(cfg: dict, system: str, prompt: str, schema: type[BaseModel]) -> Bas
         "format": portable_schema(schema),
         "stream": False,
         "keep_alive": OLLAMA_KEEP_ALIVE,
-        "options": {"num_ctx": ollama_context(len(system) + len(prompt)), "temperature": 0.1},
+        "options": {"num_ctx": ollama_context(len(system) + len(prompt)), "num_predict": OLLAMA_OUTPUT_BUDGET,
+                    "temperature": 0.1},
     }
     try:
-        r = httpx.post(f"{url}/api/chat", json=body, timeout=httpx.Timeout(1800, connect=8))
+        r = httpx.post(f"{url}/api/chat", json=body, timeout=httpx.Timeout(OLLAMA_TIMEOUT_SECONDS, connect=8))
     except httpx.HTTPError as e:
         raise AIError(f"Couldn't reach Ollama at {url}: {e.__class__.__name__}", provider_down=True) from e
     if r.status_code == 404:

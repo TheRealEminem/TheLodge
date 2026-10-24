@@ -7,6 +7,7 @@ import { useLive } from "@core/live";
 import { useSettings, useShell } from "@core/shell";
 import { crmApi } from "./api";
 import type { SheetStatus } from "./api";
+import { LockedNote } from "./bits";
 import { relativeTime } from "./format";
 
 function plural(n: number, one: string, many = `${one}s`) {
@@ -240,9 +241,10 @@ export default function SheetSettings() {
       <ControlRow label="Sheet script link" hint="The Web app URL from Apps Script. Anyone with it can read and change the sheet, so it’s kept like a key." wrap>
         <SecretSetting label="Sheet script link" hint={hints["crm.sheet_secret"]} onSave={(x) => void save({ "crm.sheet_secret": x })} />
       </ControlRow>
+      <LockedNote why={data?.locked} />
       {data && <StatusLine status={data} />}
       {data?.held && <Held held={data.held} onDone={() => void reload()} />}
-      <Actions ready={configured} />
+      <Actions ready={configured && !data?.locked} />
     </Section>
   );
 }

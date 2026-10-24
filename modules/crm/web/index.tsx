@@ -16,6 +16,7 @@ import Network from "./Network";
 import Organizations from "./Organizations";
 import People from "./People";
 import Profile from "./Profile";
+import SetupStep from "./Setup";
 
 // The inbox screens are only needed when you open them.
 const Inbox = lazy(() => import("./Inbox"));
@@ -53,6 +54,7 @@ const crm: ModuleWeb = {
   home: HomeBlock,
   homeWide: true,
   settings: AiSettings,
+  setupStep: { title: "Bring your people in", view: SetupStep },
 };
 
 export default crm;

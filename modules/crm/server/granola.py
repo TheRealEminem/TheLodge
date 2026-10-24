@@ -15,7 +15,7 @@ from datetime import UTC, datetime, timedelta
 
 import httpx
 
-from core.server import db, jobs, settings
+from core.server import db, jobs, lockdown, settings
 
 from . import capture, ingest, store
 
@@ -39,6 +39,11 @@ class GranolaError(RuntimeError):
 
 def configured() -> bool:
     return bool(settings.get_all().get("crm.granola_api_key"))
+
+
+def locked() -> str | None:
+    """Why Granola is off right now (Lockdown), or None."""
+    return lockdown.blocked("Syncing from Granola")
 
 
 def _client(key: str) -> httpx.Client:
@@ -171,6 +176,8 @@ def _since(state: dict, now: datetime) -> datetime:
 def sync() -> dict:
     """One pass. Never raises for what's wrong with Granola or the key: it records it for the Settings page."""
     now = datetime.now(UTC)
+    if locked():
+        return {"skipped": "lockdown"}
     key = settings.get_all().get("crm.granola_api_key")
     if not key:
         return {"skipped": "no key"}
@@ -232,11 +239,13 @@ def handle_sync(job: jobs.Job) -> None:
 
 def seconds() -> int:
     """Every 15 minutes once there's a key; never before."""
-    return 900 if configured() else 0
+    return 900 if configured() and not locked() else 0
 
 
 def test() -> dict:
     """Does the key work? Looks at one note, imports nothing."""
+    if (why := locked()):
+        raise GranolaError(why)
     key = settings.get_all().get("crm.granola_api_key")
     if not key:
         raise GranolaError("Paste a Granola API key first.")

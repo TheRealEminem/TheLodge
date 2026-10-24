@@ -44,6 +44,10 @@ def _interval(every: "Callable[[], int] | int") -> int:
 def tick(now: float | None = None) -> list[str]:
     """Queue whatever is due. Returns the kinds queued. (The thread calls this; tests call it with a fake clock.)"""
     now = time.monotonic() if now is None else now
+    try:
+        jobs.resume_when_room()          # work parked for lack of memory goes again once there's room
+    except Exception:  # noqa: BLE001 - never let this stop the clock
+        log.exception("could not look for jobs waiting for memory")
     started = _started_at if _started_at is not None else now - FIRST_RUN_DELAY
     queued = []
     for (module, kind), every in list(_entries.items()):

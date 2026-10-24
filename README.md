@@ -2,8 +2,9 @@
 
 A local-first relationship CRM for one person, on the Mac: who you know, how well you know them, how they're
 connected, and everything you've learned about them along the way. Drop in notes, documents, spreadsheets and
-meetings and it files what they say under the right people, using a local model through Ollama or a cloud AI you
-choose. Your people stay on your computer unless you send them somewhere. The full specs are under
+meetings and it files what they say under the right people. It runs on your Mac, or with the AI you choose: a local
+model through Ollama, a cloud AI with your own key, or a mix, and the first run recommends one from your Mac's memory.
+Your people stay on your computer unless you send them somewhere, and **Lockdown** makes sure nothing is sent. The full specs are under
 [Features](#features); the download page is at [therealeminem.github.io/TheLodge](https://therealeminem.github.io/TheLodge/).
 
 ![The Lodge's home screen: a search for anyone you know, and how many people are strong, working, light and indirect connections](docs/assets/app.jpg)
@@ -16,8 +17,9 @@ choose. Your people stay on your computer unless you send them somewhere. The fu
 3. **First open only:** this build isn't signed by an Apple developer yet, so macOS blocks it. Go to
    System Settings → Privacy & Security, scroll down, and press **Open Anyway** next to "The Lodge" was blocked.
    (Terminal alternative: `xattr -dr com.apple.quarantine "/Applications/The Lodge.app"`.)
-4. Add your people by hand, or import a spreadsheet or your LinkedIn connections. For the AI parts, install
-   [Ollama](https://ollama.com) and pull a model, or add an API key (Claude, OpenAI, Gemini, DeepSeek…) in Settings.
+4. A short setup opens on first launch: your name, where AI should run (on this Mac, in the cloud, or a mix; it
+   recommends one for your Mac and can install [Ollama](https://ollama.com) and a model for you), and whether to turn
+   on Lockdown. Then add your people by hand, or import a spreadsheet or your LinkedIn connections.
 
 The Lodge lives in your menu bar (a small A-frame) and opens its window on launch. Everything it needs is inside
 the app: its own Python, the server and the web app. It updates itself from **Settings → Updates** or the menu bar;
@@ -73,7 +75,16 @@ calendars, backups and restore, and what to do if something's wrong.
 - One SQLite file on your Mac. Daily backups kept for two weeks, **Back up now**, **Restore** (which keeps a backup
   of how things were first, so it can be undone) and **Export** to readable JSON (Settings → Your data).
 - Any AI: Ollama (local), Claude, OpenAI, Gemini, DeepSeek or any OpenAI-compatible API. Keys are typed into
-  Settings, never into a file, and are never sent back to the page.
+  Settings, never into a file, and are never sent back to the page. A key entered in one Trailmix family app is
+  there for the others on the same Mac.
+- **On this Mac or in the cloud:** the first run reads your Mac's memory and recommends a path. A small local model
+  writes summaries, action items, overviews and answers; reading long documents for relationships and facts is
+  better with a cloud AI, so the careful job can use one while everything else stays here ("Mixed").
+- **Lockdown** (Settings → Privacy): nothing leaves the computer. Only AI that runs here answers, the app doesn't
+  check for updates by itself, and research by Gemini, Granola, calendars, the shared Sheet and Gravatar pictures
+  stop. Everything on your own data keeps working.
+- **Pictures:** add one to anyone by choosing, dropping or pasting an image, or let The Lodge look people up on
+  Gravatar (off until you turn it on).
 
 ## Build the app yourself
 

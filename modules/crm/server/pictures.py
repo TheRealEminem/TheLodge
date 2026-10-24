@@ -13,7 +13,7 @@ from datetime import datetime, timezone
 
 import httpx
 
-from core.server import db, jobs, settings
+from core.server import db, jobs, lockdown, settings
 
 from . import store
 from .model import iso
@@ -76,6 +76,8 @@ def remove(entity_id: str) -> None:
 
 def blocked() -> str | None:
     """Why a look-up can't run right now, or None."""
+    if (why := lockdown.blocked("Looking up pictures")):
+        return why
     if not settings.get_all().get(SETTING):
         return "Looking up pictures is off. Turn it on in Settings first."
     return None

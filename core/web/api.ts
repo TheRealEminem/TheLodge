@@ -35,6 +35,10 @@ export interface AppInfo {
   version: string;
   modules: { id: string; name: string }[];
   auth_required: boolean;
+  /** Lockdown is on: nothing leaves this computer (core/server/lockdown.py). */
+  lockdown: boolean;
+  /** False until the first-run screens have been finished (or skipped); an install that was already in use starts true. */
+  setup_done: boolean;
 }
 
 /** A thing's latest background job, as the server reports it next to the thing. */
@@ -141,6 +145,50 @@ export interface PersonChoice {
   name: string;
 }
 
+/** What this Mac can do (core/server/resources.py): its memory, disk and chip, and the path that suits it. */
+export interface SystemInfo {
+  snapshot: { chip: string; ram_total_gb: number; ram_available_gb: number; disk_free_gb: number; memory_pressure: number };
+  advice: { verdict: "local" | "mixed" | "cloud"; chip: string; ram_gb: number; disk_free_gb: number; notes: string[] };
+}
+
+/** Ollama on this Mac (core/server/ollama_setup.py). */
+export interface OllamaStatus {
+  can_install: boolean;
+  installed: boolean;
+  reachable: boolean;
+  models: string[];
+  using: string;
+  recommended: string;
+  locked: boolean;
+  install: { active: boolean; status: string; progress: number | null; error: string | null } | null;
+  pull: { model: string; active: boolean; status: string; progress: number | null; error: string | null } | null;
+}
+
+/** The first-run screens' data (core/server/setup.py). */
+export interface SetupJob {
+  module: string;
+  job: string;
+  label: string;
+  hint: string;
+  weight: "light" | "heavy";
+  provider: string;
+  provider_label: string;
+  model: string;
+  ready: boolean;
+  reason: string;
+  local: boolean;
+}
+export type AiPath = "local" | "mixed" | "cloud";
+export interface SetupState {
+  done: boolean;
+  path: AiPath | "";
+  recommended: AiPath;
+  snapshot: SystemInfo["snapshot"];
+  advice: SystemInfo["advice"];
+  jobs: SetupJob[];
+  providers: ProviderInfo[];
+}
+
 export interface BackupItem {
   name: string;
   kind: "auto" | "manual" | "before-restore" | "before-update";
@@ -168,6 +216,14 @@ export const api = {
   providers: () => request<ProviderInfo[]>("/ai/providers"),
   providerModels: (id: ProviderId) => request<{ models: string[] }>(`/ai/providers/${id}/models`),
   providerTest: (id: ProviderId) => request<{ message: string }>(`/ai/providers/${id}/test`, json("POST")),
+
+  setup: () => request<SetupState>("/setup"),
+  setupPath: (path: AiPath, cloud = "") => request<SetupState>("/setup/path", json("PUT", { path, cloud })),
+  setupDone: () => request<{ ok: true }>("/setup/done", json("POST")),
+  system: () => request<SystemInfo>("/system"),
+  ollama: () => request<OllamaStatus>("/ollama"),
+  ollamaInstall: () => request<{ started: boolean }>("/ollama/install", json("POST")),
+  ollamaPull: (model = "") => request<{ started: boolean }>("/ollama/pull", json("POST", { model })),
 
   search: (q: string) => request<SearchGroup[]>(`/search?q=${encodeURIComponent(q)}`),
   people: (q: string, limit = 8) => request<PeopleResult>(`/people?q=${encodeURIComponent(q)}&limit=${limit}`),

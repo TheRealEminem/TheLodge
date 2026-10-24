@@ -50,6 +50,8 @@ export interface PeoplePage {
 
 export interface CaptureStatus {
   configured: boolean;
+  /** Why it's off right now (Lockdown), or null. */
+  locked: string | null;
   last_run_at: string | null;
   last_ok_at: string | null;
   last_counts: Record<string, number> | null;
@@ -75,6 +77,7 @@ export interface CaptureOverview {
 
 export interface SheetStatus {
   configured: boolean;
+  locked: string | null;
   script_version: number;
   last_run_at: string | null;
   last_ok_at: string | null;

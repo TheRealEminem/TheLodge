@@ -15,7 +15,7 @@ router = APIRouter(prefix="/sheet")
 @router.get("")
 def status():
     state = capture.get_state("sheet")
-    return {"configured": sheet_sync.configured(), "script_version": sheet_script.VERSION,
+    return {"configured": sheet_sync.configured(), "locked": sheet_sync.locked(), "script_version": sheet_script.VERSION,
             **{k: state.get(k) for k in ("last_run_at", "last_ok_at", "last_counts", "error", "link_problem", "spreadsheet", "held", "decision")}}
 
 

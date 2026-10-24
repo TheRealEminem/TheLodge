@@ -176,6 +176,21 @@ def test_when_the_provider_is_down_the_batch_parks_and_resume_finishes_it_withou
     assert client.get("/api/crm/entities", params={"q": "Zed Zulu"}).json()["total"] == 1   # one Zed, not five
 
 
+def test_a_mac_short_of_memory_parks_a_note_with_its_reason_and_starts_it_by_itself(client, fake_structured, monkeypatch):
+    from core.server import resources, schedule
+    why = f"Ollama: {resources.WAIT}: the model qwen2.5:7b needs about 6.4 GB, more than this Mac can spare. Pick a smaller model in Settings, or proceed anyway."
+    fake_structured.reply = ai.AIError(why, provider_down=True)
+    job = upload(client, ("a.txt", b"Attendees: Zed Zulu\nA note about the depot pilot with enough words in it to be read."))["a.txt"]
+    assert job["status"] == "pending" and job["work"]["status"] == "waiting"
+    assert job["work"]["wait_reason"].startswith("Ollama: " + resources.WAIT) and "Press Resume" not in job["work"]["wait_reason"]
+    assert not ingest._down                                   # not a broken provider: later notes aren't held back by it
+    fake_structured.reply = lambda prompt, system, schema: extraction([entity("p1", "Zed Zulu", role="attendee")])
+    monkeypatch.setattr(ai, "memory_ready", lambda: True)     # memory frees up
+    schedule.tick()
+    jobs.drain()
+    assert client.get("/api/crm/ingest/summary").json()["counts"]["applied"] == 1
+
+
 def test_changing_the_ai_settings_resumes_what_was_parked(client, fake_structured):
     fake_structured.reply = ai.AIError("Claude (Anthropic): Claude rejected the API key", provider_down=True)
     upload(client, ("a.txt", b"Attendees: Zed Zulu\nA note about the depot pilot with enough words in it to be read."))
