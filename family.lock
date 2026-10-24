@@ -1,6 +1,6 @@
 {
-  "commit": "97822afbb3e3a7a6fd14122c474094afb3cd2003",
-  "subject": "Family: the Mac's resources and memory gate, Ollama from inside the app, Lockdown, and a guided first run",
+  "commit": "0c5a8a8dab095605858d6d652a36352ff63e82f2",
+  "subject": "Backups roll over: how they should work, in the family docs",
   "synced_on": "2026-10-24",
   "note": "The TrailmixFamily commit this app's shared code comes from. Change it with scripts/sync-family."
 }

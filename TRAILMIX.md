@@ -54,6 +54,10 @@ If a family app keeps these, Trailmix can talk to it now and merge with it later
 14. **The same release path:** a version tag builds the Mac app, a smoke test runs, it goes out as a beta
     (pre-release), and it reaches everyone after 3 days unless someone reports a blocker. The updater offers beta
     updates, Skip this version and Go back.
+15. **Backups roll over.** A small fixed set of restore points (the newest, and the newest that is at least an hour, a
+    day and a week old), a copy before an update and before a restore that survive roll-over, never two copies of the
+    same data, and a simple menu with Advanced collapsed. The full rule is in `ARCHITECTURE.md` §7. A backup list that
+    grows is a bug.
 
 ---
 
@@ -455,7 +459,7 @@ So other apps copy the family's way, not Trailmix's, where they differ.
 | Search | one FTS table | `Module.search` merged across modules | Trailmix |
 | Routes | `#meeting-12` | `#/meetings/<uid>` | Trailmix |
 | Window bridge | `messageHandlers.trailmix` | `messageHandlers.app` | Trailmix |
-| Database backups | once per new version, newest 3, no restore screen | daily (14 kept), before an update, "Back up now", restore | Trailmix |
+| Database backups | once per new version, newest 3, no restore screen | a rolling set (hourly if changed; the newest and the newest at least 1 hour, 1 day and 7 days old), copies before an update and a restore, "Back up now", restore | Family (`core/server/backup.py`, rule 15) |
 | Release blocker | issue title `[Beta X.Y.Z] [blocks me]` | issue label `blocks release` | pick one family-wide (**Proposed**: the label, plus the title form for reports made from the app) |
 | Lockdown | yes | yes | Family (`core.lockdown`, gated in `ai.configured()` and the updater) |
 | Paid-AI pricing and usage | yes | no | Family, when a second module spends money |
