@@ -9,14 +9,15 @@ from . import calendar_sync, capture, granola
 router = APIRouter(prefix="/capture")
 
 
-def _status(name: str, configured: bool) -> dict:
+def _status(name: str, configured: bool, locked: str | None) -> dict:
     state = capture.get_state(name)
-    return {"configured": configured, **{k: state.get(k) for k in ("last_run_at", "last_ok_at", "last_counts", "error", "key_problem", "calendars")}}
+    return {"configured": configured, "locked": locked, **{k: state.get(k) for k in ("last_run_at", "last_ok_at", "last_counts", "error", "key_problem", "calendars")}}
 
 
 @router.get("")
 def status():
-    return {"granola": _status("granola", granola.configured()), "calendar": _status("calendar", calendar_sync.configured()),
+    return {"granola": _status("granola", granola.configured(), granola.locked()),
+            "calendar": _status("calendar", calendar_sync.configured(), calendar_sync.locked()),
             "sources": [capture.preview(o) for o in capture.ORIGINS]}
 
 

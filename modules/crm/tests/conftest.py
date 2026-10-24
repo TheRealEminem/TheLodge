@@ -13,8 +13,12 @@ def clean_crm():
     db.execute("DELETE FROM core_jobs WHERE module = 'crm'")
     from modules.crm.server import ingest, roles, store
     ingest._down.clear()
-    settings.update({f"crm.{name}": default for name, default in {**roles.SETTINGS, "webhook_auto_apply": False, "granola_api_key": "", "granola_auto_apply": True,
-                                                                              "granola_days": 30, "calendar_secret": "", "sheet_secret": "", "overviews_ahead": True}.items()})
+    # Most tests are about reading with a cloud AI (a fake one), so those two start on the providers they used to default to;
+    # test_local_path.py is about what "auto" does.
+    settings.update({f"crm.{name}": default for name, default in {**roles.SETTINGS, "extraction_provider": "anthropic", "utility_provider": "gemini",
+                                                                              "webhook_auto_apply": False, "granola_api_key": "", "granola_auto_apply": True,
+                                                                              "granola_days": 30, "calendar_secret": "", "sheet_secret": "", "overviews_ahead": True,
+                                                                              "gravatar": False}.items()})
     store._touch()  # drops the matching index's cache
     yield
     jobs.drain()

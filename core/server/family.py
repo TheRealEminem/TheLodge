@@ -5,7 +5,7 @@ It has two parts, because keys and data behave differently:
 
 - **Shared settings** live in one small SQLite file that every family app opens directly (`family.db` in the
   family folder), so they're there even while the other apps are closed. Only the keys in `is_shared()` are shared:
-  the AI settings, your name and the appearance. Each app also keeps its own copy, and "Share keys and
+  the AI settings, your name, the appearance and Lockdown. Each app also keeps its own copy, and "Share keys and
   preferences" (`core.share_with_family`, never shared) turns sharing off for one app.
 - **Data stays in the app that owns it.** Each running app registers itself (`family_apps`: its port and the
   offers its modules answer, such as "people.search"), and a module asks another app with
@@ -36,7 +36,7 @@ log = logging.getLogger("core.family")
 
 DEFAULT_DIR = Path.home() / "Library" / "Application Support" / "Trailmix Family"
 SHARED_NAMESPACES = ("ai.",)                                  # every AI setting: provider, fallback, models, keys
-SHARED_KEYS = {"core.your_name", "core.appearance"}
+SHARED_KEYS = {"core.your_name", "core.appearance", "core.lockdown"}
 SHARING_KEY = "core.share_with_family"                        # this app's own choice, never shared
 HEARTBEAT_SECONDS = 60
 STALE_SECONDS = 3 * HEARTBEAT_SECONDS

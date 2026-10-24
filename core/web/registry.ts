@@ -29,6 +29,8 @@ export interface ModuleWeb {
   homeWide?: boolean;
   /** A section on the Settings page. */
   settings?: ComponentType;
+  /** One screen of the first run, after the host's own ("Bring your people in"). Call next() to go on; it can be skipped. */
+  setupStep?: { title: string; view: ComponentType<{ next: () => void }> };
 }
 
 const found = import.meta.glob<{ default: ModuleWeb }>("../../modules/*/web/index.tsx", { eager: true });

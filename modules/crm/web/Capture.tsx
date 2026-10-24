@@ -7,6 +7,7 @@ import { useLive } from "@core/live";
 import { useSettings, useShell } from "@core/shell";
 import { crmApi } from "./api";
 import type { CaptureSource, CaptureStatus } from "./api";
+import { LockedNote } from "./bits";
 import { relativeTime } from "./format";
 
 function plural(n: number, one: string, many = `${one}s`) {
@@ -146,8 +147,9 @@ export default function CaptureSettings() {
           checked={get<boolean>("crm.granola_auto_apply") !== false}
           onChange={(v) => void save({ "crm.granola_auto_apply": v })}
         />
+        <LockedNote why={data?.granola.locked} />
         <StatusLine status={data?.granola} what="meetings" />
-        <Actions which="granola" ready={!!data?.granola.configured} />
+        <Actions which="granola" ready={!!data?.granola.configured && !data.granola.locked} />
         <RemoveRow source={source("granola")} confirm={confirm} onDone={refresh} />
       </Section>
       <Section
@@ -158,8 +160,9 @@ export default function CaptureSettings() {
         <ControlRow label="Calendar address" hint="Google Calendar: Settings for the calendar, Integrate calendar, Secret address in iCal format. Anyone with it can read that calendar, so it's kept like a key. Separate several with spaces." wrap>
           <SecretSetting label="Calendar address" hint={hints["crm.calendar_secret"]} onSave={(x) => void save({ "crm.calendar_secret": x })} />
         </ControlRow>
+        <LockedNote why={data?.calendar.locked} />
         <StatusLine status={data?.calendar} what="events" />
-        <Actions which="calendar" ready={!!data?.calendar.configured} />
+        <Actions which="calendar" ready={!!data?.calendar.configured && !data.calendar.locked} />
         <RemoveRow source={source("calendar")} confirm={confirm} onDone={refresh} />
       </Section>
       {confirmDialog}

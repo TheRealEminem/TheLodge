@@ -24,11 +24,11 @@ from pathlib import PurePosixPath
 
 from dateutil import parser as dateparser
 
-from core.server import ai, contracts, db, events, jobs
+from core.server import ai, contracts, db, events, jobs, resources
 
 from . import inbox, research, resolve, roles, snapshot, spreadsheets, store, views
 from .documents import ParsedSheet, UnsupportedFile, expand_archives, kind_of, parse_document, parse_spreadsheet, text_hash
-from .extraction import (EXTRACTION_SYSTEM, TRIAGE_SYSTEM, DocContext, ExtractedEntity, Extraction, Triage, extract_heuristic,
+from .extraction import (BASIC_SYSTEM, EXTRACTION_SYSTEM, TRIAGE_SYSTEM, BasicNotes, DocContext, ExtractedEntity, Extraction, Triage, extract_heuristic,
                          extraction_prompt, triage_prompt)
 from .kinds import validate_relationship
 from .model import iso, parse_dt as parse_iso
@@ -42,6 +42,7 @@ BRIEF_MAX_CHARS = 40_000
 MAX_MEETING_CHARS = 600_000
 MATCH_THRESHOLD = 0.6
 FALLBACK_WARNING_PREFIX = "AI extraction failed"
+BASIC_WARNING_PREFIX = "Read in basic mode"
 BREAKER_SECONDS = 60
 
 _apply_lock = inbox.write_lock   # writes to the graph one at a time
@@ -415,12 +416,40 @@ def build_context(row: dict, local: bool, brief: bool, warnings: list[str]) -> D
     )
 
 
+def _rules_reading(row: dict) -> Extraction:
+    owner = store.get_me()
+    occurred = parse_dt(row["occurred_at"])
+    return extract_heuristic(
+        row["raw_text"] or "",
+        title=row["title"] if row["source"] != "document" else None,
+        occurred_on=occurred.date().isoformat() if occurred else None,
+        owner_name=owner.name if owner else None,
+        known_entities=relevant_known_entities(row["raw_text"] or ""),
+    )
+
+
 def run_extraction(row: dict, *, brief: bool, warnings: list[str]) -> tuple[Extraction, str]:
-    """(what was found, who found it: "anthropic:claude-opus-5-5", or "rules")."""
+    """(what was found, who found it: "anthropic:claude-opus-5-5", "rules", or "ollama:qwen2.5:7b (basic)").
+
+    Basic mode: a model small enough to run on this Mac finds about as many people as the rules do and misses most
+    relationships (measured on real notes, PLAN.md chunk 22a), so it isn't trusted with the graph. The rules find the
+    people and the model writes the notes (summary, key points, action items), and the result always goes to the Inbox
+    for a person to look over."""
     choice = roles.choice("extraction")
     if choice != "rules":
-        ctx = build_context(row, ai.describe(choice)["local"], brief, warnings)
+        local = ai.describe(choice)["local"]
+        ctx = build_context(row, local, brief, warnings)
         try:
+            if local and roles.basic():
+                notes, pid = roles.structured("extraction", extraction_prompt(ctx), BASIC_SYSTEM, BasicNotes)
+                extraction = _rules_reading(row)
+                extraction.summary = notes.summary or extraction.summary
+                extraction.key_points = notes.key_points or extraction.key_points
+                extraction.action_items = notes.action_items or extraction.action_items
+                model = f"{pid}:{ai.describe(pid)['model']}"
+                warnings.append(f"{BASIC_WARNING_PREFIX}: the people were found by rules and the notes by {model}. "
+                                "A bigger model or a cloud AI also finds how people are connected.")
+                return extraction, f"{model} (basic)"
             extraction, pid = roles.structured("extraction", extraction_prompt(ctx), EXTRACTION_SYSTEM, Extraction)
             return extraction, f"{pid}:{ai.describe(pid)['model']}"  # type: ignore[return-value]
         except ai.AIError as e:
@@ -429,16 +458,7 @@ def run_extraction(row: dict, *, brief: bool, warnings: list[str]) -> tuple[Extr
                 raise ProviderDown(f"AI provider unavailable: {e}") from e
             log.warning("AI extraction failed for %s: %s", row["id"], e)
             warnings.append(f"{FALLBACK_WARNING_PREFIX} ({e}); used rule-based extraction instead.")
-    owner = store.get_me()
-    occurred = parse_dt(row["occurred_at"])
-    extraction = extract_heuristic(
-        row["raw_text"] or "",
-        title=row["title"] if row["source"] != "document" else None,
-        occurred_on=occurred.date().isoformat() if occurred else None,
-        owner_name=owner.name if owner else None,
-        known_entities=relevant_known_entities(row["raw_text"] or ""),
-    )
-    return extraction, "rules"
+    return _rules_reading(row), "rules"
 
 
 # ── Proposals ─────────────────────────────────────────────────────────
@@ -645,8 +665,9 @@ def find_existing_meeting(occurred: datetime | None, people: set[str], title: st
 
 
 def needs_review(proposal: dict) -> bool:
-    """Auto-apply is safe unless a name matched several records or the AI step fell back to rules."""
-    if any(w.startswith(FALLBACK_WARNING_PREFIX) for w in proposal.get("warnings", [])):
+    """Auto-apply is safe unless a name matched several records, the AI step fell back to rules, or a small local model
+    only read the notes (basic mode)."""
+    if any(w.startswith((FALLBACK_WARNING_PREFIX, BASIC_WARNING_PREFIX)) for w in proposal.get("warnings", [])):
         return True
     if proposal.get("identity") in ("medium", "low"):
         return True
@@ -938,6 +959,8 @@ def handle_extract(job: jobs.Job) -> None:
         inbox.update(row["id"], status="review", proposal=proposal, extractor=extractor, payload=payload)
     except ProviderDown as e:
         inbox.update(row["id"], status="pending", error=None)   # back in line
+        if resources.WAIT in str(e):                              # a Mac short of memory isn't a broken provider:
+            raise jobs.Wait(str(e).removeprefix("AI provider unavailable: ")) from e   # it goes again by itself
         _trip(str(e))
         raise jobs.Wait(f"{e}. Press Resume when it's fixed.") from e
     except Exception as e:  # noqa: BLE001 - shown on the item, with Retry

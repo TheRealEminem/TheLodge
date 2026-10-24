@@ -6,6 +6,7 @@ import { SwitchRow } from "@core/components/ui";
 import { useLive } from "@core/live";
 import { useSettings, useShell } from "@core/shell";
 import { crmApi } from "./api";
+import { LockedNote } from "./bits";
 
 export default function PictureSettings() {
   const { toast } = useShell();
@@ -32,7 +33,8 @@ export default function PictureSettings() {
         checked={on}
         onChange={(v) => void save({ "crm.gravatar": v })}
       />
-      {on && (
+      {on && !state?.allowed && <LockedNote why={state?.reason} />}
+      {on && state?.allowed && (
         <div className="flex flex-wrap items-center gap-3 py-3.5">
           <button className="btn btn-sm btn-soft" disabled={busy || state?.job?.status === "running"} onClick={() => void ask()}>
             <SearchIcon size={16} /> Look up everyone now
