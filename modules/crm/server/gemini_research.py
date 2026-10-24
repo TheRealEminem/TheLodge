@@ -5,7 +5,7 @@ written from the answers in the brief's shape, carrying its ref. The report goes
 and waits for your OK. Nothing runs unless you start it, and a run stops before it would pass the month's budget.
 
 Levels, which models do the work:
-    quick    Flash-Lite asks and writes. Cheap, but it often answers without searching (see PLAN.md, Chunk 19)
+    quick    Flash-Lite asks and writes. Cheap, but it often answers without searching
     better   Flash asks and writes                                       the default, through Batch
     best     Flash asks; the Pro model checks what's missing, has it asked, and writes
 Each can go through Google's Batch API: half the token price, answers within a day (usually minutes). Google bills
