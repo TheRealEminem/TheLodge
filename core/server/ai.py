@@ -19,7 +19,7 @@ from urllib.parse import urlparse
 import httpx
 from pydantic import BaseModel
 
-from . import lockdown, resources, settings
+from . import lockdown, resources, settings, usage
 
 OLLAMA_KEEP_ALIVE = os.getenv("OLLAMA_KEEP_ALIVE", "0")  # "0" = unload right after the last call
 TIMEOUT = httpx.Timeout(600, connect=8)
@@ -42,6 +42,7 @@ _CLAUDE_FALLBACK_MODELS = {"claude-opus-5-5", "claude-opus-5", "claude-fable-5-1
 DEFAULTS = {
     "provider": "ollama",
     "fallback": "none",
+    "warn_over": 1,              # dollars: a job estimated to cost this much or more asks first (0 = never ask)
     "path": "",                  # where AI runs, from setup: "" (not chosen), "local", "mixed" or "cloud"
     "heavy_provider": "auto",    # for the jobs modules call heavy (reading a long document): "auto" = the same as provider
     "ollama_url": os.getenv("OLLAMA_URL", "http://localhost:11434"),
@@ -80,21 +81,24 @@ class AIError(Exception):
 
 # ── For modules ────────────────────────────────────────────────────────
 
-def complete(prompt: str, system: str | None = None, choice: str = "auto") -> tuple[str, str]:
-    """(text, provider id). Tries your provider, then your fallback. Raises AIError with every reason."""
+def complete(prompt: str, system: str | None = None, choice: str = "auto", purpose: str | None = None) -> tuple[str, str]:
+    """(text, provider id). Tries your provider, then your fallback. Raises AIError with every reason.
+    purpose: what this is for in a few words, so Settings → AI → Usage can say where the spending went."""
     cfg = settings.section("ai")
-    return run_chain(choice, cfg, lambda pid: generate(pid, cfg, prompt, system))
+    with usage.purpose(purpose):
+        return run_chain(choice, cfg, lambda pid: generate(pid, cfg, prompt, system))
 
 
 def structured(prompt: str, system: str | None, schema: type[BaseModel], choice: str = "auto",
-               max_tokens: int | None = None) -> tuple[BaseModel, str]:
+               max_tokens: int | None = None, purpose: str | None = None) -> tuple[BaseModel, str]:
     """(an instance of schema, provider id). The reply is constrained to the schema where the provider can do
     that, and checked either way. Optional fields may come back as None. max_tokens: the output budget
-    (default 32000 for Claude, 16000 elsewhere). Raises AIError; check .provider_down."""
+    (default 32000 for Claude, 16000 elsewhere). purpose: as for complete(). Raises AIError; check .provider_down."""
     from . import ai_adapters
 
     cfg = settings.section("ai")
-    return run_chain(choice, cfg, lambda pid: ai_adapters.generate_structured(pid, cfg, prompt, system, schema, max_tokens))
+    with usage.purpose(purpose):
+        return run_chain(choice, cfg, lambda pid: ai_adapters.generate_structured(pid, cfg, prompt, system, schema, max_tokens))
 
 
 def resolve(choice: str, weight: str = "light") -> str:
@@ -146,6 +150,11 @@ def local_first() -> bool:
 
 def label(pid: str, cfg: dict) -> str:
     return (cfg.get("custom_name") or "OpenAI-compatible") if pid == "custom" else PROVIDERS[pid]["label"]
+
+
+def note_usage(pid: str, model: str, tokens_in: int | None, tokens_out: int | None) -> None:
+    """Adds one answer to the usage tally, from the token counts the provider reported."""
+    usage.record(pid, model, tokens_in or 0, tokens_out or 0, local=runs_here(pid, settings.section("ai")))
 
 
 def is_local(pid: str, cfg: dict) -> bool:
@@ -312,7 +321,9 @@ def _ollama(cfg: dict, prompt: str, system: str | None, keep_alive: str) -> str:
             "options": {"num_ctx": OLLAMA_NUM_CTX, "num_predict": OLLAMA_NUM_PREDICT, "temperature": 0.2}}
     if system:
         body["system"] = system
-    return _post(f"{cfg['ollama_url']}/api/generate", json=body, timeout=OLLAMA_TIMEOUT).json().get("response") or ""
+    data = _post(f"{cfg['ollama_url']}/api/generate", json=body, timeout=OLLAMA_TIMEOUT).json()
+    note_usage("ollama", model, data.get("prompt_eval_count"), data.get("eval_count"))
+    return data.get("response") or ""
 
 
 def _post(url: str, timeout: httpx.Timeout = TIMEOUT, **kw) -> httpx.Response:
@@ -377,6 +388,7 @@ def _anthropic(cfg: dict, prompt: str, system: str | None) -> str:
             msg = client.messages.create(**params)
     except anthropic.APIError as e:
         raise claude_error(e, model) from e
+    note_usage("anthropic", model, msg.usage.input_tokens, msg.usage.output_tokens)
     if msg.stop_reason == "refusal":
         raise AIError("Claude declined this request")
     return "".join(b.text for b in msg.content if b.type == "text")
@@ -392,6 +404,8 @@ def _openai_compatible(base: str, key: str, model: str, prompt: str, system: str
     headers = {"Authorization": f"Bearer {key}"} if key else {}
     r = _post(f"{base}/chat/completions", json=body, headers=headers)
     try:
+        used = r.json().get("usage") or {}
+        note_usage(pid, model, used.get("prompt_tokens"), used.get("completion_tokens"))
         return r.json()["choices"][0]["message"]["content"] or ""
     except (KeyError, IndexError, ValueError) as e:
         raise AIError(f"Unexpected response from {base}") from e
@@ -401,9 +415,13 @@ def _gemini(cfg: dict, prompt: str, system: str | None) -> str:
     body: dict = {"contents": [{"role": "user", "parts": [{"text": prompt}]}]}
     if system:
         body["systemInstruction"] = {"parts": [{"text": system}]}
-    r = _post(f"https://generativelanguage.googleapis.com/v1beta/models/{model_for('gemini', cfg)}:generateContent",
+    model = model_for("gemini", cfg)
+    r = _post(f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent",
               json=body, headers={"x-goog-api-key": cfg["gemini_api_key"]})
     try:
+        used = r.json().get("usageMetadata") or {}
+        note_usage("gemini", model, used.get("promptTokenCount"),
+                   (used.get("candidatesTokenCount") or 0) + (used.get("thoughtsTokenCount") or 0))
         parts = r.json()["candidates"][0]["content"]["parts"]
     except (KeyError, IndexError, ValueError) as e:
         raise AIError("Gemini returned no text (it may have blocked the request)") from e

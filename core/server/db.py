@@ -46,6 +46,22 @@ CORE_MIGRATIONS = [
     );
     CREATE INDEX core_links_to ON core_links(to_ref);
     """,
+    """
+    CREATE TABLE core_ai_usage (
+        id         TEXT PRIMARY KEY,
+        at         TEXT NOT NULL,
+        provider   TEXT NOT NULL,
+        model      TEXT NOT NULL,
+        source     TEXT NOT NULL,      -- what the call was for ("Note summaries")
+        tokens_in  INTEGER NOT NULL,
+        tokens_out INTEGER NOT NULL,
+        searches   INTEGER NOT NULL DEFAULT 0,
+        cost       REAL NOT NULL,      -- estimated dollars; 0 for local or unpriced
+        local      INTEGER NOT NULL,   -- ran on this computer
+        priced     INTEGER NOT NULL    -- cost is a real estimate (a local model is priced at 0)
+    );
+    CREATE INDEX core_ai_usage_at ON core_ai_usage(at);
+    """,
 ]
 
 

@@ -302,7 +302,7 @@ def write_overview(job: jobs.Job) -> None:
         "Nothing else: no title, no preamble, no sign-off."
     )
     try:
-        body, pid = ai.complete(prompt, OVERVIEW_SYSTEM, choice())
+        body, pid = ai.complete(prompt, OVERVIEW_SYSTEM, choice(), purpose="People overviews")
     except ai.AIError as e:
         if e.provider_down:
             raise jobs.Wait(str(e)) from e
@@ -433,7 +433,7 @@ def answer(job: jobs.Job) -> None:
     )
     job.stage("Thinking")
     try:
-        reply, pid = ai.complete(prompt, ANSWER_SYSTEM, choice())
+        reply, pid = ai.complete(prompt, ANSWER_SYSTEM, choice(), purpose="Questions about people")
     except ai.AIError as e:
         return fail(str(e))
     db.execute("UPDATE crm_questions SET status = 'done', answer = ?, error = NULL, written_by = ?, answered_at = ? WHERE id = ?",

@@ -16,7 +16,7 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import ai, auth, backup, config, db, events, family, jobs, links, lockdown, module, ollama_setup, people, resources, schedule, search, settings
+from . import ai, auth, backup, config, db, events, family, jobs, links, lockdown, module, ollama_setup, people, resources, schedule, search, settings, usage
 from . import setup as first_run
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -252,6 +252,11 @@ async def ai_test(pid: str):
         return {"message": await run_in_threadpool(ai.test, pid)}
     except ai.AIError as e:
         raise HTTPException(502, str(e)) from e
+
+
+@core_router.get("/ai/usage")
+async def ai_usage():
+    return await run_in_threadpool(usage.summary)
 
 
 class PathBody(BaseModel):
