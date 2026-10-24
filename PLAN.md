@@ -34,7 +34,7 @@ decided, and the order we build it in.
 | 19 | **The Lodge runs Gemini research itself** (asked for 2026-10-18) | M | ☑ 2026-10-19 (usual level: Better through Batch) |
 | 20 | **Network presets: focused questions, and lists the AI writes** (asked for 2026-10-21) | M | ☑ 2026-10-21 (AI lists not yet run against a real model) |
 | 21 | **Lake and lantern: a colorblind-safe palette for The Lodge** (asked for 2026-10-21) | S–M | ☑ 2026-10-21 |
-| 22 | **On this Mac: a local-only path, recommended from the Mac's specs** (asked for 2026-10-23; family first) | L | ☐ planned |
+| 22 | **On this Mac: a local-only path, recommended from the Mac's specs** (asked for 2026-10-23; family first) | L | ◐ 22a measured 2026-10-23 (local models aren't good enough to read notes; Mixed is the 16 GB recommendation) |
 
 Milestones: **A** "it runs" = 0 · **B** "your data, natively" = 1–3 · **C** "browse and rate in the app" = 4–6
 (The owner can stop using Docker for reading; AI intake still needs the old app) · **D** "feature parity" = 7–10 ·
@@ -903,6 +903,67 @@ different lengths, a spreadsheet to map, and five overviews and five questions.
 **Done when:** a table in this chunk shows each job × model, and says which model size each job needs before it
 counts as "good" and which only as "basic". That decides 22e's recommendations and 22f's basic mode.
 
+_Result (2026-10-23, on this Mac with its everyday apps open). **Done, with two changes of method:** Claude
+couldn't be run fresh, because the Claude key in the family's shared settings is 24 characters long and Claude
+rejects it. So reading notes is scored against Claude Opus's readings stored with each document at the September
+import, and sorting against Gemini Flash, which sorts your files today. The ~14B model wasn't run: it's a 9 GB
+download onto a disk with 20 GB free, and on this 16 GB Mac, where 1–3 GB stays free, it would only measure
+swapping. Scripts, raw outputs and the full side-by-side report are in `build/local-models/` (not in git: real data).
+Every outward sync was switched off in the copy first._
+
+**Reading notes and documents** (12 documents, 325 to 119,000 characters):
+
+| Reader | People & orgs found | Relationships found | Facts | Action items | Wrong links¹ | Stuck at 30 min | Usual time per doc |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| Claude Opus (reference) | 119 | 100% | 140 | 83 | – | – | – |
+| Gemini Flash | 85% | 59% | 73 | 64 | 0 | 0 of 12 | 25 s |
+| `qwen2.5:7b` | 61%² | 14% | **0** | 41 | 4 | 2 of 12 | 2½ min (6 min on the longest) |
+| `qwen2.5:3b` | 37%² | 15% | 1 | 0 | 1 | 7 of 12 | 20 s when it finishes |
+| Rules (no AI) | 57% | 1% | 0 | 6 | 0 | – | instant |
+
+¹ Names taken from the "already in your book" list the reader is shown, though this document never mentions them
+(OPHIX, "Defence Materials Expo"). No reader made up a name from nothing; "Gregory Herbert" is a
+fix of the note's own "Gregory Herbet". ² Of the documents it finished.
+
+**The other jobs:**
+
+| Job | Gemini Flash | `qwen2.5:7b` | `qwen2.5:3b` | Rules |
+| --- | --- | --- | --- | --- |
+| Sorting files (same verdict as Gemini) | reference | 92% | 83% | 92% |
+| Spreadsheet columns (against the mappings you accepted, 47 columns) | 98% | 83% | 0%³ | 91% |
+| Overviews (5 people) | good, ~150 words, reads 4× more of the record | good shape, mostly right; twice says how you know someone you haven't met | drops the opening, thinner | – |
+| Questions (5) | right, including "no conversations on file" | good on follow-ups; once invents "your last conversation" | wordier, less exact | – |
+
+³ It renamed the headers ("Name" → "name"), which the app treats as a wrong answer and maps by rules instead.
+
+**Memory:** with this Mac's usual apps open, 1.0–2.7 GB stayed free. The 7B model took 4.7 GB, and 6.0 GB on long
+documents (a 32k context), and macOS reported critical memory pressure during the long ones.
+
+**What it means:**
+- **No local model here reads notes well enough to be the default.** The 7B finds about as many people as the rules
+  do, misses most relationships and never records facts. Reading notes is the one job where the cloud is clearly
+  better, so on a 16 GB Mac "Mixed" is the recommendation, and "On this Mac" is offered as basic.
+- **Basic mode (22f)** = rules for the people, and the local model for the summary and action items, with
+  everything going to the Inbox for review.
+- **Sorting and spreadsheet columns** don't need a local model at all: rules match the 7B (92%) or beat it (91%
+  against 83%). On the local path they run as rules.
+- **Overviews and questions** are fine on the 7B, and that's the job "On this Mac" can honestly offer. The prompt
+  should say plainly when the records show no meeting, since the 7B filled that gap twice.
+- **A local model sometimes never stops writing.** 9 of 48 local readings ran into the 30-minute limit. Run
+  again with output capped at 4,096 tokens, the same two documents finished in 29 s and 3 min, far below the cap.
+  So 22b also caps Ollama's output (`num_predict`) and shortens the timeout. Today one stuck reading holds up a
+  whole batch for 30 minutes.
+- **The 3B model is not worth recommending** for anything but overviews on Macs under 12 GB.
+- **14B on 32 GB Macs is still unmeasured.** Until someone measures it on such a Mac, 22e recommends Mixed there
+  too, with "On this Mac" one click away.
+
+**Found along the way** (not part of this chunk):
+- The shared Claude key is rejected, so the installed app can't read notes until it's entered again in
+  Settings → AI.
+- An empty `ai.gemini_model` setting (yours is `""`) makes every Gemini call a 404 instead of using the default
+  model. Sorting, column mapping and overviews in the installed app fail because of it, and no overview has been
+  written since 19 October. The fix belongs in the family's `ai.model_for`: an empty model means the default.
+
 #### 22b · Family: what this Mac can do, and the memory gate (M)
 
 - **`core/server/resources.py`**, ported from Trailmix:
@@ -916,6 +977,9 @@ counts as "good" and which only as "basic". That decides 22e's recommendations a
   `waiting` with that reason, and a schedule tick puts it back in the queue when there's room. "Proceed anyway"
   forces it, as in Trailmix. Interactive asks (an overview someone is looking at) show the reason and the button
   instead of hanging.
+- **Cap a local model's output** (from 22a): `num_predict` on every Ollama call (the 4,096-token answer budget
+  `ai_adapters` already sizes the context with), and a timeout matched to it instead of 30 minutes, so a model
+  that never stops writing costs a minute or two, not half an hour.
 - `GET /api/system` returns the snapshot and the advice, for setup and Settings.
 - **Tests:** fake `psutil` numbers for each verdict and each reason to wait, and a job that waits, then resumes by
   itself.
