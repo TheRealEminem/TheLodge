@@ -19,12 +19,14 @@ from urllib.parse import urlparse
 import httpx
 from pydantic import BaseModel
 
-from . import settings
+from . import lockdown, resources, settings
 
 OLLAMA_KEEP_ALIVE = os.getenv("OLLAMA_KEEP_ALIVE", "0")  # "0" = unload right after the last call
 TIMEOUT = httpx.Timeout(600, connect=8)
 MAX_TOKENS = 16000
 OLLAMA_NUM_CTX = 16384
+OLLAMA_NUM_PREDICT = 4096         # a local model that never stops writing costs a few minutes, not half an hour
+OLLAMA_TIMEOUT = httpx.Timeout(900, connect=8)
 
 PROVIDERS = {
     "ollama": {"label": "Ollama", "kind": "local"},
@@ -40,6 +42,8 @@ _CLAUDE_FALLBACK_MODELS = {"claude-opus-5-5", "claude-opus-5", "claude-fable-5-1
 DEFAULTS = {
     "provider": "ollama",
     "fallback": "none",
+    "path": "",                  # where AI runs, from setup: "" (not chosen), "local", "mixed" or "cloud"
+    "heavy_provider": "auto",    # for the jobs modules call heavy (reading a long document): "auto" = the same as provider
     "ollama_url": os.getenv("OLLAMA_URL", "http://localhost:11434"),
     "ollama_model": os.getenv("OLLAMA_MODEL", ""),  # empty = the best installed one
     "anthropic_model": "claude-opus-5-5",
@@ -55,7 +59,9 @@ DEFAULTS = {
     "custom_model": "",
     "custom_api_key": "",
 }
-CHOICES = {"provider": tuple(PROVIDERS), "fallback": ("none", *PROVIDERS)}
+PATHS = ("local", "mixed", "cloud")
+CHOICES = {"provider": tuple(PROVIDERS), "fallback": ("none", *PROVIDERS), "path": ("", *PATHS),
+           "heavy_provider": ("auto", *PROVIDERS)}
 ENV = {"anthropic_api_key": "ANTHROPIC_API_KEY", "openai_api_key": "OPENAI_API_KEY",
        "gemini_api_key": "GEMINI_API_KEY", "deepseek_api_key": "DEEPSEEK_API_KEY"}
 
@@ -91,6 +97,36 @@ def structured(prompt: str, system: str | None, schema: type[BaseModel], choice:
     return run_chain(choice, cfg, lambda pid: ai_adapters.generate_structured(pid, cfg, prompt, system, schema, max_tokens))
 
 
+def resolve(choice: str, weight: str = "light") -> str:
+    """What "auto" means for a job of this weight. Light jobs follow the app-wide provider. A heavy job follows it too,
+    unless setup put heavy jobs on a cloud AI ("mixed"): then that one. Anything else is returned as it is."""
+    if choice == "auto" and weight == "heavy":
+        heavy = settings.section("ai")["heavy_provider"]
+        if heavy != "auto":
+            return heavy
+    return choice
+
+
+def apply_path(path: str, cloud: str = "") -> None:
+    """Setup's choice. local: everything on Ollama. mixed: light jobs on Ollama, heavy ones on `cloud`. cloud: everything
+    on `cloud`. The cloud provider needs its key (saved separately); Lockdown is off for the last two, since they
+    leave this computer."""
+    if path not in PATHS:
+        raise ValueError("Choose local, mixed or cloud")
+    if path != "local" and (cloud not in PROVIDERS or PROVIDERS[cloud]["kind"] == "local"):
+        raise ValueError("Choose which cloud AI to use")
+    changes: dict = {"ai.path": path, "ai.fallback": "none"}
+    if path == "local":
+        changes.update({"ai.provider": "ollama", "ai.heavy_provider": "auto"})
+    elif path == "mixed":
+        changes.update({"ai.provider": "ollama", "ai.heavy_provider": cloud})
+    else:
+        changes.update({"ai.provider": cloud, "ai.heavy_provider": "auto"})
+    if path != "local":
+        changes[lockdown.KEY] = False
+    settings.update(changes)
+
+
 def describe(choice: str = "auto") -> dict:
     """Which provider and model a job would use right now, and whether it's ready. For Settings screens."""
     cfg = settings.section("ai")
@@ -118,8 +154,18 @@ def is_local(pid: str, cfg: dict) -> bool:
     return (urlparse(cfg["ollama_url"]).hostname or "") in ("localhost", "127.0.0.1", "::1")
 
 
+def runs_here(pid: str, cfg: dict) -> bool:
+    """Does this provider's work stay on this computer? Ollama here, or an OpenAI-compatible server here (LM Studio)."""
+    if pid == "ollama":
+        return is_local(pid, cfg)
+    return pid == "custom" and lockdown.on_this_computer(cfg.get("custom_base_url", ""))
+
+
 def configured(pid: str, cfg: dict) -> tuple[bool, str]:
-    """(ready, reason-if-not). Cheap: no network call except Ollama's model list."""
+    """(ready, reason-if-not). Cheap: no network call except Ollama's model list. Under Lockdown only a provider
+    that runs on this computer is ready."""
+    if not runs_here(pid, cfg) and lockdown.on():
+        return False, lockdown.WHY
     if pid == "ollama":
         return (True, "") if _ollama_tags(cfg) else (False, f"Ollama isn't reachable at {cfg['ollama_url']} (or has no models)")
     if pid == "custom":
@@ -192,6 +238,7 @@ def generate(pid: str, cfg: dict, prompt: str, system: str | None = None, keep_a
     if not ok:
         raise AIError(why, provider_down=True)
     if pid == "ollama":
+        wait_for_memory(cfg)
         text = _ollama(cfg, prompt, system, keep_alive or OLLAMA_KEEP_ALIVE)
     elif pid == "anthropic":
         text = _anthropic(cfg, prompt, system)
@@ -216,20 +263,61 @@ def _ollama_tags(cfg: dict) -> list[dict]:
         return []
 
 
+def ollama_size_gb(cfg: dict, model: str) -> float:
+    """What a model weighs on disk, which is close to what it takes in memory (0 if Ollama doesn't list it)."""
+    for m in _ollama_tags(cfg):
+        if m["name"] == model:
+            return float(m.get("size") or 0) / resources.GB
+    return 0.0
+
+
+def _ollama_loaded(cfg: dict, model: str) -> bool:
+    """Is the model already in memory (Ollama keeps one for a few minutes after a call)? Then it costs nothing more."""
+    try:
+        r = httpx.get(f"{cfg['ollama_url']}/api/ps", timeout=2)
+        r.raise_for_status()
+        return any(m.get("name") == model or m.get("model") == model for m in r.json().get("models", []))
+    except (httpx.HTTPError, ValueError):
+        return False
+
+
+def memory_reason(cfg: dict) -> str | None:
+    """Why the local model can't be started now, or None. Only a model on this Mac needs room; another machine's does not."""
+    if not is_local("ollama", cfg):
+        return None
+    model = model_for("ollama", cfg)
+    size = ollama_size_gb(cfg, model) if model else 0.0
+    if not size or _ollama_loaded(cfg, model):
+        return None
+    return resources.check(size * 1.15 + 0.5, f"The model {model}")    # the weights, plus its working memory
+
+
+def wait_for_memory(cfg: dict) -> None:
+    """Raises a provider-down AIError (so jobs park, saying why) when this Mac hasn't room for the local model."""
+    why = memory_reason(cfg)
+    if why:
+        raise AIError(why, provider_down=True)
+
+
+def memory_ready() -> bool:
+    """For the scheduler: is there room for the local model now? (Also true when no local model is set up.)"""
+    return memory_reason(settings.section("ai")) is None
+
+
 def _ollama(cfg: dict, prompt: str, system: str | None, keep_alive: str) -> str:
     model = model_for("ollama", cfg)
     if not model:
         raise AIError(f"Ollama isn't reachable at {cfg['ollama_url']} (or has no models installed)", provider_down=True)
     body = {"model": model, "prompt": prompt, "stream": False, "keep_alive": keep_alive,
-            "options": {"num_ctx": OLLAMA_NUM_CTX, "temperature": 0.2}}
+            "options": {"num_ctx": OLLAMA_NUM_CTX, "num_predict": OLLAMA_NUM_PREDICT, "temperature": 0.2}}
     if system:
         body["system"] = system
-    return _post(f"{cfg['ollama_url']}/api/generate", json=body).json().get("response") or ""
+    return _post(f"{cfg['ollama_url']}/api/generate", json=body, timeout=OLLAMA_TIMEOUT).json().get("response") or ""
 
 
-def _post(url: str, **kw) -> httpx.Response:
+def _post(url: str, timeout: httpx.Timeout = TIMEOUT, **kw) -> httpx.Response:
     try:
-        r = httpx.post(url, timeout=TIMEOUT, **kw)
+        r = httpx.post(url, timeout=timeout, **kw)
     except httpx.HTTPError as e:
         raise AIError(f"Couldn't reach {urlparse(url).netloc}: {e}", provider_down=True) from e
     if r.status_code >= 400:
@@ -335,6 +423,8 @@ def providers() -> list[dict]:
 
 def list_models(pid: str) -> list[str]:
     cfg = settings.section("ai")
+    if not runs_here(pid, cfg) and lockdown.on():
+        raise AIError(lockdown.WHY, provider_down=True)
     if pid == "ollama":
         tags = _ollama_tags(cfg)
         if not tags:

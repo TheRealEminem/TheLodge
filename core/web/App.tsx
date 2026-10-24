@@ -19,6 +19,7 @@ import Home from "./views/Home";
 import Login from "./views/Login";
 import NotFound from "./views/NotFound";
 import Settings from "./views/Settings";
+import Welcome from "./views/Welcome";
 import type { ComponentType } from "react";
 
 /** True when the sidebar sits beside the content rather than in a drawer. */
@@ -114,6 +115,16 @@ export default function App() {
         </div>
         {down && <p className="relative text-ui text-ink-soft">Waiting for the server to start…</p>}
       </div>
+    );
+  }
+
+  if (!info!.setup_done) {
+    return (
+      <ShellProvider value={shell}>
+        <Welcome dusk={theme.dusk} onDone={() => setInfo({ ...info!, setup_done: true })} />
+        <TooltipLayer />
+        <Toast toast={toast} onClose={() => setToast(null)} />
+      </ShellProvider>
     );
   }
 

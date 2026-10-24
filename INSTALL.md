@@ -14,8 +14,11 @@ The Lodge is a normal Mac app for Apple silicon (M1 or later), macOS 14 or newer
 
    Updates installed from inside the app, and a copy you built yourself on this Mac, open without this step.
 3. A window opens, and a small A-frame icon appears in the menu bar. Closing the window leaves the app in the menu bar.
-4. Go to **Settings** and add your AI keys (Claude, and Gemini if you want it for sorting and spreadsheet columns).
-   They're typed in there, never into a file, and are kept only in your data folder.
+4. A short setup walks you through your name, where AI should run, and Lockdown. It recommends a path for your Mac:
+   **On this Mac** (private and free; The Lodge can install Ollama and download a model for you), **Mixed** (most jobs
+   here, the careful reading with a cloud AI), or **A cloud AI** (the best results). Keys are typed in there or in
+   **Settings**, never into a file, and are kept only in your data folder. A key entered in another Trailmix family
+   app on this Mac is already there. Everything can be changed later in **Settings**.
 
 ## Where things live
 
@@ -24,13 +27,10 @@ The Lodge is a normal Mac app for Apple silicon (M1 or later), macOS 14 or newer
 - To start fresh, quit the app and move that folder away.
 - **Open at Login** is in the menu bar menu.
 
-## Getting your people in from DynaCRM
+## Getting your people in
 
-Quit The Lodge, then (with the old project's database running):
-
-```bash
-.venv/bin/python scripts/import-dynacrm.py --data-dir "$HOME/Library/Application Support/The Lodge"
-```
+Add people by hand, or drop a spreadsheet, a LinkedIn connections export, documents or notes on the Inbox. The first-run
+setup offers a fictional network if you only want to look around (Home has the same link until you add your own people).
 
 ## Granola and calendars
 

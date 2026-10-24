@@ -42,7 +42,8 @@ If a family app keeps these, Trailmix can talk to it now and merge with it later
 8. **Local first.** It works offline. Cloud services are optional and chosen in Settings. Local models unload after
    use (`OLLAMA_KEEP_ALIVE=0`), and heavy local work waits until there's memory for it.
 9. **Lockdown** (§8) means nothing leaves the computer: no stats, no update checks, no downloads, only AI that
-   runs here. Every app should have it and honour it in the same places. (The family host doesn't have it yet.)
+   runs here. Every app has it (`core/server/lockdown.py`) and honours it in the same places: `ai.configured()`, the
+   updater, Ollama downloads, and each module's own outward features, which ask `lockdown.blocked(what)` first.
 10. **Money is never a surprise.** Any paid AI action shows its estimated cost before it runs, bulk runs go a few
     items at a time, and what was spent is tallied in Settings.
 11. **State lives in the database, and slow work is resumable.** A restart at any moment loses nothing, and the
@@ -228,7 +229,7 @@ were the source for the family's, so the mapping is nearly one to one:
 | `your_name` | `core.your_name` | |
 | theme in the browser's `localStorage` (`trailmix.theme` = `system`, `light`, `dusk`) | `core.appearance` | Trailmix keeps it per browser, not as a setting |
 | everything else | `meetings.<name>` | **Proposed**, for the port |
-| `lockdown` | `core.lockdown` | **Proposed**; not in the family yet |
+| `lockdown` | `core.lockdown` | shared by the family apps on a Mac, like the AI settings |
 
 **Keep these names.** If a family app adds a provider, a model setting or a key, use the same pattern
 (`<provider>_model`, `<provider>_api_key`) so both sides can read it.
@@ -456,7 +457,7 @@ So other apps copy the family's way, not Trailmix's, where they differ.
 | Window bridge | `messageHandlers.trailmix` | `messageHandlers.app` | Trailmix |
 | Database backups | once per new version, newest 3, no restore screen | daily (14 kept), before an update, "Back up now", restore | Trailmix |
 | Release blocker | issue title `[Beta X.Y.Z] [blocks me]` | issue label `blocks release` | pick one family-wide (**Proposed**: the label, plus the title form for reports made from the app) |
-| Lockdown | yes | no | Family (`core.lockdown`, gated in `ai.configured()` and the updater) |
+| Lockdown | yes | yes | Family (`core.lockdown`, gated in `ai.configured()` and the updater) |
 | Paid-AI pricing and usage | yes | no | Family, when a second module spends money |
 | Structured AI output | no (parses Markdown) | yes | Trailmix, when it moves |
 | Anonymous stats, problem reports | yes | no | Family, later, with a per-app key and privacy page |

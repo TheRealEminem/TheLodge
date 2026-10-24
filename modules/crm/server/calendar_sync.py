@@ -15,7 +15,7 @@ from datetime import UTC, datetime, timedelta
 
 import httpx
 
-from core.server import db, jobs, settings
+from core.server import db, jobs, lockdown, settings
 
 from . import capture, store
 from .ics import Event, parse
@@ -44,9 +44,14 @@ def configured() -> bool:
     return bool(feeds())
 
 
+def locked() -> str | None:
+    """Why calendar sync is off right now (Lockdown), or None."""
+    return lockdown.blocked("Reading your calendars")
+
+
 def seconds() -> int:
     """Hourly once there's an address; never before."""
-    return 3600 if configured() else 0
+    return 3600 if configured() and not locked() else 0
 
 
 def _label(url: str) -> str:
@@ -133,6 +138,8 @@ def _plain_calendar_meeting(meeting_id: str) -> bool:
 def sync() -> dict:
     """One pass over every address. Records what went wrong for the Settings page instead of raising."""
     now = datetime.now(UTC)
+    if locked():
+        return {"skipped": "lockdown"}
     addresses = feeds()
     if not addresses:
         return {"skipped": "no address"}
@@ -176,6 +183,8 @@ def handle_sync(job: jobs.Job) -> None:
 
 def test() -> dict:
     """Do the addresses work? Reads them and says what it found, adds nothing."""
+    if (why := locked()):
+        raise CalendarError(why)
     addresses = feeds()
     if not addresses:
         raise CalendarError("Paste a calendar's secret iCal address first.")

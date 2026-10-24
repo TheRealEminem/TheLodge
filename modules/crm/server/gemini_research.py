@@ -24,7 +24,7 @@ from datetime import UTC, datetime
 
 import httpx
 
-from core.server import db, events, jobs, settings
+from core.server import db, events, jobs, lockdown, settings
 
 from . import ingest, research
 
@@ -260,9 +260,9 @@ def budget() -> int:
 
 def overview() -> dict:
     """For Settings and the start dialog: the levels with typical costs, the budget and what's been spent."""
-    ready = bool(api_key())
+    ready = bool(api_key()) and not locked()
     return {
-        "ready": ready, "reason": None if ready else "Add a Gemini API key in Settings → AI first",
+        "ready": ready, "reason": locked() or (None if ready else "Add a Gemini API key in Settings → AI first"),
         "level": settings.section("crm")["research_level"], "batch": settings.section("crm")["research_batch"],
         "budget": budget(), "spent": spent_this_month(), "prices_as_of": PRICES_AS_OF,
         "levels": [{"id": k, "label": v["label"], "hint": v["hint"],
@@ -282,6 +282,11 @@ def _out(r: dict) -> dict:
             "created_at": r["created_at"], "finished_at": r["finished_at"]}
 
 
+def locked() -> str | None:
+    """Why research by Gemini is off right now (Lockdown), or None. "Copy research brief" stays: you take it elsewhere."""
+    return lockdown.blocked("Research by Gemini")
+
+
 def run_of(person_id: str) -> dict | None:
     """The latest run on someone, finished or not."""
     r = db.one("SELECT * FROM crm_research_runs WHERE entity_id = ? ORDER BY created_at DESC LIMIT 1", (person_id,))
@@ -293,6 +298,8 @@ def start(person_ids: list[str], level: str, batch: bool) -> dict:
     researched, or who can't be (no surname), is skipped and said why."""
     if level not in LEVELS:
         raise ResearchRunError("Unknown level")
+    if (why := locked()):
+        raise ResearchRunError(why)
     if not api_key():
         raise ResearchRunError("Add a Gemini API key in Settings → AI first")
     each = estimate(level, batch)
@@ -486,7 +493,7 @@ def _file(r: dict, report: str, searches: int, spent: float) -> dict:
 def handle_advance(job: jobs.Job) -> None:
     """Moves every run along: collects finished batches, then sends each waiting stage, batched together per model
     where that was asked for. Safe to run twice: a stage's answers are only taken in once."""
-    if not api_key():
+    if locked() or not api_key():
         return
     for name in [x["batch_name"] for x in db.query(
             f"SELECT DISTINCT batch_name FROM crm_research_runs WHERE batch_name IS NOT NULL AND status IN {UNFINISHED}")]:
@@ -569,4 +576,6 @@ def _run_now(job: jobs.Job, r: dict, reqs: list[tuple[str, dict]]) -> None:
 
 def seconds() -> int:
     """Every minute while a run is under way (a batch is checked on), otherwise not at all."""
+    if locked():
+        return 0
     return 60 if db.one(f"SELECT 1 AS x FROM crm_research_runs WHERE status IN {UNFINISHED}") else 0

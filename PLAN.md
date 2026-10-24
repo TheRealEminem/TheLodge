@@ -25,7 +25,7 @@ decided, and the order we build it in.
 | 10 | Importers: spreadsheets, LinkedIn, recorded meetings | M | ☑ 2026-10-12 |
 | 11 | Mac polish: mark, menu, signing, disk image | M | ☑ 2026-10-12 |
 | 12 | Capture automation: Granola and calendars | M | ☑ 2026-10-12 |
-| 13 | Cutover and hardening | S–M | ◐ built 2026-10-12; cut over 2026-10-18; old stack to be removed after a week |
+| 13 | Cutover and hardening | S–M | ☑ 2026-10-23 (all in on the local app; Keychain dropped, see the result) |
 | 14 | **Research flags: people who need deep research** (asked for 2026-10-12) | M | ☑ 2026-10-12 |
 | 15 | **Find someone from Home; AI overviews and questions on profiles** (asked for 2026-10-13) | M | ☑ 2026-10-13 |
 | 16 | **Profile pictures** (asked for 2026-10-13) | M | ☑ 2026-10-23 (by hand, and Gravatar if you allow it; Contacts matching not built) |
@@ -34,7 +34,7 @@ decided, and the order we build it in.
 | 19 | **The Lodge runs Gemini research itself** (asked for 2026-10-18) | M | ☑ 2026-10-19 (usual level: Better through Batch) |
 | 20 | **Network presets: focused questions, and lists the AI writes** (asked for 2026-10-21) | M | ☑ 2026-10-21 (AI lists not yet run against a real model) |
 | 21 | **Lake and lantern: a colorblind-safe palette for The Lodge** (asked for 2026-10-21) | S–M | ☑ 2026-10-21 |
-| 22 | **On this Mac: a local-only path, recommended from the Mac's specs** (asked for 2026-10-23; family first) | L | ◐ 22a measured 2026-10-23 (local models aren't good enough to read notes; Mixed is the 16 GB recommendation) |
+| 22 | **On this Mac: a local-only path, recommended from the Mac's specs** (asked for 2026-10-23; family first) | L | ◐ 22a–f built 2026-10-23 here; the family half still has to be pushed to TrailmixFamily (see the result) |
 
 Milestones: **A** "it runs" = 0 · **B** "your data, natively" = 1–3 · **C** "browse and rate in the app" = 4–6
 (The owner can stop using Docker for reading; AI intake still needs the old app) · **D** "feature parity" = 7–10 ·
@@ -178,8 +178,8 @@ _Result: Python 3.12 venv (Homebrew) for dev; `scripts/check` green (18 tests); 
   `/api/crm/…`.
 - [x] Port `test_entities.py` (CRUD, merge, alias matching, generic org words).
 
-**Done when:** the ported tests pass, and a fixture of 30+ name pairs from the real data (Stacey Hollis/Hoshimiya,
-Oak/PGX Foundation, Michael/Mickey Fairweather, OEN/Northwest Entrepreneurship Network, "Contact 230"/Dan Rowe…)
+**Done when:** the ported tests pass, and a fixture of 30+ name pairs from the real data (Stacey Hollis/Hollys,
+Oak/PGX Foundation, Michael/Mickey Fairweather, OEN/Northwest Entrepreneurship Network, "Dr. Rowe"/Dan Rowe…)
 gives the same match / ambiguous / no-match verdicts the Postgres version gave (record them from the old app's
 `find_candidates` before it is retired).
 **Depends on:** 0.
@@ -496,7 +496,8 @@ _Result: decisions D3 = `com.thelodge.app`, D10 = ad-hoc, D11 = manual disk imag
   (it is paused for the build). A real book is about 100 times smaller than this (the owner's is 381 records), where
   everything is a few milliseconds. The remaining cost is that any write throws the whole cache away; if a book ever
   gets this big, the next step is updating the snapshot in place instead.
-- **Keychain: not built.** Keys sit in the 0600 database in the 0700 data folder, the same exposure as the old `.env`,
+- **Keychain: dropped (the owner, 2026-10-23).** The family apps are multi-platform, and a key a person enters in one family
+  app (Trailmix) must already be there in the others, which `family.py` does with the shared `ai.*` settings. Earlier note: Keys sit in the 0600 database in the 0700 data folder, the same exposure as the old `.env`,
   and they are copied into every backup. Moving them to the Keychain from a Python server means either shelling out to
   `security` (the secret appears on a command line) or a Swift bridge, and the backups would then not carry the keys. It
   is a decision for the owner, not a default; it is a small chunk if wanted.
@@ -509,9 +510,10 @@ _Result: decisions D3 = `com.thelodge.app`, D10 = ad-hoc, D11 = manual disk imag
   strong, 12 working, 58 light, 29 indirect, 20 not linked), 67 flagged for research, 8 backups. Docker is closed, so the
   old stack is stopped; nothing in the new app depends on it. Not yet set up in the new app: an AI key (extraction is on
   Claude, so imports wait until one is saved), Granola, a calendar address, Open at Login.
-- **Still the owner's:** use The Lodge daily for a week, then archive the `DynaCRM (OLD)` folder and remove the old Docker
-  containers and volume (the dump is the way back). Install the current build first (`scripts/build-app.sh`, then the
-  disk image); the copy in `/Applications` is from chunk 11.
+- **Closed 2026-10-23:** the owner is all in on the local app, so the week of daily use is no longer a gate. Archiving the
+  `DynaCRM (OLD)` folder and removing the old Docker containers and volume are the owner's own cleanup (the dump is the way
+  back). The one-off tools for that migration (`import-dynacrm.py`, the parity scripts) were removed from the repo on
+  2026-10-23 so a new install carries nothing of it.
 - **Tests:** 9 new (`test_backup.py` 8, `test_upgrade.py` 1); `scripts/check` is green with 183.
 
 ---
@@ -878,7 +880,7 @@ Inbox, the network canvas with a group and a preset switched on (fills, rings, o
 icon. `scripts/check` green. **Not checked by eye:** every status chip tone on a live screen (the comparison page
 draws them from the same values), and the Scene artwork, whose pines and lake keep their own colors.
 
-### Chunk 22 · On this Mac: a local-only path, recommended from the Mac's specs (L) — PLANNED
+### Chunk 22 · On this Mac: a local-only path, recommended from the Mac's specs (L) — BUILT HERE; FAMILY PUSH PENDING
 
 The owner (2026-10-23): why isn't there a local-only version? Every family app could work that way. Give people the
 choice, accept that some features (Gemini research) need a cloud provider, and have the app read the Mac's specs and
@@ -1102,6 +1104,54 @@ the Sheet, each with a reason. The owner's own install still uses Claude and Gem
 
 **Depends on:** nothing outside this chunk. Each part is one commit in TrailmixFamily (a to e) or here (f), with
 `scripts/check` green in both repos.
+
+**Result (2026-10-23, b to f built in this repo).** The owner also said to build for a brand-new user (set up like Trailmix
+onboards people) and to keep personal information and API keys out of the public release.
+- **b · Resources and the memory gate** (`core/server/resources.py`, `psutil`): memory, disk, chip, pressure; `check()`
+  says wait only when the model can't fit at all, the disk is too full to swap, or macOS reports critical pressure.
+  `ai` runs it before every local call (skipped when the model is already loaded, or Ollama is on another machine) and
+  raises a provider-down `AIError` that starts "Waiting for memory", so jobs park with that reason, and the scheduler
+  puts them back by itself once there's room. "Proceed anyway" (`go(force)`) runs inside `resources.proceed_anyway()`.
+  A local call's answer is capped at 4,096 tokens and its timeout is 15 minutes (was 30), so a model that never stops
+  costs minutes. `GET /api/system`. 20 tests (and one in the CRM for a note parked on memory).
+- **c · Ollama from inside the app** (`core/server/ollama_setup.py`, `OllamaSetup.tsx`): install the official app
+  (accepted only with Ollama's Developer ID, team `3MU9H2V9Y9`), open it, pull the recommended model (7B from 15 GB of
+  memory, else 3B) with progress. Shown in the setup and in Settings → On this Mac. 6 tests (the real download and the
+  real install were **not** run: faked). 8 tests.
+- **d · Lockdown** (`core/server/lockdown.py`, `core.lockdown`, shared across family apps): `ai.configured()` says
+  "Lockdown mode is on" for anything not running here (including model lists and Test); Ollama installs and pulls are
+  refused; the Mac updater makes no automatic checks (it asks `/api/app`), "Check for updates" still works.
+  Settings → Privacy has the switch. In the CRM, Granola, calendars, the shared Sheet, Gemini research and Gravatar
+  each stop, their scheduled turns queue nothing, and their Settings sections say why. "Copy research brief", imports,
+  the network, overviews and backups are unaffected. Tests run every outward path with a guard that fails any request
+  to another computer (host: 10; CRM: 3). **Not checked:** the Swift change compiles (the install builds it) and that
+  the menu bar copy of the setting follows the server.
+- **e · First run**: `core/web/views/Welcome.tsx`, one question per screen, all skippable: Hello (your name), where AI
+  runs (`ChooseAi`: this Mac's line first, three choices, the one that suits the Mac marked Recommended), Privacy
+  (Lockdown), each module's own step (`ModuleWeb.setupStep`; The Lodge's is "Who are you / bring people in"), Done.
+  `Module.ai_jobs` gives each AI job a label and a weight; "Mixed" puts heavy jobs on the cloud provider
+  (`ai.heavy_provider`) and light ones on Ollama. A new data folder gets the screens; an install that was already in
+  use (it had saved settings the first time this version started) skips them and sees one card in Settings → AI,
+  "You can now run everything on this Mac". Walked through in a browser on an empty data folder. 11 tests.
+- **f · The Lodge**: reading notes and documents and sorting now default to "auto" (they follow setup). On a Mac with
+  less memory than `localAiMinGb` in `app.json` (24 GB), a local model reads in **basic mode**: rules find the people,
+  the model writes the summary, key points and action items, and the result always waits in the Inbox. Sorting and
+  spreadsheet columns run as rules on the local path (22a: the rules match the 7B). An install that was in use keeps
+  Claude for reading and Gemini for sorting if it has those keys (a one-time step at startup; a new install doesn't
+  get it). Settings → People has a plain list of what works on this Mac, what needs a key, and what Lockdown switches
+  off. README, INSTALL.md, the download page and TRAILMIX.md say the same. 8 tests. The whole suite is 397 tests, `scripts/check` green.
+- **Thresholds.** 24 GB is a guess from 22a's "Mixed at 16 GB": a 14B model wasn't measured. 15 GB for the 7B is
+  Trailmix's rule. The advice turns to "cloud" only under 8 GB of free disk; a fuller disk just gets a warning.
+- **Not built:** reading long documents on a local model in parts (basic mode asks for the notes only, the answer cap
+  and the new timeout bound a stuck one, and a failed read falls back to rules). Release 0.4.0 (waits on the family push).
+- **Not yet in TrailmixFamily.** `scripts/sync-family --push` was refused in this session (it writes into
+  `~/Code/TrailmixFamily`, outside this repo), so `core/`, `mac/` and `TRAILMIX.md` here are ahead of `family.lock`.
+  Push them with `scripts/sync-family --push`, commit there, and run `scripts/sync-family` here; until then a plain
+  `scripts/sync-family` would overwrite this work. Traverse needs `psutil` in its `requirements.txt`, `localAiMinGb` in
+  its `app.json`, and `welcomeTitle`/`welcomeLead` in its `identity/copy.ts`.
+- **Keys.** A key typed into one family app is already shared (`ai.*`). The Anthropic key in the family file on this Mac
+  is 24 characters (Anthropic keys are about 100) and was saved from Traverse on 2026-10-20, which is why Claude
+  rejected it in 22a; it needs to be entered again in any family app.
 
 ## 6. Risks and spikes
 

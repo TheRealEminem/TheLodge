@@ -1,9 +1,11 @@
 // Settings: the host's own sections (appearance, you, AI, the app), then one section per module.
 import { useEffect, useState } from "react";
 import { api, inApp, quitApp, sendUpdates } from "../api";
-import type { FamilyStatus, ProviderId, ProviderInfo, UpdateReport } from "../api";
+import type { FamilyStatus, ProviderId, ProviderInfo, SystemInfo, UpdateReport } from "../api";
 import { Section, SecretSetting, TextSetting } from "../components/blocks";
-import { CheckIcon, AlertIcon, BackIcon, DownloadIcon, MonitorIcon, MoonIcon, NetworkIcon, PowerIcon, RefreshIcon, SparkleIcon, SunIcon, UsersIcon, LeafIcon } from "../components/icons";
+import { ChooseAi } from "../components/ChooseAi";
+import { OllamaSetup } from "../components/OllamaSetup";
+import { CheckIcon, AlertIcon, BackIcon, DownloadIcon, LaptopIcon, LockIcon, MonitorIcon, MoonIcon, NetworkIcon, PowerIcon, RefreshIcon, SparkleIcon, SunIcon, UsersIcon, LeafIcon } from "../components/icons";
 import { ControlRow, PageHeader, Segmented, Select, Spinner, StatusChip, SwitchRow } from "../components/ui";
 import { useLive } from "../live";
 import { modulesFor } from "../registry";
@@ -88,6 +90,63 @@ function ProviderFields({ id, values, hints, save }: { id: ProviderId; values: R
   );
 }
 
+/** "Apple M4 · 16 GB memory · 20 GB free", for setup and Settings. */
+export function macLine(info: SystemInfo): string {
+  const a = info.advice;
+  return [a.chip, `${a.ram_gb} GB memory`, `${a.disk_free_gb} GB free`].filter(Boolean).join(" · ");
+}
+
+/** What this Mac can do, and getting a model onto it. */
+function OnThisMac() {
+  const { data: info } = useLive<SystemInfo>(api.system);
+  return (
+    <Section
+      icon={<LaptopIcon size={16} />}
+      title="On this Mac"
+      blurb="A model that runs here is free and private: nothing you write is sent anywhere."
+      delay={30}
+    >
+      {info && (
+        <div className="py-3.5">
+          <div className="text-label font-medium">{macLine(info)}</div>
+          {info.advice.notes.map((n) => <p key={n} className="mt-1 text-hint text-ink-soft">{n}</p>)}
+        </div>
+      )}
+      <OllamaSetup />
+    </Section>
+  );
+}
+
+/** For an install that was already in use before setup existed: the one question it was never asked. */
+function ChooseWhereAiRuns() {
+  const [open, setOpen] = useState(false);
+  return (
+    <Section icon={<LaptopIcon size={16} />} title="You can now run everything on this Mac" blurb="Choose where AI runs: on this Mac, in the cloud, or a mix. Nothing changes until you choose." delay={20}>
+      {open ? <div className="py-3.5"><ChooseAi onChosen={() => setOpen(false)} skippable={() => setOpen(false)} /></div> : (
+        <div className="py-3.5"><button className="btn btn-sm btn-soft" onClick={() => setOpen(true)}>Choose where AI runs</button></div>
+      )}
+    </Section>
+  );
+}
+
+/** Lockdown: one switch, shared by the family apps on this Mac. */
+function Privacy({ on, onChange }: { on: boolean; onChange: (on: boolean) => void }) {
+  return (
+    <Section icon={<LockIcon size={16} />} title="Privacy" blurb="Everything is kept on this Mac. Lockdown makes sure nothing is sent out either.">
+      <SwitchRow
+        label="Lockdown"
+        hint={
+          on
+            ? "On: only AI that runs on this Mac is used. No update checks of its own, no downloads, and anything that talks to another service (a research service, a note app, a calendar, a shared Sheet, picture look-ups) is switched off."
+            : "Off: you choose which services to use, and each is described where you turn it on. Turn this on to switch them all off at once."
+        }
+        checked={on}
+        onChange={onChange}
+      />
+    </Section>
+  );
+}
+
 /** The other family apps on this Mac: whether keys and preferences are shared with them, and who's installed. */
 function FamilyApps({ data, onSharing }: { data: FamilyStatus | null; onSharing: (on: boolean) => void }) {
   const { app } = useShell();
@@ -150,6 +209,7 @@ function useUpdates() {
  *  has the same; this is them in the window, for the Mac app only. */
 function Updates() {
   const { app } = useShell();
+  const { get } = useSettings();
   const u = useUpdates();
   const blurb = "New versions install from here or from the menu bar, in about a minute. Your data stays.";
   if (!inApp || !u || !u.enabled) {
@@ -172,7 +232,9 @@ function Updates() {
     case "checking": status = "Checking for updates…"; break;
     case "offline": status = "Couldn't reach GitHub to check. It tries again in a few hours."; break;
     case "up-to-date": status = `You have the newest version${u.beta ? ", betas included" : ""}.`; break;
-    default: status = `${app.name} checks for updates a few times a day.`;
+    default: status = get<boolean>("core.lockdown")
+      ? "Lockdown is on, so it doesn't check by itself. Check for updates still works when you press it."
+      : `${app.name} checks for updates a few times a day.`;
   }
   return (
     <Section icon={<DownloadIcon size={16} />} title="Updates" blurb={blurb}>
@@ -264,6 +326,10 @@ export default function Settings() {
         </ControlRow>
       </Section>
 
+      {!values["ai.path"] && <ChooseWhereAiRuns />}
+
+      <OnThisMac />
+
       <Section
         icon={<SparkleIcon size={16} />}
         title="AI"
@@ -288,6 +354,8 @@ export default function Settings() {
         </ControlRow>
         <ProviderFields key={setupId} id={setupId} values={values} hints={hints} save={save} />
       </Section>
+
+      <Privacy on={!!values["core.lockdown"]} onChange={(on) => void save({ "core.lockdown": on })} />
 
       <FamilyApps data={family ?? null} onSharing={(on) => void save({ "core.share_with_family": on })} />
 

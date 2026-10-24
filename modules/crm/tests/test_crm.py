@@ -134,8 +134,8 @@ def test_org_matching_ignores_generic_words(client):
     assert resolve.find_candidates("organization", "Bill & Melinda Gates Foundation") == []
     assert resolve.find_candidates("organization", "Harbor Consulting") == []
     assert resolve.find_candidates("organization", "Innovation Marlow") == []
-    [Kellan] = resolve.find_candidates("organization", "Contact 241")
-    assert Kellan.entity.name == "Kellan Trust USA"
+    [kellan] = resolve.find_candidates("organization", "Kellan Trust")
+    assert kellan.entity.name == "Kellan Trust USA"
 
 
 def test_email_alias_and_exact_matches_are_strong(client):

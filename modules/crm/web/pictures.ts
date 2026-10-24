@@ -54,7 +54,7 @@ export async function toSquare(file: Blob, size = 256): Promise<Blob> {
     canvas.width = canvas.height = size;
     const ctx = canvas.getContext("2d");
     if (!ctx) throw new Error("This window can't resize pictures.");
-    ctx.fillStyle = "#fff";                                 // JPEG has no transparency
+    ctx.fillStyle = "white";                               // JPEG has no transparency
     ctx.fillRect(0, 0, size, size);
     ctx.imageSmoothingQuality = "high";
     ctx.drawImage(img, (img.naturalWidth - side) / 2, (img.naturalHeight - side) / 2, side, side, 0, 0, size, size);

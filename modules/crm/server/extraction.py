@@ -85,6 +85,14 @@ class Extraction(BaseModel):
     relationships: list[ExtractedRelationship] = Field(default_factory=list)
 
 
+class BasicNotes(BaseModel):
+    """What a small local model is trusted with: writing the notes. The people come from rules (see ingest.run_extraction)."""
+
+    summary: str = Field(description="3-6 sentence summary written as high-quality notes: purpose, what was discussed, outcomes.")
+    key_points: list[str] = Field(default_factory=list, description="The important points and decisions, as concise bullets (up to 8).")
+    action_items: list[str] = Field(default_factory=list, description="Follow-ups, each starting with the owner's name when known.")
+
+
 class Triage(BaseModel):
     """Cheap first look at a file, done by the utility model."""
 
@@ -98,6 +106,8 @@ class Triage(BaseModel):
 
 
 # ── Prompts ───────────────────────────────────────────────────────────
+
+BASIC_SYSTEM = """You are the note-taker for a personal CRM. You read one meeting transcript, set of notes, or document and write the notes: an accurate summary, the key points and decisions, and clear action items. Be specific (names, numbers, dates, commitments) and never invent anything the text doesn't say. Do not list people or relationships; that is done separately."""
 
 EXTRACTION_SYSTEM = """You are the note-taker and archivist for a personal CRM that works as a knowledge graph. You read one meeting transcript, set of notes, or document at a time and turn it into structured records.
 

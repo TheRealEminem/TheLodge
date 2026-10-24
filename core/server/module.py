@@ -36,6 +36,7 @@ class Module:
     count: Callable[[sqlite3.Connection], dict[str, int]] | None = None  # (a database, e.g. a backup's) -> {"people": 381}: to label backups
     offers: dict[str, Callable[[dict], object]] = field(default_factory=dict)  # "people.search" -> handler(args): what other family apps may ask it (family.py)
     people: Callable[[str, int], list[dict]] | None = None         # (q, limit) -> [{id, name, email?, detail?, is_self?}]: its part of the people directory (people.py)
+    ai_jobs: dict[str, dict] = field(default_factory=dict)         # job -> {"label", "hint", "weight": "light" | "heavy", "choice": () -> "auto" | provider | "rules"}: the AI work it does, so setup can place it (setup.py)
     startup: Callable[[], None] | None = None
 
 

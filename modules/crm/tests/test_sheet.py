@@ -145,7 +145,7 @@ def book():
                                 attributes={"title": "Head of Pilots", "email": "priya@helio.example", "phone": "+1 503 555 0100"},
                                 tags=["partner", "Cold Chain"])
     store.create_edge(priya.id, helio.id, "works_at")
-    dan = store.create_entity("person", "Dan Rowe", attributes={"email": "dan@northwind.example", "phone": "+15035550199"})
+    dan = store.create_entity("person", "Dan Rowe", attributes={"email": "dan@cinderlabs.example", "phone": "+15035550199"})
     store.create_edge(dan.id, cc.id, "works_at")
     store.create_entity("person", "Aunt May", tags=["family", "private"])
     return {"me": me, "cc": cc, "helio": helio, "priya": priya, "dan": dan}
@@ -211,7 +211,7 @@ def test_a_change_on_the_sheet_comes_in_and_a_change_here_goes_out(sheet):
     sheet_sync.sync()
     sheet.set("People", "Priya Nair", "Title", "VP Operations")
     sheet.set("People", "Priya Nair", "Tags", "Partner,  Investor")
-    store.update_entity(b["dan"].id, attributes={"email": "dan@northwind.example", "phone": "+15035550142"})
+    store.update_entity(b["dan"].id, attributes={"email": "dan@cinderlabs.example", "phone": "+15035550142"})
     assert sheet_sync.seconds() == sheet_sync.SOON_SECONDS   # a change here goes out soon
 
     sheet_sync.sync()

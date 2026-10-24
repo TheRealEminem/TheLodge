@@ -2,7 +2,7 @@
 
 Postgres did the fuzzy part with pg_trgm. Here the names (and aliases) of each kind are held in memory and
 scored with the same idea: trigram similarity, plus a "word" variant that lets a short name match inside a
-longer one ("Contact 241" in "Kellan Trust USA"). The index is rebuilt whenever the CRM's tables change.
+longer one ("Kellan Trust" in "Kellan Trust USA"). The index is rebuilt whenever the CRM's tables change.
 """
 import re
 from dataclasses import dataclass
@@ -57,7 +57,7 @@ def _sequence(words: list[str]) -> list[str]:
 
 def word_similarity(needle: str, haystack: str) -> float:
     """pg_trgm's word_similarity: the best Jaccard between the needle's trigrams and any run of consecutive
-    trigrams in the haystack. A short name scores high when it sits inside a longer one ("Contact 241" in
+    trigrams in the haystack. A short name scores high when it sits inside a longer one ("Kellan Trust" in
     "Kellan Trust USA"), and a typo'd name scores high against the word it was meant to be."""
     a = _trigrams(_words(needle))
     seq = _sequence(_words(haystack))

@@ -33,11 +33,11 @@ class FakeGranola:
             summary="Priya shared pilot results and Frostline wants 50 trucks.", transcript=(("microphone", "So how did the pilot go?"), ("speaker", "It went well."))):
         start = start or NOW - timedelta(days=1)
         self.notes[note_id] = {
-            "id": note_id, "object": "note", "title": title, "owner": {"name": "Alex Rivera", "email": "alex@northwind.example"},
+            "id": note_id, "object": "note", "title": title, "owner": {"name": "Alex Rivera", "email": "alex@cinderlabs.example"},
             "created_at": start.isoformat(), "updated_at": start.isoformat(), "deleted_at": None,
             "web_url": f"https://notes.granola.ai/{note_id}",
-            "calendar_event": {"event_title": title, "invitees": [{"email": e} for _, e in attendees] + [{"email": "alex@northwind.example"}],
-                               "organiser": "alex@northwind.example", "calendar_event_id": "x",
+            "calendar_event": {"event_title": title, "invitees": [{"email": e} for _, e in attendees] + [{"email": "alex@cinderlabs.example"}],
+                               "organiser": "alex@cinderlabs.example", "calendar_event_id": "x",
                                "scheduled_start_time": start.isoformat(), "scheduled_end_time": (start + timedelta(hours=1)).isoformat()},
             "attendees": [{"name": n, "email": e} for n, e in attendees],
             "summary_text": summary, "summary_markdown": summary, "private_notes_text": None, "private_notes_markdown": None,
@@ -100,7 +100,7 @@ def meetings(client):
 # ── Granola ───────────────────────────────────────────────────────────
 
 def test_a_new_granola_meeting_is_read_and_added_with_its_source_marked(client, fake_granola, fake_structured, me):
-    client.patch(f"/api/crm/entities/{me['id']}", json={"attributes": {"email": "alex@northwind.example"}})
+    client.patch(f"/api/crm/entities/{me['id']}", json={"attributes": {"email": "alex@cinderlabs.example"}})
     fake_granola.add()
     fake_structured.reply = extraction([entity("p1", "Priya Nair", role="attendee", email="priya@helio.example")],
                                        title="Helio pilot sync", summary="Pilot results.", tags=["pilot"])
@@ -113,7 +113,7 @@ def test_a_new_granola_meeting_is_read_and_added_with_its_source_marked(client, 
     detail = client.get(f"/api/crm/entities/{m['id']}").json()
     assert {r["source"] for r in detail["relationships"]} == {"granola"}
     prompt = fake_structured.calls[0]["prompt"]
-    assert "Priya Nair <priya@helio.example>" in prompt and "alex@northwind.example" in prompt and "(the CRM owner)" in prompt
+    assert "Priya Nair <priya@helio.example>" in prompt and "alex@cinderlabs.example" in prompt and "(the CRM owner)" in prompt
     assert "Me: So how did the pilot go?" in prompt and "Others: It went well." in prompt
 
 
@@ -207,7 +207,7 @@ def vevent(uid, title, start, attendees=(), extra=""):
     return "\r\n".join(lines) + "\r\n" + extra + "END:VEVENT\r\n"
 
 
-MARK = ("Alex Rivera", "alex@northwind.example", "ACCEPTED")
+MARK = ("Alex Rivera", "alex@cinderlabs.example", "ACCEPTED")
 PRIYA = ("Priya Nair", "priya@helio.example", "ACCEPTED")
 
 
@@ -230,7 +230,7 @@ def fake_calendar(monkeypatch):
 
 @pytest.fixture
 def priya(client, me):
-    client.patch(f"/api/crm/entities/{me['id']}", json={"attributes": {"email": "alex@northwind.example"}})
+    client.patch(f"/api/crm/entities/{me['id']}", json={"attributes": {"email": "alex@cinderlabs.example"}})
     return make(client, "person", "Priya Nair", attributes={"email": "priya@helio.example"})
 
 
@@ -258,7 +258,7 @@ def test_a_calendar_event_with_someone_you_know_becomes_a_meeting_marked_as_from
     fake_calendar.text = ics(
         vevent("1", "Helio check-in", start, [MARK, PRIYA, ("Stranger", "stranger@elsewhere.example", "ACCEPTED")]),
         vevent("2", "Strangers only", start, [MARK, ("Stranger", "stranger@elsewhere.example", "ACCEPTED")]),
-        vevent("3", "Declined by me", start, [("Alex Rivera", "alex@northwind.example", "DECLINED"), PRIYA]),
+        vevent("3", "Declined by me", start, [("Alex Rivera", "alex@cinderlabs.example", "DECLINED"), PRIYA]),
         vevent("4", "Focus time", start, [MARK]))
     assert calendar_sync.sync() == {"calendars": 1, "events": 4, "meetings": 1, "removed": 0}
     [m] = meetings(client)

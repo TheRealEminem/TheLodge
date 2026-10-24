@@ -9,5 +9,6 @@
   "modules": [
     "crm",
     "tasks"
-  ]
+  ],
+  "localAiMinGb": 24
 }
