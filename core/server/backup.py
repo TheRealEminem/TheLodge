@@ -2,9 +2,12 @@
 
 A backup is a complete copy of the database made with SQLite's own online backup, so it is consistent even while the
 app is writing, and it holds everything every module keeps, plus settings and keys. They live in the data
-folder's `backups/` (private to you, like the database) and are not sent anywhere. One is made a day, kept for
-two weeks; "Back up now" makes another, a restore first makes one of the state it replaces, so a restore can
-itself be undone, and the first start of a new version makes one before its migrations change anything.
+folder's `backups/` (private to you, like the database) and are not sent anywhere. One is made each hour, and they
+roll over each other the way Time Machine's do: the newest in each of the last few hours, each of the last week's
+days and each of the last month's weeks stay, and the rest are let go. "Back up now" makes another, a restore first
+makes one of the state it replaces, so a restore can itself be undone, and the first start of a new version makes
+one before its migrations change anything. Those are kept a few at a time for a month, and the newest of each kind
+stays however old it is, so there is always a copy from before the last update.
 
 Restoring copies a backup over the live database (SQLite takes the lock for the moment it needs), brings an older
 one up to date with the app's migrations, and tells modules to drop what they had cached.
@@ -24,8 +27,10 @@ log = logging.getLogger("core.backup")
 
 DIR = config.DATA_DIR / "backups"
 EXPORT_DIR = config.DATA_DIR / "exports"
-KEEP = {"auto": 14, "manual": 20, "before-restore": 5, "before-update": 3}
-DAILY_AFTER_HOURS = 20          # the daily one is skipped if there is already one this recent (the app restarts often)
+ROTATE = {"hour": 4, "day": 7, "week": 4}     # automatic copies: the newest in each of the last N hours, days, weeks that have one
+KEEP = {"manual": 5, "before-restore": 3, "before-update": 2}   # the others: the newest N of each kind...
+KEEP_DAYS = 31                                  # ...while they're this young, except the newest of each, which always stays
+HOURLY_AFTER_MINUTES = 50       # the hourly one is skipped if there is already one this recent (the app restarts often)
 _NAME = re.compile(rf"^{re.escape(config.APP_ID)}-\d{{8}}-\d{{6}}(?:-(manual|before-restore|before-update))?\.db$")
 
 router = APIRouter()
@@ -81,8 +86,8 @@ def listing() -> list[dict]:
     return sorted(out, key=lambda b: b["name"], reverse=True)
 
 
-def make(kind: str = "auto") -> dict:
-    """A consistent copy of the database right now."""
+def make(kind: str = "auto", spare: tuple[str, ...] = ()) -> dict:
+    """A consistent copy of the database right now. The pruning after it leaves `spare` alone."""
     when = datetime.now(timezone.utc).replace(microsecond=0)
     suffix = "" if kind == "auto" else f"-{kind}"
     name = f"{config.APP_ID}-{when.strftime('%Y%m%d-%H%M%S')}{suffix}.db"
@@ -106,15 +111,49 @@ def make(kind: str = "auto") -> dict:
     src.close()
     partial.chmod(0o600)
     partial.rename(target)
-    prune()
+    prune(spare)
     log.info("backup %s", name)
     return next(b for b in listing() if b["name"] == name)
 
 
-def prune() -> None:
-    for kind, keep in KEEP.items():
-        for old in [b for b in listing() if b["kind"] == kind][keep:]:
-            (_dir() / old["name"]).unlink(missing_ok=True)
+def _period(name: str, unit: str) -> tuple:
+    """The hour, day or week (Monday to Sunday) a copy was made in, on this Mac's clock."""
+    local = _stamp_of(name).astimezone()
+    if unit == "hour":
+        return local.timetuple()[:4]
+    if unit == "day":
+        return local.timetuple()[:3]
+    return local.isocalendar()[:2]
+
+
+def _rotation(autos: list[dict]) -> set[str]:
+    """Which automatic copies stay. Each unit keeps the newest copy in each of its last N periods that have one, so
+    a week the app wasn't opened doesn't use up a slot, and a copy that is the last of its day is kept as that day's
+    until the day rolls off the end."""
+    keep: set[str] = set()
+    for unit, n in ROTATE.items():
+        seen: list[tuple] = []
+        for b in autos:                                  # newest first
+            p = _period(b["name"], unit)
+            if p in seen:
+                continue
+            if len(seen) == n:
+                break
+            seen.append(p)
+            keep.add(b["name"])
+    return keep
+
+
+def prune(spare: tuple[str, ...] = ()) -> None:
+    items = listing()
+    keep = _rotation([b for b in items if b["kind"] == "auto"]) | set(spare)
+    young = datetime.now(timezone.utc) - timedelta(days=KEEP_DAYS)
+    for kind, n in KEEP.items():
+        mine = [b for b in items if b["kind"] == kind][:n]
+        keep |= {b["name"] for i, b in enumerate(mine) if i == 0 or _stamp_of(b["name"]) >= young}
+    for b in items:
+        if b["name"] not in keep:
+            (_dir() / b["name"]).unlink(missing_ok=True)
 
 
 def delete(name: str) -> None:
@@ -150,7 +189,7 @@ def verify(name: str) -> dict:
 def restore(name: str) -> dict:
     """Replaces what the app holds with a backup. A backup of what was there is made first."""
     info = verify(name)
-    before = make("before-restore")
+    before = make("before-restore", spare=(name,))
     src = sqlite3.connect(f"file:{_path(name)}?mode=ro", uri=True)
     dst = sqlite3.connect(db.DB_PATH, timeout=60)
     try:
@@ -185,7 +224,7 @@ VERSION_KEY = "core.opened_by_version"   # in core_settings, undeclared, so it n
 
 def before_update() -> dict | None:
     """At startup, before any migration: when this version of the app hasn't opened the database before, keep a
-    copy of it as the previous version left it (kind "before-update", three kept), so an update can be undone.
+    copy of it as the previous version left it (kind "before-update"; the newest always stays), so an update can be undone.
     Nothing on a fresh install. A backup that fails is logged and the app starts anyway."""
     if not db.DB_PATH.exists():
         return None
@@ -209,12 +248,12 @@ def record_version() -> None:
                (VERSION_KEY, json.dumps(config.VERSION)))
 
 
-# ── Each day ──────────────────────────────────────────────────────────
+# ── Each hour ─────────────────────────────────────────────────────────
 
-def handle_daily(job: jobs.Job) -> None:
+def handle_hourly(job: jobs.Job) -> None:
     job.stage("Backing up")
     recent = [b for b in listing() if b["kind"] == "auto"][:1]
-    if recent and (datetime.now(timezone.utc) - _stamp_of(recent[0]["name"])).total_seconds() < DAILY_AFTER_HOURS * 3600:
+    if recent and (datetime.now(timezone.utc) - _stamp_of(recent[0]["name"])).total_seconds() < HOURLY_AFTER_MINUTES * 60:
         return
     make("auto")
 
