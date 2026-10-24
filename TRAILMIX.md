@@ -44,8 +44,10 @@ If a family app keeps these, Trailmix can talk to it now and merge with it later
 9. **Lockdown** (§8) means nothing leaves the computer: no stats, no update checks, no downloads, only AI that
    runs here. Every app has it (`core/server/lockdown.py`) and honours it in the same places: `ai.configured()`, the
    updater, Ollama downloads, and each module's own outward features, which ask `lockdown.blocked(what)` first.
-10. **Money is never a surprise.** Any paid AI action shows its estimated cost before it runs, bulk runs go a few
-    items at a time, and what was spent is tallied in Settings.
+10. **Money is never a surprise, and never in the way.** Every AI call is tallied (tokens as the provider reported them,
+    dollars estimated at list price) and the running count sits a few clicks into Settings → AI → Usage. Nothing
+    nags: only a job estimated over the owner's limit (`ai.warn_over`, $1 by default) shows its cost first, such as
+    a big batch of research or redoing every meeting. Bulk runs still go a few items at a time.
 11. **State lives in the database, and slow work is resumable.** A restart at any moment loses nothing, and the
     work picks up where it was.
 12. **Nothing is written inside the app bundle at runtime** (it breaks the signature). Everything goes in the data folder.
@@ -290,7 +292,7 @@ pre-flight "choose which AI" sheet yet.
 | **Recording laws** | A short entry per US state and country in setup and Settings → Privacy. Information only: an entry can suggest a shorter retention, and you choose whether to apply it. Shipped in `assets/`, refreshed daily from the Trailmix site. | `backend/recording_laws.py` |
 | **Audio retention** | 30 days by default (7, until transcribed, or forever), "Keep forever" per meeting, "Delete audio now". | `backend/audio_store.py` |
 | **A receipt for every change** | `history` records what changed, from what, to what, when and why. | `backend/database.py` |
-| **Costs first** | Every paid action shows its estimate first; bulk runs go a few at a time (3 by default); Settings tallies spend. | `backend/pricing.py` |
+| **Usage, not nagging** | Every paid call is tallied (Settings → AI → Usage); only a job estimated over a limit (default $1) shows its cost first; bulk runs go a few at a time (3 by default). | `backend/pricing.py` |
 | **Sign-in for server installs** | Off locally. With `TRAILMIX_ACCESS_TOKEN` set, every API call (except `/api/auth`, `/api/login`, `/api/logout`), the WebSocket and audio playback need it: an HttpOnly `trailmix_session` cookie (HMAC of the token, 30 days, `SameSite=Strict`), or `Authorization: Bearer <token>`. Wrong guesses wait 0.6 s. | `backend/auth.py` |
 
 **For a family app:** don't reuse Trailmix's PostHog key or privacy page; each app that sends stats needs its own

@@ -196,6 +196,16 @@ export interface BackupItem {
   bytes: number;
 }
 
+export interface UsageSummary {
+  this_month: { cost: number; calls: number; tokens: number; unpriced: number };
+  last_month: { cost: number; calls: number; tokens: number; unpriced: number };
+  warn_over: number;
+  prices_as_of: string;
+  by_source: { name: string; calls: number; cost: number; tokens: number }[];
+  by_model: { provider: string; model: string; local: boolean; priced: boolean; calls: number; cost: number; tokens_in: number; tokens_out: number }[];
+  by_day: { day: string; cost: number; calls: number }[];
+}
+
 export const api = {
   app: () => request<AppInfo>("/app"),
   auth: () => request<{ required: boolean; ok: boolean }>("/auth"),
@@ -215,6 +225,7 @@ export const api = {
   family: () => request<FamilyStatus>("/family"),
   providers: () => request<ProviderInfo[]>("/ai/providers"),
   providerModels: (id: ProviderId) => request<{ models: string[] }>(`/ai/providers/${id}/models`),
+  usage: () => request<UsageSummary>("/ai/usage"),
   providerTest: (id: ProviderId) => request<{ message: string }>(`/ai/providers/${id}/test`, json("POST")),
 
   setup: () => request<SetupState>("/setup"),

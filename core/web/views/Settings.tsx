@@ -11,6 +11,7 @@ import { useLive } from "../live";
 import { modulesFor } from "../registry";
 import { useSettings, useShell } from "../shell";
 import type { ThemePref } from "../theme";
+import { UsageRows } from "./Usage";
 import YourData from "./YourData";
 
 function ModelPicker({ provider, value, onSave }: { provider: ProviderId; value: string; onSave: (v: string) => void }) {
@@ -353,6 +354,7 @@ export default function Settings() {
           <Select label="Provider to set up" size="sm" className="w-full sm:w-64" value={setupId} options={setupOptions} onChange={(x) => setSetup(x as ProviderId)} />
         </ControlRow>
         <ProviderFields key={setupId} id={setupId} values={values} hints={hints} save={save} />
+        <UsageRows />
       </Section>
 
       <Privacy on={!!values["core.lockdown"]} onChange={(on) => void save({ "core.lockdown": on })} />

@@ -30,6 +30,8 @@ export function GeminiDialog({ people, onClose }: { people: { id: string; name: 
   const b = batch ?? data.batch;
   const each = data.levels.find((l) => l.id === lv)?.[b ? "estimate_batch" : "estimate"] ?? 0;
   const left = Math.max(0, data.budget - data.spent);
+  const total = each * people.length;
+  const big = data.warn_over > 0 && total >= data.warn_over;
   const who = people.length === 1 ? people[0].name : `${people.length} people`;
   const go = async () => {
     setBusy(true);
@@ -55,10 +57,7 @@ export function GeminiDialog({ people, onClose }: { people: { id: string; name: 
           <label key={l.id} className={`flex cursor-pointer items-start gap-3 rounded-lg border px-4 py-3 ${lv === l.id ? "border-forest bg-forest-soft/40" : "border-line"}`}>
             <input type="radio" name="level" className="mt-1 accent-forest" checked={lv === l.id} onChange={() => setLevel(l.id)} />
             <span className="min-w-0 flex-1">
-              <span className="flex flex-wrap items-baseline justify-between gap-x-3">
-                <span className="text-label font-medium">{l.label}</span>
-                <span className="text-hint tabular-nums text-ink-soft">about {money(b ? l.estimate_batch : l.estimate)} a person</span>
-              </span>
+              <span className="text-label font-medium">{l.label}</span>
               <span className="mt-0.5 block text-hint text-ink-soft">{l.hint}</span>
             </span>
           </label>
@@ -68,15 +67,23 @@ export function GeminiDialog({ people, onClose }: { people: { id: string; name: 
         <input type="checkbox" className="mt-1 accent-forest" checked={b} onChange={(e) => setBatch(e.target.checked)} />
         <span><span className="font-medium text-ink">Use Google Batch.</span> Half the price for Gemini's reading and writing; reports come back within a day, usually in minutes.</span>
       </label>
+      {big && (
+        <p className="mt-3 flex items-start gap-1.5 rounded-lg bg-sun-soft px-3 py-2.5 text-ui text-sun-deep">
+          <AlertIcon size={16} className="mt-0.5 shrink-0 text-trail-deep" />
+          <span>
+            This could cost about {money(total)}{people.length > 1 && <> ({people.length} people at about {money(each)} each)</>}. Most of it is Google&apos;s
+            fee for each search ($14 per 1,000, the first 5,000 a month free), so it&apos;s often less. {money(data.spent)} spent on research so far this month.
+          </span>
+        </p>
+      )}
       <p className="mt-3 text-hint text-ink-soft">
-        {people.length > 1 && <>About {money(each * people.length)} for all {people.length}. </>}
-        Most of the cost is Google&apos;s fee for each search ($14 per 1,000), and Google gives 5,000 free searches a month, so it&apos;s often less.
-        This month: {money(data.spent)} spent of your ${data.budget} budget{left < each * people.length ? `; there's room for about ${Math.floor(left / Math.max(each, 0.001))}` : ""}.
+        {left < total ? `This month's research budget ($${data.budget}) has room for about ${Math.floor(left / Math.max(each, 0.001))} more. ` : ""}
+        Counts toward your usage, under Settings, AI, Usage.
       </p>
       <div className="mt-5 flex justify-end gap-2">
         <button className="btn btn-md btn-ghost" onClick={onClose}>Cancel</button>
         <button className="btn btn-md btn-primary" disabled={busy || !data.ready || left < each} onClick={() => void go()}>
-          {busy ? <Spinner /> : <SparkleIcon size={18} />} Start research
+          {busy ? <Spinner /> : <SparkleIcon size={18} />} {big ? "Start anyway" : "Start research"}
         </button>
       </div>
     </Dialog>

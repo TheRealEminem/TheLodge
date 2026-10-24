@@ -20,7 +20,7 @@ def summarize(job: Job) -> None:
     if not note["body"].strip():
         raise ValueError("The note is empty")
     job.stage("Summarizing")
-    summary, provider = ai.complete(f"TITLE: {note['title']}\n\nNOTE:\n{note['body']}", system=SYSTEM)
+    summary, provider = ai.complete(f"TITLE: {note['title']}\n\nNOTE:\n{note['body']}", system=SYSTEM, purpose="Note summaries")
     store.update(note["id"], summary=summary, summary_by=provider)
     items = [m.group(1) for m in _TASK.finditer(summary) if m.group(1).lower().rstrip(".") != "none"]
     events.publish("notes.note.summarized", {"id": note["id"]})

@@ -16,7 +16,7 @@ import httpx
 from pydantic import BaseModel, ValidationError
 
 from .ai import (AIError, PROVIDERS, TIMEOUT, _CLAUDE_FALLBACK_MODELS, _error_text, claude_error, configured, label,
-                 model_for, too_long, wait_for_memory)
+                 model_for, note_usage, too_long, wait_for_memory)
 from .ai_schema import blank_to_none, parse_json_text, portable_schema, strict_schema
 
 log = logging.getLogger("core.ai")
@@ -52,7 +52,7 @@ def generate_structured(pid: str, cfg: dict, prompt: str, system: str | None, sc
         budget = min(budget, DEEPSEEK_MAX_TOKENS)
     return _openai_compatible(base, key, model_for(pid, cfg), system, prompt, schema, budget,
                               budget_key="max_completion_tokens" if pid == "openai" else "max_tokens",
-                              who=label(pid, cfg))
+                              who=label(pid, cfg), pid=pid)
 
 
 def _validate(schema: type[BaseModel], text: str, who: str) -> BaseModel:
@@ -96,6 +96,7 @@ def _claude(cfg: dict, system: str, prompt: str, schema: type[BaseModel], max_to
             message = s.get_final_message()
     except anthropic.APIError as e:
         raise claude_error(e, model) from e
+    note_usage("anthropic", model, message.usage.input_tokens, message.usage.output_tokens)
     if message.stop_reason == "refusal":
         raise AIError("Claude declined to process this text")
     if message.stop_reason == "max_tokens":
@@ -139,6 +140,7 @@ def _ollama(cfg: dict, system: str, prompt: str, schema: type[BaseModel]) -> Bas
     if r.status_code >= 400:
         raise AIError(f"Ollama error {r.status_code}: {r.text[:300]}", provider_down=True)
     data = r.json()
+    note_usage("ollama", model, data.get("prompt_eval_count"), data.get("eval_count"))
     if data.get("done_reason") == "length":
         raise AIError("The local model ran out of output space before it finished")
     return _validate(schema, (data.get("message") or {}).get("content", ""), "The local model")
@@ -155,7 +157,7 @@ def _chat(base: str, key: str, body: dict) -> httpx.Response:
 
 
 def _openai_compatible(base: str, key: str, model: str, system: str, prompt: str, schema: type[BaseModel],
-                       max_tokens: int, budget_key: str, who: str) -> BaseModel:
+                       max_tokens: int, budget_key: str, who: str, pid: str) -> BaseModel:
     host = urlparse(base).netloc
     json_schema = portable_schema(schema)
     user = {"role": "user", "content": prompt}
@@ -190,6 +192,11 @@ def _openai_compatible(base: str, key: str, model: str, system: str, prompt: str
         text = _error_text(r)
         raise AIError(f"{who} error {r.status_code}: {text}", provider_down=not too_long(text))
 
+    def note(resp: httpx.Response) -> None:
+        used = resp.json().get("usage") or {}
+        note_usage(pid, model, used.get("prompt_tokens"), used.get("completion_tokens"))
+
+    note(r)
     for attempt in range(2):  # ⚑ one repair retry: the model sees what was wrong with its own answer
         choice = (r.json().get("choices") or [{}])[0]
         content = (choice.get("message") or {}).get("content") or ""
@@ -209,4 +216,5 @@ def _openai_compatible(base: str, key: str, model: str, system: str, prompt: str
             if r.status_code >= 400:
                 text = _error_text(r)
                 raise AIError(f"{who} error {r.status_code}: {text}", provider_down=not too_long(text))
+            note(r)
     raise AIError("unreachable")

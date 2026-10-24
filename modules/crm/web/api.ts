@@ -604,6 +604,7 @@ export interface GeminiOverview {
   budget: number;
   spent: number;
   prices_as_of: string;
+  warn_over: number;
   levels: { id: ResearchLevel; label: string; hint: string; models: string[]; estimate: number; estimate_batch: number }[];
   runs: ResearchRun[];
 }

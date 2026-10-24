@@ -82,7 +82,7 @@ def test_no_overview_for_someone_with_nothing_on_file_or_without_an_ai(client, b
 
 
 def test_a_failed_overview_is_not_retried_on_every_refresh(client, book, ready, monkeypatch):
-    def broken(prompt, system=None, choice="auto"):
+    def broken(prompt, system=None, choice="auto", purpose=None):
         raise ai.AIError("The model refused")
     monkeypatch.setattr(ai, "complete", broken)
     overview(client, book["priya"])
@@ -95,7 +95,7 @@ def test_a_failed_overview_is_not_retried_on_every_refresh(client, book, ready, 
 
 
 def test_an_ai_that_is_down_parks_the_overview_until_it_works(client, book, ready, monkeypatch):
-    def down(prompt, system=None, choice="auto"):
+    def down(prompt, system=None, choice="auto", purpose=None):
         raise ai.AIError("No credit", provider_down=True)
     monkeypatch.setattr(ai, "complete", down)
     overview(client, book["priya"])
@@ -153,7 +153,7 @@ def test_asking_about_someone_keeps_the_question_and_its_answer(client, book, re
 
 def test_a_question_that_fails_says_why_and_can_be_tried_again(client, book, ready, fake_ai, monkeypatch):
     pid = book["priya"]["id"]
-    def broken(prompt, system=None, choice="auto"):
+    def broken(prompt, system=None, choice="auto", purpose=None):
         raise ai.AIError("Ollama isn't reachable")
     monkeypatch.setattr(ai, "complete", broken)
     q = client.post(f"/api/crm/people/{pid}/questions", json={"question": "Who is she?"}).json()

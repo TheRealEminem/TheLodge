@@ -61,7 +61,7 @@ def fake_ai(monkeypatch):
         reply = "Overview.\n\n## Action items\n- [ ] Do the thing"
         prompts: list[str] = []
 
-        def __call__(self, prompt, system=None, choice="auto"):
+        def __call__(self, prompt, system=None, choice="auto", purpose=None):
             self.prompts.append(prompt)
             return self.reply, "fake"
 
@@ -81,7 +81,7 @@ def fake_structured(monkeypatch):
         def __init__(self):
             self.calls: list[dict] = []
 
-        def __call__(self, prompt, system, schema, choice="auto", max_tokens=None):
+        def __call__(self, prompt, system, schema, choice="auto", max_tokens=None, purpose=None):
             self.calls.append({"prompt": prompt, "system": system, "schema": schema, "choice": choice})
             reply = self.reply(prompt, system, schema) if callable(self.reply) else self.reply
             if isinstance(reply, Exception):

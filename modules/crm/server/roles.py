@@ -71,7 +71,7 @@ def ai_jobs() -> dict:
 def structured(role: str, prompt: str, system: str | None, schema: type[BaseModel],
                max_tokens: int | None = None) -> tuple[BaseModel, str]:
     """A structured answer from whoever does this job. Raises ai.AIError; check .provider_down."""
-    return ai.structured(prompt, system, schema, choice(role), max_tokens)
+    return ai.structured(prompt, system, schema, choice(role), max_tokens, purpose=ROLES[role]["label"])
 
 
 def status() -> list[dict]:

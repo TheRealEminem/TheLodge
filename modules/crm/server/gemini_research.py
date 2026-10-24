@@ -25,6 +25,7 @@ from datetime import UTC, datetime
 import httpx
 
 from core.server import db, events, jobs, lockdown, settings
+from core.server import usage as tally   # absorb() has a local named usage
 
 from . import ingest, research
 
@@ -264,7 +265,7 @@ def overview() -> dict:
     return {
         "ready": ready, "reason": locked() or (None if ready else "Add a Gemini API key in Settings → AI first"),
         "level": settings.section("crm")["research_level"], "batch": settings.section("crm")["research_batch"],
-        "budget": budget(), "spent": spent_this_month(), "prices_as_of": PRICES_AS_OF,
+        "budget": budget(), "spent": spent_this_month(), "prices_as_of": PRICES_AS_OF, "warn_over": tally.warn_over(),
         "levels": [{"id": k, "label": v["label"], "hint": v["hint"],
                     "models": sorted({MODEL_NAMES.get(m, m) for m in (v["ask"], v["check"], v["write"]) if m}),
                     "estimate": estimate(k, False), "estimate_batch": estimate(k, True)} for k, v in LEVELS.items()],
@@ -426,7 +427,10 @@ def absorb(r: dict, answers: dict[str, dict]) -> None:
     for key, a in sorted(answers.items(), key=lambda kv: int(kv[0].rsplit(":", 1)[1]) if kv[0].rsplit(":", 1)[1].isdigit() else 0):
         n = len(a.get("searches") or [])
         searches += n
-        spent += cost(model, a.get("usage") or {}, n, batch)
+        answer_cost = cost(model, a.get("usage") or {}, n, batch)
+        spent += answer_cost
+        tally.record("gemini", model, (a.get("usage") or {}).get("in", 0), (a.get("usage") or {}).get("out", 0), searches=n,
+                     cost=answer_cost, source="Researching people")
         u = usage.setdefault(model, {"in": 0, "out": 0, "cached": 0, "calls": 0})
         for k in ("in", "out", "cached"):
             u[k] += (a.get("usage") or {}).get(k, 0)
