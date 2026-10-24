@@ -22,7 +22,7 @@ def test_an_older_people_backup_is_brought_up_to_date_when_restored(client):
     path = backup.DIR / made["name"]
     with sqlite3.connect(path) as c:                                  # make it look like it came from before crm's saved views, sync, overview and sheet tables
         for table in ("crm_views", "crm_sync", "crm_overviews", "crm_questions", "crm_sheet_rows", "crm_duplicates", "crm_merges", "crm_research_runs",
-                      "crm_presets", "crm_preset_asks"):
+                      "crm_presets", "crm_preset_asks", "crm_pictures"):
             c.execute(f"DROP TABLE {table}")
         c.execute("UPDATE core_migrations SET version = 1 WHERE module = 'crm'")
     r = client.post(f"/api/backups/{made['name']}/restore")
@@ -33,6 +33,7 @@ def test_an_older_people_backup_is_brought_up_to_date_when_restored(client):
     assert db.query("SELECT * FROM crm_sheet_rows") == []
     assert db.query("SELECT * FROM crm_duplicates") == [] and db.query("SELECT * FROM crm_merges") == []
     assert db.query("SELECT * FROM crm_presets") == [] and db.query("SELECT * FROM crm_preset_asks") == []
+    assert db.query("SELECT * FROM crm_pictures") == []
 
 
 def test_a_backup_counts_its_people(client):

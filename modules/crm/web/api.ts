@@ -712,4 +712,10 @@ export const crmApi = {
   ask: (personId: string, question: string) => request<Question>(`/crm/people/${personId}/questions`, json("POST", { question })),
   clearQuestions: (personId: string) => request<void>(`/crm/people/${personId}/questions`, json("DELETE")),
   retryQuestion: (id: string) => request<Question>(`/crm/questions/${id}/retry`, json("POST")),
+  pictures: () => request<Record<string, string>>("/crm/pictures"),
+  putPicture: (id: string, picture: Blob) => request<void>(`/crm/pictures/${id}`, { method: "PUT", headers: { "Content-Type": picture.type || "image/jpeg" }, body: picture }),
+  deletePicture: (id: string) => request<void>(`/crm/pictures/${id}`, json("DELETE")),
+  lookUpPicture: (id: string) => request<{ found: boolean }>(`/crm/people/${id}/picture/lookup`, json("POST")),
+  lookUpPictures: () => request<{ job: string }>("/crm/pictures/lookup", json("POST")),
+  pictureLookup: () => request<{ allowed: boolean; reason: string | null; job: Job | null }>("/crm/pictures/lookup"),
 };

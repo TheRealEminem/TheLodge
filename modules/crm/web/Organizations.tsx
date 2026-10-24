@@ -41,7 +41,7 @@ export function OrgLine({ row }: { row: OrgRow }) {
       href={`#/crm/e/${row.org.id}`}
       className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3.5 px-5 py-3 transition-colors duration-150 hover:bg-forest/[.05] sm:grid-cols-[auto_minmax(0,1fr)_minmax(0,14rem)_6.5rem]"
     >
-      <Avatar name={row.org.name} kind="organization" />
+      <Avatar id={row.org.id} name={row.org.name} kind="organization" />
       <div className="min-w-0">
         <div className="flex items-center gap-1.5">
           <span className="truncate text-label font-medium">{row.org.name}</span>

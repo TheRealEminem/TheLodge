@@ -50,7 +50,7 @@ function MergePairDialog({ pair, onClose, onMerged }: { pair: DuplicatePair; onC
         {[pair.a, pair.b].map((s) => (
           <label key={s.id} className={`flex cursor-pointer items-center gap-3 rounded-lg border px-4 py-3 ${keep === s.id ? "border-forest bg-forest-soft/40" : "border-line"}`}>
             <input type="radio" name="keep" className="accent-forest" checked={keep === s.id} onChange={() => setKeep(s.id)} />
-            <Avatar name={s.name} kind={s.kind} size={32} />
+            <Avatar id={s.id} name={s.name} kind={s.kind} size={32} />
             <span className="min-w-0 flex-1">
               <span className="block truncate text-label font-medium">{s.name}{s.is_self && " (you)"}</span>
               <span className="block truncate text-hint text-ink-soft">{sideLine(s)}</span>
@@ -90,7 +90,7 @@ function PairRow({ pair, here }: { pair: DuplicatePair; here?: string }) {
           {sides.map((s, i) => (
             <span key={s.id} className="inline-flex min-w-0 items-center gap-2">
               {i > 0 && <span className="text-ink-faint">and</span>}
-              <Avatar name={s.name} kind={s.kind} size={24} />
+              <Avatar id={s.id} name={s.name} kind={s.kind} size={24} />
               <a href={`#/crm/e/${s.id}`} className="truncate text-label font-medium hover:underline">{s.name}{s.is_self && " (you)"}</a>
             </span>
           ))}
