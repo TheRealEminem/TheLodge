@@ -25,7 +25,7 @@ ROLES = {
 OLD_DEFAULTS = {"extraction": "anthropic", "utility": "gemini"}
 SETTINGS = {"extraction_provider": "auto", "utility_provider": "auto", "profiles_provider": "auto", "providers_kept": False}
 CHOICES = {f"{role}_provider": ("auto", *ai.PROVIDERS, *(("rules",) if info.get("rules", True) else ())) for role, info in ROLES.items()}
-ROLES["utility"]["rules_when_local"] = True   # sorting and column mapping: the rules matched a 7B model (PLAN.md, chunk 22a)
+ROLES["utility"]["rules_when_local"] = True   # sorting and column mapping: the rules matched a 7B model (measured)
 
 
 def raw(role: str) -> str:

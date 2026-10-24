@@ -11,4 +11,5 @@ mac/Sources/AppHost/Mark.swift
 .DS_Store
 *.tsbuildinfo
 _reference/
+PLAN.md
 modules/crm/tests/fixtures/real_names.json

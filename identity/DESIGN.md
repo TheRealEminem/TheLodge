@@ -35,7 +35,7 @@ for these eyes; a chip always carries its word, and "Reading" also has a live do
 
 White on lake is 8.2:1 (spruce was 7.6). White on ember is 4.2:1 (was 3.6). Glacier is 3.2:1 on the page, enough for
 spinners and dots. Surfaces, ink, lines and shadows are unchanged: warm linen by day, a spruce-blue night by the lake.
-To check a change, simulate it: the script and the comparison page are linked from PLAN.md chunk 21.
+To check a change, simulate it: the simulation script and the comparison page aren't kept in the repo.
 
 The mark's tile is lake too (`#3B72B8 → #1D4F8C`), so the icon stands apart from Trailmix's green one in the Dock.
 

@@ -432,7 +432,7 @@ def run_extraction(row: dict, *, brief: bool, warnings: list[str]) -> tuple[Extr
     """(what was found, who found it: "anthropic:claude-opus-5-5", "rules", or "ollama:qwen2.5:7b (basic)").
 
     Basic mode: a model small enough to run on this Mac finds about as many people as the rules do and misses most
-    relationships (measured on real notes, PLAN.md chunk 22a), so it isn't trusted with the graph. The rules find the
+    relationships (measured on real notes), so it isn't trusted with the graph. The rules find the
     people and the model writes the notes (summary, key points, action items), and the result always goes to the Inbox
     for a person to look over."""
     choice = roles.choice("extraction")
