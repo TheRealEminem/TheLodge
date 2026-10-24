@@ -211,6 +211,16 @@ MIGRATIONS = [
         answered_at TEXT
     );
     """,
+    """
+    -- A picture of a person (or any record): small, already sized by the page, kept in the database so a backup holds it.
+    CREATE TABLE crm_pictures (
+        entity_id   TEXT PRIMARY KEY REFERENCES crm_entities(id) ON DELETE CASCADE,
+        mime        TEXT NOT NULL,
+        data        BLOB NOT NULL,
+        source      TEXT NOT NULL DEFAULT 'you',    -- you | gravatar
+        updated_at  TEXT NOT NULL
+    );
+    """,
 ]
 
 _version = 0
@@ -631,6 +641,9 @@ def merge_entities(source_id: str, target_id: str) -> Entity:
         c.execute("UPDATE crm_notes SET evidence_id = ? WHERE evidence_id = ?", (target_id, source_id))
         c.execute("UPDATE crm_relationships SET evidence_id = ? WHERE evidence_id = ?", (target_id, source_id))
         c.execute("UPDATE crm_questions SET entity_id = ? WHERE entity_id = ?", (target_id, source_id))
+        # The kept record takes the other's picture if it has none of its own (a copy: the other record is deleted below).
+        c.execute("INSERT OR IGNORE INTO crm_pictures (entity_id, mime, data, source, updated_at) "
+                  "SELECT ?, mime, data, source, updated_at FROM crm_pictures WHERE entity_id = ?", (target_id, source_id))
 
         attrs = {**src.attributes, **tgt.attributes}
         aliases = set(attrs.get("aliases") or []) | set(src.attributes.get("aliases") or [])

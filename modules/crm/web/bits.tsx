@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import { Avatar as CoreAvatar } from "@core/components/blocks";
 import type { EntityKind } from "./api";
+import { pictureUrl, usePictures } from "./pictures";
 
 export { Empty, Tags } from "@core/components/blocks";
 
@@ -15,8 +16,25 @@ export function useDebounced<T>(value: T, ms = 200): T {
   return v;
 }
 
-/** The host's Avatar, round for people and rounded-square for everything else. */
-export function Avatar({ name, kind = "person", size = 36 }: { name: string; kind?: EntityKind; size?: number }) {
+/** The host's Avatar, round for people and rounded-square for everything else. With the record's `id`, its picture
+ *  shows in place of the initials when it has one. */
+export function Avatar({ name, kind = "person", size = 36, id }: { name: string; kind?: EntityKind; size?: number; id?: string }) {
+  const pictures = usePictures();
+  const version = id ? pictures[id] : undefined;
+  if (id && version) {
+    return (
+      <img
+        src={pictureUrl(id, version)}
+        alt=""
+        aria-hidden="true"
+        width={size}
+        height={size}
+        loading="lazy"
+        className={`shrink-0 bg-surface-subtle object-cover ${kind === "person" ? "rounded-full" : "rounded-sm"}`}
+        style={{ width: size, height: size }}
+      />
+    );
+  }
   return <CoreAvatar name={name} round={kind === "person"} size={size} />;
 }
 

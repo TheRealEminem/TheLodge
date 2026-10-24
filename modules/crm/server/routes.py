@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field, field_validator
 
 from . import dashboard as dash
 from . import graph as graph_svc
-from . import listing, roles, routes_capture, routes_duplicates, routes_ingest, routes_network, routes_people, routes_profiles, routes_research, routes_sheet, store, timeline as timeline_svc, views
+from . import listing, roles, routes_capture, routes_duplicates, routes_ingest, routes_network, routes_people, routes_pictures, routes_profiles, routes_research, routes_sheet, store, timeline as timeline_svc, views
 from .kinds import ENTITY_KINDS, RELATIONSHIP_KINDS, validate_relationship
 from .model import Entity, Note, Relationship, iso
 
@@ -21,6 +21,7 @@ router.include_router(routes_capture.router)
 router.include_router(routes_profiles.router)
 router.include_router(routes_sheet.router)
 router.include_router(routes_duplicates.router)
+router.include_router(routes_pictures.router)
 
 
 @router.get("/ai")

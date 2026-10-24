@@ -28,7 +28,7 @@ decided, and the order we build it in.
 | 13 | Cutover and hardening | S–M | ◐ built 2026-10-12; cut over 2026-10-18; old stack to be removed after a week |
 | 14 | **Research flags: people who need deep research** (asked for 2026-10-12) | M | ☑ 2026-10-12 |
 | 15 | **Find someone from Home; AI overviews and questions on profiles** (asked for 2026-10-13) | M | ☑ 2026-10-13 |
-| 16 | **Profile pictures** (asked for 2026-10-13) | M | ☐ proposed; waiting on the owner's choice of sources |
+| 16 | **Profile pictures** (asked for 2026-10-13) | M | ☑ 2026-10-23 (by hand, and Gravatar if you allow it; Contacts matching not built) |
 | 17 | **Shared Google Sheet: a second way in for anyone** (asked for 2026-10-18) | M | ☑ 2026-10-18 (not yet run against a real Google Sheet) |
 | 18 | **Bulk research import, Gemini-shaped briefs, flagged duplicates** (asked for 2026-10-18) | M–L | ☑ 2026-10-19 (not yet run on a real Gemini report) |
 | 19 | **The Lodge runs Gemini research itself** (asked for 2026-10-18) | M | ☑ 2026-10-19 (usual level: Better through Batch) |
@@ -603,14 +603,30 @@ person; and a quick chat to ask more about a person and their profile.
   matched his records, and "What should I follow up on?" was answered in about 10 seconds; both themes. 197 tests pass.
 - **Not verified:** overviews and answers from Claude or Gemini (no keys in the app).
 
-### Chunk 16 · Profile pictures (M) — PROPOSED
+### Chunk 16 · Profile pictures (M) — DONE
 
 The owner asked (2026-10-13) for a picture of each person and whether LinkedIn can supply them. LinkedIn's API doesn't
 hand out other people's photos, and scraping it breaks its terms, so the proposal is: (1) add a picture by hand on a
 profile (drop, paste or choose a file; copying the photo from LinkedIn in the browser and pasting it works), shown
 everywhere a person appears; (2) match photos from the Mac's Contacts app by email, phone and name (asks for
 Contacts access once; nothing leaves the Mac); (3) optionally, Gravatar for people with an email address (a hash of
-the address goes to Gravatar, so it's a setting, off by default). Waiting on the owner's choice.
+the address goes to Gravatar, so it's a setting, off by default).
+
+**Result (2026-10-23).** The owner: build it, even if pictures have to be placed by hand.
+- **By hand:** click the picture on any profile. Choose a file, drop one, or paste one (⌘V, or the Paste button). The
+  page makes it a 256 px square JPEG first (about 4 KB), so the database holds a few KB per person and every backup
+  carries them. Remove puts the initials back. LinkedIn photos work by copying one in the browser and pasting it.
+- **Shown everywhere a person or organization appears** (lists, Home, finder, network side panel, profile cards,
+  duplicates), by the record's id; nothing else needed to change.
+- **Gravatar:** a setting that starts off (Settings → People: pictures). Only a SHA-256 of the email goes to
+  gravatar.com, only for people with an email and no picture, from the profile ("Look up on Gravatar") or for everyone
+  in the background. A person Gravatar has nothing for is skipped. (Lockdown, chunk 22d, will refuse it.)
+- **Merging** gives the kept record the other's picture if it has none. Unmerging doesn't give it back.
+- **Not built:** matching photos from the Mac's Contacts app. It needs a Swift bridge for the Contacts permission
+  and can't be tried without a person at the Mac; the by-hand path covers the need for now.
+- **Tests:** 6 (`test_pictures.py`: kept and served with a cache tag, only pictures accepted, deleted with the
+  person, merge, Gravatar off until allowed and asked with a hash, the background run). Looked at in a browser on demo
+  data: picture on a profile, the dialog, a resize of a 400×300 image to 4 KB.
 
 ### Chunk 17 · Shared Google Sheet (M) — DONE
 
