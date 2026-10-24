@@ -34,6 +34,7 @@ decided, and the order we build it in.
 | 19 | **The Lodge runs Gemini research itself** (asked for 2026-10-18) | M | ☑ 2026-10-19 (usual level: Better through Batch) |
 | 20 | **Network presets: focused questions, and lists the AI writes** (asked for 2026-10-21) | M | ☑ 2026-10-21 (AI lists not yet run against a real model) |
 | 21 | **Lake and lantern: a colorblind-safe palette for The Lodge** (asked for 2026-10-21) | S–M | ☑ 2026-10-21 |
+| 22 | **On this Mac: a local-only path, recommended from the Mac's specs** (asked for 2026-10-23; family first) | L | ☐ planned |
 
 Milestones: **A** "it runs" = 0 · **B** "your data, natively" = 1–3 · **C** "browse and rate in the app" = 4–6
 (The owner can stop using Docker for reading; AI intake still needs the old app) · **D** "feature parity" = 7–10 ·
@@ -75,9 +76,9 @@ Defaults are what we'll do unless the owner says otherwise. "Revisit" says when 
 | D6 | Meetings and documents | Stay CRM-owned *interaction records* (they are the evidence behind relationships). A future `meetings` module publishes an event and the CRM links to it | Merge with Trailmix |
 | D7 | Database | SQLite (WAL) + FTS5; fuzzy name matching in Python over an in-memory index | Chunk 1 (if matching quality regresses) |
 | D8 | API keys | Entered by the owner in Settings → AI (write-only in the UI; stored in the app's SQLite file under `~/Library/Application Support/The Lodge/`). Env presets still work. Agents never read or copy the old `.env` or `API Keys/` | Chunk 13 (Keychain option) |
-| D9 | AI roles | Extraction = Claude Opus 5.5, utility (column mapping, triage) = Gemini Flash, as chosen earlier. Local Ollama and others selectable | Chunk 7 |
+| D9 | AI roles | Extraction = Claude Opus 5.5, utility (column mapping, triage) = Gemini Flash, as chosen earlier. Local Ollama and others selectable | Chunk 22: new installs follow the path setup recommends; the owner's install keeps these |
 | D10 | Signing | **Ad-hoc, chosen 2026-10-12**, until teammates exist. Ad-hoc means Gatekeeper's first-launch dance and permissions asked again after each update. Developer ID + notarization needs a paid Apple Developer account | Chunk 11 |
-| D11 | Updates | **Manual disk image** (chosen 2026-10-12): `updateRepo` stays empty, because the starter's updater reads **public** GitHub releases and this repo is private | If the repo is ever made public |
+| D11 | Updates | **Manual disk image** (chosen 2026-10-12): `updateRepo` stays empty, because the starter's updater reads **public** GitHub releases and this repo is private. **Superseded 2026-10-22:** the repo is public and 0.3.0 has in-app updates with betas | Chunk 22d: Lockdown stops the automatic checks |
 | D12 | "Live action" colour | Trail orange is reserved for one live action. The Lodge's default: none (orange only for errors, destructive hovers, and a "syncing" dot if chunk 12 happens) | Chunk 4 |
 | D13 | Graph colours | Kind is carried by shape plus one tone; forest marks selection and your path; no new hues. Validate with the `dataviz` skill (colour-vision safe) | Chunk 6 |
 | D14 | Perspective | `me` is passed as a parameter through the tier code, never read from a global, so a second user's view is possible later | Now (chunk 2) |
@@ -861,6 +862,167 @@ Inbox, the network canvas with a group and a preset switched on (fills, rings, o
 icon. `scripts/check` green. **Not checked by eye:** every status chip tone on a live screen (the comparison page
 draws them from the same values), and the Scene artwork, whose pines and lake keep their own colors.
 
+### Chunk 22 · On this Mac: a local-only path, recommended from the Mac's specs (L) — PLANNED
+
+The owner (2026-10-23): why isn't there a local-only version? Every family app could work that way. Give people the
+choice, accept that some features (Gemini research) need a cloud provider, and have the app read the Mac's specs and
+recommend a path, the way Trailmix's setup does.
+
+**Where things stand.** The Lodge can already run locally: every AI job can be Ollama or "rules" (no AI), the
+app-wide default provider is Ollama, local jobs run one at a time, long documents are trimmed to fit a local
+context window, and network lists send a local model a smaller cut of the book. What's missing is the path *into*
+that:
+- `crm.extraction_provider` defaults to Claude and `crm.utility_provider` to Gemini (D9), so a new install with no
+  keys can't read a note.
+- Nothing reads the Mac's memory, chip or disk, and nothing installs Ollama or downloads a model for you.
+- The job runner has a "waiting for memory" state, but nothing measures memory.
+- There's no Lockdown. TRAILMIX.md makes it family rule 9 and notes the family host doesn't have it yet.
+
+Trailmix has all four (`backend/resources.py`, `ollama_setup.py`, `settings.locked()`, `frontend/…/Welcome.tsx`), so
+this is mostly porting them into the family host, then teaching The Lodge's CRM module to use them.
+
+**Where it's built.** Parts a to e change the shared code in `~/Code/TrailmixFamily` (`core/`, `mac/`), which every
+app pins (`family.lock`) and `scripts/check` compares. Each part is committed there first and then taken into The
+Lodge with `scripts/sync-family`. Part f is The Lodge's own module. Traverse picks the family parts up when it next
+syncs. One catch: each app owns its own `requirements.txt`, so the new `psutil` dependency is added to The Lodge's
+(and Traverse's) by hand.
+
+This Mac, for reference: Apple M4, 16 GB, about 20 GB of disk free, Ollama with `qwen2.5:3b` and `qwen2.5:7b`.
+
+#### 22a · Spike: how good is a local model at The Lodge's jobs? (S)
+
+Before choosing thresholds, measure. Run each AI job against the same inputs with `qwen2.5:3b`, `qwen2.5:7b`, a
+~14B model and Claude, on a copy of the data. The inputs are a dozen real notes and meeting transcripts of
+different lengths, a spreadsheet to map, and five overviews and five questions.
+- **Extraction:** people, organizations, relationships and facts found, compared with Claude's as the reference.
+  Missed, wrong and made-up are counted separately.
+- **Utility:** triage verdicts and column mappings against the right answer.
+- **Overviews and questions:** read side by side.
+- **Speed and memory:** seconds per document, and peak memory against what's free.
+
+**Done when:** a table in this chunk shows each job × model, and says which model size each job needs before it
+counts as "good" and which only as "basic". That decides 22e's recommendations and 22f's basic mode.
+
+#### 22b · Family: what this Mac can do, and the memory gate (M)
+
+- **`core/server/resources.py`**, ported from Trailmix:
+  - `snapshot()`: memory total and free, swap, memory pressure, disk free and chip.
+  - `check(required_gb, what)`: returns `None` to go ahead, or a plain reason to wait. It waits only when the model
+    can't fit at all, the disk is too full to swap, or macOS reports critical memory pressure.
+  - `device_advice()`: the same shape as Trailmix's (`verdict` local | mixed | cloud, `chip`, `ram_gb`,
+    `disk_free_gb`, `notes`), so a shared Settings can show either app's.
+- **The gate in `ai`:** before an Ollama call, the model's size (from Ollama's model list) goes through
+  `resources.check`. If it says wait, `ai` raises a new `AIError` kind, "waiting for memory". Jobs park it as
+  `waiting` with that reason, and a schedule tick puts it back in the queue when there's room. "Proceed anyway"
+  forces it, as in Trailmix. Interactive asks (an overview someone is looking at) show the reason and the button
+  instead of hanging.
+- `GET /api/system` returns the snapshot and the advice, for setup and Settings.
+- **Tests:** fake `psutil` numbers for each verdict and each reason to wait, and a job that waits, then resumes by
+  itself.
+
+**Done when:** a local job on a Mac short of memory says why it's waiting and starts by itself once memory frees.
+
+#### 22c · Family: Ollama from inside the app (M)
+
+- **`core/server/ollama_setup.py`**, ported from Trailmix:
+  - Is Ollama installed, running, and which models does it have.
+  - Install the official Mac app. It's downloaded from ollama.com and accepted only if it carries Ollama's Developer
+    ID signature (team `3MU9H2V9Y9`).
+  - Start it, and pull a model with progress the page can show.
+- **`recommended(job_weight)`** picks the model size from 22a's table and this Mac's memory. Trailmix's rule is the
+  starting point: 7B from 16 GB, 3B below that, and from about 32 GB a ~14B for the heavy jobs if 22a shows it pays.
+  `preferred_ollama_model` keeps choosing among what's installed.
+- **The web component** (`core/web/components/OllamaSetup.tsx`) is shared by the setup screen and Settings → AI.
+  It shows Install, then Download model (with size and progress), then Ready.
+
+**Done when:** on a Mac without Ollama, the app installs it and downloads the recommended model without a terminal,
+and a Test in Settings → AI passes.
+
+#### 22d · Family: Lockdown (M)
+
+Same name and meaning as Trailmix (`lockdown`, TRAILMIX.md rule 9): nothing leaves this computer.
+- **`settings.locked()` and one gate in `ai.configured()`:** a provider that doesn't run on this computer is "not
+  ready" with the reason "Lockdown mode is on (Settings → Privacy)". That covers every module's AI at once,
+  including an Ollama on another machine and the cloud model lists.
+- **A helper for modules** (`lockdown.blocked(what) -> str | None`) that every outward feature checks before it
+  runs, and that its Settings section shows.
+- **The Mac app:** the updater makes no automatic checks while the server reports Lockdown (`/api/app` carries it).
+  "Check now" still works, because you asked for it. Ollama installs and model downloads are refused, with "Turn off
+  Lockdown to download it."
+- **Settings → Privacy** gets the switch, with a plain list of what it turns off.
+- **Tests (like Trailmix's `tests/test_lockdown.py`):** with Lockdown on, every network call to a host other than
+  this computer fails the test. Every outward path then runs: AI, model lists, Ollama install and pull, and each
+  module's sync jobs.
+
+**Done when:** with Lockdown on, the app works for everything local, and the test proves nothing else goes out.
+
+#### 22e · Family: a guided first run that recommends a path (M–L)
+
+The family has no setup screen yet. This adds one, in the shape of Trailmix's Welcome: one question per screen, all
+skippable, and all in Settings later.
+1. **Hello.**
+2. **"Where should AI run?"** The Mac's line comes first ("Apple M4 · 16 GB memory · 20 GB free"), then three
+   choices with the one that suits this Mac marked Recommended:
+   - **On this Mac:** private and free. Shows OllamaSetup.
+   - **Mixed:** most jobs here, and the heavy ones with a cloud AI and your key.
+   - **A cloud AI:** best results, and text you add is sent to the provider you pick.
+
+   With too little memory or disk, the local choice shows `device_advice` notes saying why.
+3. **Privacy:** Lockdown, on or off. It comes after step 2 so downloads happen first.
+4. **One step from each module, if it wants one.** `ModuleWeb.setupStep`, the same pattern as the registry's other
+   hooks. The Lodge's is "Bring your people in".
+5. **Done.**
+- **Modules say how heavy their AI jobs are**, so the host can place them without knowing what they do. A new
+  `ai_jobs` field on `Module` gives each job a label and a weight (light | heavy). "Mixed" puts heavy jobs on the
+  cloud provider and light ones on Ollama. "On this Mac" puts everything on Ollama. With a small model, heavy jobs
+  get the "basic" rule from 22a.
+- **Existing installs don't get the whole Welcome.** They see a single card in Settings → AI ("You can now run
+  everything on this Mac") that opens step 2.
+
+**Done when:** a fresh data folder walks through setup on this Mac, and each of the three paths leaves every job
+either ready or saying plainly what it needs.
+
+#### 22f · The Lodge: local by default, and honest about what needs the cloud (M)
+
+- **Defaults.** `crm.extraction_provider` and `crm.utility_provider` change to `auto`, so a new install follows the
+  path setup chose. The jobs declare their weights: extraction heavy; utility and profiles light.
+- **Keep what people have (a migration step).** A setting nobody changed follows its default (`settings.get_all`),
+  so changing the defaults would quietly move the owner's install off Claude and Gemini. On upgrade, if a job's setting
+  was never stored and that provider has a key, store the old default. The owner's install keeps Claude for reading notes
+  and Gemini for sorting.
+- **Basic and private.** If 22a shows a small model can't be trusted to read notes into the graph, extraction on
+  that model runs as "rules" plus the model's people list, and everything goes to the Inbox for review. A plain note
+  says a bigger model or a cloud AI reads more.
+- **Long documents on a local model.** Today they're cut at about 80,000 characters. If 22a shows it's needed, read
+  them in parts instead and merge the people found (Trailmix summarizes long meetings in parts first).
+- **Lockdown in the CRM:**
+  - Gemini research, Granola, calendar sync and the shared Sheet each stop. Their scheduled ticks enqueue nothing,
+    and their Settings sections say "Off while Lockdown is on". "Copy research brief" stays, since you take it
+    elsewhere yourself.
+  - LinkedIn, spreadsheet and document imports, the network, presets and backups are all local, so they're
+    unchanged.
+- **What needs the cloud, said once:** a short list in Settings → AI and on the download page, showing which features
+  work on this Mac, which need a key, and which need Lockdown off.
+- **Docs:** README Features and Install, INSTALL.md, the download page ("Runs on your Mac, or with the AI you
+  choose"), and TRAILMIX.md's table where Lockdown moves from "no" to "yes".
+- **Ship it as a beta** (0.4.0) through the usual release path.
+
+**Done when:** on a copy of the data, The Lodge on this Mac reads a note, maps a spreadsheet and writes an overview
+with no keys at all. Turning on Lockdown leaves all of that working and switches off research, Granola, calendar and
+the Sheet, each with a reason. The owner's own install still uses Claude and Gemini after the update.
+
+**Decisions for the owner** (defaults unless he says otherwise):
+
+| # | Question | Default |
+| --- | --- | --- |
+| 1 | One Lockdown switch for every family app on this Mac, or one per app? | **Shared**, like keys and preferences already are (`family.py`): turning it on in The Lodge turns it on in Traverse too. Trailmix joins when it moves onto the host |
+| 2 | Memory thresholds | Trailmix's (under 12 GB: mixed; 12–20 GB: local with ~7B; over 20 GB: room for ~14B), adjusted by 22a |
+| 3 | What the owner's own install uses afterwards | Unchanged (Claude reads notes, Gemini sorts, the local model writes overviews). He can choose "On this Mac" from the Settings card |
+| 4 | Order | 22a first, then b, c and d (independent of each other), then e, then f |
+
+**Depends on:** nothing outside this chunk. Each part is one commit in TrailmixFamily (a to e) or here (f), with
+`scripts/check` green in both repos.
+
 ## 6. Risks and spikes
 
 | Risk | How we find out | Fallback |
@@ -873,6 +1035,10 @@ draws them from the same values), and the Scene artwork, whose pines and lake ke
 | Network canvas is slow in WebKit | Chunk 6 at 600 nodes | Lower the node cap, simplify drawing |
 | Secrets sit unencrypted in the app's SQLite file | Known | Same exposure as the old `.env` today; Keychain in chunk 13 if wanted |
 | Changing the bundle ID later breaks updates | Chunk 11 | Choose it before the first signed build |
+| A local model misses or makes up people when reading notes | Chunk 22a, against Claude on the same notes | Basic mode: rules plus review for small models; recommend Mixed below the size that holds up |
+| Lockdown misses an outward path | Chunk 22d test that fails any call off this computer | The test runs every module's sync jobs; a new outward feature must add itself to it |
+| `psutil` won't install under the bundled Python | Chunk 22b, first build | Read memory with `sysctl` and `vm_stat` instead |
+| Changing AI defaults moves existing installs off their providers | Chunk 22f migration test | Store the old default for any job that has a key and was never set |
 
 ## 7. Not in this plan
 
