@@ -2,6 +2,8 @@
 old database brought up to date."""
 import json
 import sqlite3
+import time
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
@@ -15,6 +17,26 @@ def tidy_backups():
     yield
     for p in backup.DIR.glob("*"):
         p.unlink()
+
+
+@pytest.fixture
+def utc(monkeypatch):
+    """Hours, days and weeks counted on a UTC clock, so the rotation tests don't depend on where they run."""
+    monkeypatch.setenv("TZ", "UTC")
+    time.tzset()
+    yield
+    monkeypatch.undo()
+    time.tzset()
+
+
+def stamp(when: datetime) -> str:
+    return when.strftime("%Y%m%d-%H%M%S")
+
+
+def fake(when: datetime, kind: str = "auto") -> str:
+    name = f"{config.APP_ID}-{stamp(when)}{'' if kind == 'auto' else '-' + kind}.db"
+    (backup.DIR / name).write_bytes(b"x")
+    return name
 
 
 def put(key, value):
@@ -105,14 +127,67 @@ def test_a_backup_from_a_newer_app_or_a_damaged_one_is_refused(client):
     assert client.post(f"/api/backups/{config.APP_ID}-nope.db/restore").status_code == 422
 
 
-def test_old_backups_are_pruned_by_kind():
-    for i in range(backup.KEEP["manual"] + 3):
-        (backup.DIR / f"{config.APP_ID}-20260101-0000{i:02d}-manual.db").write_bytes(b"x")
+def test_hourly_copies_roll_over_into_a_few_hours_a_week_of_days_and_a_month_of_weeks(utc):
+    first = datetime(2026, 1, 1, tzinfo=timezone.utc)               # a Thursday
+    names = [fake(first + timedelta(hours=h)) for h in range(40 * 24)]
     backup.prune()
-    assert len([b for b in backup.listing() if b["kind"] == "manual"]) == backup.KEEP["manual"]
+    kept = {b["name"] for b in backup.listing()}
+    at = {datetime(2026, 2, d, h, tzinfo=timezone.utc) for d, h in [
+        (9, 23), (9, 22), (9, 21), (9, 20),                           # the last four hours (Mon Feb 9 is the newest day)
+        (8, 23), (7, 23), (6, 23), (5, 23), (4, 23), (3, 23),         # the last of each of the last seven days
+    ]} | {datetime(2026, 2, 1, 23, tzinfo=timezone.utc), datetime(2026, 1, 25, 23, tzinfo=timezone.utc)}   # Sundays: weeks
+    assert kept == {n for n in names if any(stamp(w) in n for w in at)}
 
 
-def test_the_daily_backup_runs_once_a_day_not_once_a_launch():
+def test_the_rotation_stays_small_and_always_has_yesterday_and_last_week(utc):
+    first = datetime(2026, 3, 1, tzinfo=timezone.utc)
+    most = 0
+    for h in range(60 * 24):
+        now = first + timedelta(hours=h)
+        fake(now)
+        backup.prune()
+        made = [backup._stamp_of(b["name"]) for b in backup.listing()]
+        most = max(most, len(made))
+        if h >= 14 * 24:
+            midnight = now.replace(hour=0)
+            assert any(midnight - timedelta(days=1) <= m < midnight for m in made)
+            assert any(now - timedelta(days=14) <= m <= now - timedelta(days=7) for m in made)
+    assert most <= sum(backup.ROTATE.values())
+
+
+def test_the_other_kinds_keep_a_few_for_a_month_and_always_the_newest():
+    now = datetime.now(timezone.utc).replace(microsecond=0)
+    recent = [fake(now - timedelta(days=d), "manual") for d in range(1, backup.KEEP["manual"] + 3)]
+    stale = [fake(now - timedelta(days=d), "before-restore") for d in (40, 50, 60)]
+    backup.prune()
+    kept = {b["name"] for b in backup.listing()}
+    assert kept == set(recent[:backup.KEEP["manual"]]) | {stale[0]}
+
+
+def test_the_copy_before_the_last_update_stays_and_older_ones_roll_off():
+    now = datetime.now(timezone.utc).replace(microsecond=0)
+    old = [fake(now - timedelta(days=d), "before-update") for d in (90, 120, 150)]
+    for h in range(48):                                                # plenty of automatic copies made since
+        fake(now - timedelta(hours=h))
+    backup.prune()
+    assert [b["name"] for b in backup.listing() if b["kind"] == "before-update"] == [old[0]]
+    newer = [fake(now - timedelta(days=d), "before-update") for d in (1, 2, 3)]
+    backup.prune()
+    assert [b["name"] for b in backup.listing() if b["kind"] == "before-update"] == newer[:backup.KEEP["before-update"]]
+
+
+def test_restoring_a_copy_that_would_be_pruned_still_works(client):
+    put("test.marker", "long ago")
+    made = backup.make("manual")
+    backup.make("manual")                                              # a newer one, so the old one is past keeping...
+    old = f"{config.APP_ID}-{stamp(datetime.now(timezone.utc) - timedelta(days=90))}-manual.db"
+    (backup.DIR / made["name"]).rename(backup.DIR / old)              # ...once it is made old
+    put("test.marker", "now")
+    r = client.post(f"/api/backups/{old}/restore")
+    assert r.status_code == 200 and read("test.marker") == "long ago"
+
+
+def test_the_hourly_backup_runs_once_an_hour_not_once_a_launch():
     jobs.enqueue("core", "backup", "scheduled")
     jobs.drain()
     jobs.enqueue("core", "backup", "scheduled2")
@@ -152,10 +227,3 @@ def test_a_database_that_never_recorded_a_version_is_backed_up_once():
 def test_a_fresh_install_makes_no_update_backup(monkeypatch, tmp_path):
     monkeypatch.setattr(db, "DB_PATH", tmp_path / "nothing-yet.db")
     assert backup.before_update() is None and backup.listing() == []
-
-
-def test_update_backups_keep_the_last_three():
-    for i in range(5):
-        (backup.DIR / f"{config.APP_ID}-20260101-0000{i:02d}-before-update.db").write_bytes(b"x")
-    backup.prune()
-    assert len([b for b in backup.listing() if b["kind"] == "before-update"]) == 3

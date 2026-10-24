@@ -1,6 +1,6 @@
 {
-  "commit": "3165dd63645282c144a49e38804ee207a99224f4",
-  "subject": "Backups roll over: how they should work, in the family docs",
+  "commit": "2244ec5971ad550b72ea66b2f960f741d2c790eb",
+  "subject": "Backups: hourly copies that roll over and a simple restore menu (from Traverse 0.2.6), and the docs say so",
   "synced_on": "2026-10-24",
   "note": "The TrailmixFamily commit this app's shared code comes from. Change it with scripts/sync-family."
 }
