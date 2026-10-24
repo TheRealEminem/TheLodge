@@ -15,6 +15,7 @@ import { Briefing } from "./Briefing";
 import { DuplicatesCard, MergedCard } from "./Duplicates";
 import { EntityFormDialog, MergeDialog } from "./forms";
 import { formatDate } from "./format";
+import { PictureDialog } from "./PictureDialog";
 import { ResearchCard } from "./Research";
 import { TierBadge, connectionLine } from "./tier";
 
@@ -76,6 +77,7 @@ function HeaderLine({ entity, ctx }: { entity: Entity; ctx?: EntityContext }) {
 function Header({ entity, ctx }: { entity: Entity; ctx?: EntityContext }) {
   const { toast, confirm } = useShell();
   const [editing, setEditing] = useState(false);
+  const [picturing, setPicturing] = useState(false);
   const [merging, setMerging] = useState(false);
   const label = KIND_LABEL[entity.kind];
 
@@ -103,7 +105,10 @@ function Header({ entity, ctx }: { entity: Entity; ctx?: EntityContext }) {
         <BackIcon size={16} /> {entity.kind === "organization" ? "Organizations" : "People"}
       </a>
       <div className="flex flex-wrap items-start gap-4">
-        <Avatar name={entity.name} kind={entity.kind} size={56} />
+        <button className="group relative shrink-0 rounded-full" aria-label="Change the picture" data-tip="Add or change the picture" onClick={() => setPicturing(true)}>
+          <Avatar id={entity.id} name={entity.name} kind={entity.kind} size={56} />
+          <span className="absolute inset-0 grid place-items-center rounded-full bg-[var(--scrim)] text-surface opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100"><PencilIcon size={16} /></span>
+        </button>
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2.5">
             <h1 className="page-title">{entity.name}</h1>
@@ -128,6 +133,7 @@ function Header({ entity, ctx }: { entity: Entity; ctx?: EntityContext }) {
         <button className="btn btn-sm btn-ghost" data-tip="Merge a duplicate into another record" onClick={() => setMerging(true)}><MergeIcon size={16} /> Merge</button>
         <button className="btn btn-sm btn-danger-ghost" aria-label="Delete" onClick={() => void remove()}><TrashIcon size={16} /></button>
       </div>
+      {picturing && <PictureDialog entity={entity} onClose={() => setPicturing(false)} />}
       {editing && <EntityFormDialog kind={entity.kind} entity={entity} onClose={() => setEditing(false)} />}
       {merging && <MergeDialog entity={entity} onClose={() => setMerging(false)} onMerged={(kept) => navigate(`crm/e/${kept.id}`)} />}
     </header>

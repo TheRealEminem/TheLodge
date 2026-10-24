@@ -282,7 +282,7 @@ export function PersonPanel({ person, links, nodes, groups, active, evidence, ca
   return (
     <section className="panel p-4">
       <div className="flex items-start gap-3">
-        <Avatar name={person.name} size={40} />
+        <Avatar id={person.id} name={person.name} size={40} />
         <div className="min-w-0 flex-1">
           <div className="text-label font-semibold">{person.name}</div>
           {person.subtitle && <div className="text-ui text-ink-soft">{person.subtitle}</div>}

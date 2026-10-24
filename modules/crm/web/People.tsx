@@ -54,7 +54,7 @@ export function PersonLine({ row, showFlag = true }: { row: PersonRow; showFlag?
       href={`#/crm/e/${row.person.id}`}
       className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3.5 px-5 py-3 transition-colors duration-150 hover:bg-forest/[.05] sm:grid-cols-[auto_minmax(0,1fr)_7rem_minmax(0,13rem)]"
     >
-      <Avatar name={row.person.name} />
+      <Avatar id={row.person.id} name={row.person.name} />
       <div className="min-w-0">
         <div className="flex min-w-0 items-center gap-2">
           <span className="truncate text-label font-medium">{row.person.name}</span>

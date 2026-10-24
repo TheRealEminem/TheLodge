@@ -133,7 +133,7 @@ const years = (r: Affiliation["roles"][number]) => {
 export function AffiliationsCard({ affiliations }: { affiliations: Affiliation[] }) {
   const row = (a: Affiliation) => (
     <li key={a.org.id} className="flex items-start gap-3.5 px-5 py-3">
-      <Avatar name={a.org.name} kind="organization" size={32} />
+      <Avatar id={a.org.id} name={a.org.name} kind="organization" size={32} />
       <div className="min-w-0 flex-1">
         <EntityLink entity={a.org} />
         <div className="text-hint text-ink-soft">
@@ -207,7 +207,7 @@ export function PeopleList({ people, empty }: { people: PersonLink[]; empty: str
       {people.map((l) => (
         <li key={l.person.id + l.relation}>
           <a href={`#/crm/e/${l.person.id}`} className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3.5 px-5 py-3 transition-colors duration-150 hover:bg-forest/[.05]">
-            <Avatar name={l.person.name} size={32} />
+            <Avatar id={l.person.id} name={l.person.name} size={32} />
             <div className="min-w-0">
               <div className="truncate text-label font-medium">{l.person.name}</div>
               <div className="truncate text-hint text-ink-soft">{[l.relation, l.detail ?? l.person.subtitle].filter(Boolean).join(" · ")}</div>
@@ -233,7 +233,7 @@ export function WayInCard({ org }: { org: OrgRow }) {
           {org.contacts.map((c) => (
             <li key={c.person.id}>
               <a href={`#/crm/e/${c.person.id}`} className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3.5 px-5 py-3 hover:bg-forest/[.05]">
-                <Avatar name={c.person.name} size={32} />
+                <Avatar id={c.person.id} name={c.person.name} size={32} />
                 <div className="min-w-0">
                   <div className="truncate text-label font-medium">{c.person.name}</div>
                   {c.person.subtitle && <div className="truncate text-hint text-ink-soft">{c.person.subtitle}</div>}

@@ -10,6 +10,7 @@ import { useSettings, useShell } from "@core/shell";
 import { crmApi } from "./api";
 import CaptureSettings from "./Capture";
 import { GeminiSettings } from "./GeminiResearch";
+import PictureSettings from "./PictureSettings";
 import SheetSettings from "./SheetSettings";
 import type { AiRole } from "./api";
 
@@ -98,6 +99,7 @@ export default function AiSettings() {
     <GeminiSettings />
     <CaptureSettings />
     <SheetSettings />
+    <PictureSettings />
     </>
   );
 }

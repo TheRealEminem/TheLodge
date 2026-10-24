@@ -120,7 +120,7 @@ export default function PersonFinder() {
                 onMouseMove={() => setActive(i)}
                 className={`flex items-center gap-3.5 px-4 py-2.5 transition-colors duration-100 ${i === active ? "bg-forest/[.07]" : ""}`}
               >
-                <Avatar name={r.person.name} size={34} />
+                <Avatar id={r.person.id} name={r.person.name} size={34} />
                 <div className="min-w-0 flex-1">
                   <div className="truncate text-label font-medium">{r.person.name}</div>
                   <div className="truncate text-hint text-ink-soft">{roleLine(r.title, r.org?.name) || r.location || " "}</div>

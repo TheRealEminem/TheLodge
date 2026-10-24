@@ -62,7 +62,7 @@ function PersonRows({ rows, empty, detail }: { rows: PersonRow[]; empty: string;
     <div className="panel divide-y divide-line overflow-hidden">
       {rows.map((r) => (
         <a key={r.person.id} href={`#/crm/e/${r.person.id}`} className="flex items-center gap-3.5 px-5 py-3 transition-colors duration-150 hover:bg-forest/[.05]">
-          <Avatar name={r.person.name} />
+          <Avatar id={r.person.id} name={r.person.name} />
           <div className="min-w-0 flex-1">
             <div className="truncate text-label font-medium">{r.person.name}</div>
             <div className="truncate text-hint text-ink-soft">{roleLine(r.title, r.org?.name) || "\u00a0"}</div>
