@@ -1,6 +1,6 @@
 {
-  "commit": "eb6f55db5aeb0cacde8e4ddc38729223a7131626",
-  "subject": "Settings \u2192 Updates in the window, and release files a download page can link to",
-  "synced_on": "2026-10-22",
+  "commit": "dfbf0d6d783b4fd357c71975c2deb321c36398e8",
+  "subject": "AI: a cleared model setting means the default model",
+  "synced_on": "2026-10-23",
   "note": "The TrailmixFamily commit this app's shared code comes from. Change it with scripts/sync-family."
 }

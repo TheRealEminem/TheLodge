@@ -134,9 +134,11 @@ def configured(pid: str, cfg: dict) -> tuple[bool, str]:
 
 
 def model_for(pid: str, cfg: dict) -> str:
+    """The model a provider uses. An empty setting (a cleared field in Settings) means the default, never a
+    request for a model named "" (Gemini answers that with a 404)."""
     if pid == "ollama":
         return cfg["ollama_model"] or preferred_ollama_model(_ollama_tags(cfg))
-    return cfg[f"{pid}_model"]
+    return (cfg.get(f"{pid}_model") or "").strip() or DEFAULTS.get(f"{pid}_model", "")
 
 
 _PREFERRED_FAMILIES = ("qwen3", "qwen2.5", "gemma3", "llama3.1", "llama3.2", "mistral", "phi4", "llama3")
@@ -196,9 +198,9 @@ def generate(pid: str, cfg: dict, prompt: str, system: str | None = None, keep_a
     elif pid == "gemini":
         text = _gemini(cfg, prompt, system)
     elif pid == "custom":
-        text = _openai_compatible(cfg["custom_base_url"], cfg["custom_api_key"], cfg["custom_model"], prompt, system, pid)
+        text = _openai_compatible(cfg["custom_base_url"], cfg["custom_api_key"], model_for(pid, cfg), prompt, system, pid)
     else:
-        text = _openai_compatible(PROVIDERS[pid]["base"], cfg[f"{pid}_api_key"], cfg[f"{pid}_model"], prompt, system, pid)
+        text = _openai_compatible(PROVIDERS[pid]["base"], cfg[f"{pid}_api_key"], model_for(pid, cfg), prompt, system, pid)
     text = text.strip()
     if not text:
         raise AIError(f"{label(pid, cfg)} returned an empty response")  # about this text, not the provider
@@ -275,7 +277,7 @@ def _anthropic(cfg: dict, prompt: str, system: str | None) -> str:
     import anthropic
 
     client = anthropic.Anthropic(api_key=cfg["anthropic_api_key"], timeout=600, max_retries=2)
-    model = cfg["anthropic_model"]
+    model = model_for("anthropic", cfg)
     params = {"model": model, "max_tokens": MAX_TOKENS, "messages": [{"role": "user", "content": prompt}]}
     if system:
         params["system"] = system
@@ -311,7 +313,7 @@ def _gemini(cfg: dict, prompt: str, system: str | None) -> str:
     body: dict = {"contents": [{"role": "user", "parts": [{"text": prompt}]}]}
     if system:
         body["systemInstruction"] = {"parts": [{"text": system}]}
-    r = _post(f"https://generativelanguage.googleapis.com/v1beta/models/{cfg['gemini_model']}:generateContent",
+    r = _post(f"https://generativelanguage.googleapis.com/v1beta/models/{model_for('gemini', cfg)}:generateContent",
               json=body, headers={"x-goog-api-key": cfg["gemini_api_key"]})
     try:
         parts = r.json()["candidates"][0]["content"]["parts"]
