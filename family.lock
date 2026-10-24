@@ -1,6 +1,6 @@
 {
-  "commit": "00c53d678c0120873103c52ca1df9c19b84a9ebf",
-  "subject": "AI: a cleared model setting means the default model",
-  "synced_on": "2026-10-23",
+  "commit": "c6f4648aaf2ed9bce9f863fa53314db8a79fa8e8",
+  "subject": "Family: the Mac's resources and memory gate, Ollama from inside the app, Lockdown, and a guided first run",
+  "synced_on": "2026-10-24",
   "note": "The TrailmixFamily commit this app's shared code comes from. Change it with scripts/sync-family."
 }
