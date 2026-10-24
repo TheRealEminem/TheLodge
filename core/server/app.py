@@ -282,6 +282,13 @@ def setup_done():
     return {"ok": True}
 
 
+@core_router.post("/setup/reopen")
+def setup_reopen():
+    first_run.reopen()
+    events.publish("core.settings.changed", {"keys": [first_run.DONE]})
+    return {"ok": True}
+
+
 class PullBody(BaseModel):
     model: str = ""
 

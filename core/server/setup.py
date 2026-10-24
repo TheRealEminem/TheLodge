@@ -28,6 +28,12 @@ def finish() -> None:
     settings.update({DONE: True})
 
 
+def reopen() -> None:
+    """Settings → App → Run setup again: show the first-run screens once more. Only the flag changes; nothing is deleted
+    and every screen starts from what is already chosen."""
+    settings.update({DONE: False})
+
+
 def jobs() -> list[dict]:
     """Every module's AI jobs and where each would run now: [{module, job, label, hint, weight, provider, label_of_provider,
     model, ready, reason, local}]."""

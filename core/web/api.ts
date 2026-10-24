@@ -220,6 +220,7 @@ export const api = {
   setup: () => request<SetupState>("/setup"),
   setupPath: (path: AiPath, cloud = "") => request<SetupState>("/setup/path", json("PUT", { path, cloud })),
   setupDone: () => request<{ ok: true }>("/setup/done", json("POST")),
+  setupReopen: () => request<{ ok: true }>("/setup/reopen", json("POST")),
   system: () => request<SystemInfo>("/system"),
   ollama: () => request<OllamaStatus>("/ollama"),
   ollamaInstall: () => request<{ started: boolean }>("/ollama/install", json("POST")),

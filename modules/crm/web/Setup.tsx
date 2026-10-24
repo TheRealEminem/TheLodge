@@ -1,14 +1,18 @@
 // The People module's step in the first run: who you are (connections are measured from you), and ways to bring people in.
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { PlusIcon } from "@core/components/icons";
 import { useSettings, useShell } from "@core/shell";
 import { crmApi } from "./api";
+import type { Entity } from "./api";
 
 export default function SetupStep({ next }: { next: () => void }) {
   const { toast } = useShell();
   const { values } = useSettings();
   const [name, setName] = useState(String(values?.["core.your_name"] ?? ""));
   const [busy, setBusy] = useState(false);
+  // Read once: saving a name below must not swap this screen for the "already set up" one before Continue moves on.
+  const [me, setMe] = useState<Entity | null | undefined>(undefined);
+  useEffect(() => void crmApi.me().then(setMe, () => setMe(null)), []);
   const run = async (fn: () => Promise<unknown>) => {
     setBusy(true);
     try {
@@ -19,6 +23,18 @@ export default function SetupStep({ next }: { next: () => void }) {
       setBusy(false);
     }
   };
+  // Setup run again on an install that has a "me": keep it. A name here would make a second one.
+  if (me) {
+    return (
+      <>
+        <p className="mt-2 text-body leading-relaxed text-ink-soft">
+          You're set up as {me.name}, and connections are measured from you. Bring people in whenever you like: type a note, drop a document, a spreadsheet or a LinkedIn export on the Inbox, or add someone by hand.
+        </p>
+        <button className="btn btn-md btn-primary mt-6" onClick={next}>Continue</button>
+      </>
+    );
+  }
+  if (me === undefined) return null;
   return (
     <>
       <p className="mt-2 text-body leading-relaxed text-ink-soft">

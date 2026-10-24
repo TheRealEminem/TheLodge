@@ -101,3 +101,15 @@ def test_finishing_is_remembered_and_reported(client):
     assert client.get("/api/app").json()["setup_done"] is False
     client.post("/api/setup/done")
     assert client.get("/api/app").json()["setup_done"] is True
+
+
+def test_setup_can_be_run_again_without_touching_anything_else(client):
+    settings.update({setup.DONE: True, "core.your_name": "Sam", "ai.path": "local"})
+    assert client.post("/api/setup/reopen").json() == {"ok": True}
+    assert client.get("/api/app").json()["setup_done"] is False            # the first-run screens show again
+    after = settings.get_all()
+    assert after["core.your_name"] == "Sam" and after["ai.path"] == "local"  # what was chosen stays chosen
+    setup.mark_existing()
+    assert setup.done() is False                                           # a restart doesn't count it as an old install
+    client.post("/api/setup/done")
+    assert client.get("/api/app").json()["setup_done"] is True

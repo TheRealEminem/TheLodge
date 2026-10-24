@@ -291,7 +291,7 @@ function Updates() {
 }
 
 export default function Settings() {
-  const { app, theme } = useShell();
+  const { app, theme, toast, reopenSetup } = useShell();
   const { values, hints, save } = useSettings();
   const { data: providers } = useLive<ProviderInfo[]>(api.providers);
   const { data: family } = useLive<FamilyStatus>(api.family);
@@ -369,6 +369,12 @@ export default function Settings() {
       <Updates />
 
       <Section icon={<LeafIcon size={16} />} title={app.name} blurb={`Version ${app.version}`}>
+        <ControlRow label="Setup" hint="The first-run questions again, one at a time. Nothing you have is changed unless you change it.">
+          <button className="btn btn-sm btn-soft" onClick={() => void reopenSetup().catch((e: Error) => toast(e.message, "error"))}>
+            <RefreshIcon size={16} />
+            Run setup again
+          </button>
+        </ControlRow>
         <ControlRow label={`Quit ${app.name}`} hint={inApp ? "Closes the window and the menu bar app." : "Stops the server; open the app again to come back."}>
           <button className="btn btn-sm btn-danger-ghost" onClick={() => (inApp ? quitApp() : void api.shutdown())}>
             <PowerIcon size={16} />
