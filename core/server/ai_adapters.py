@@ -49,7 +49,7 @@ def generate_structured(pid: str, cfg: dict, prompt: str, system: str | None, sc
     budget = max_tokens or OTHER_MAX_TOKENS
     if pid == "deepseek":
         budget = min(budget, DEEPSEEK_MAX_TOKENS)
-    return _openai_compatible(base, key, cfg[f"{pid}_model"], system, prompt, schema, budget,
+    return _openai_compatible(base, key, model_for(pid, cfg), system, prompt, schema, budget,
                               budget_key="max_completion_tokens" if pid == "openai" else "max_tokens",
                               who=label(pid, cfg))
 
@@ -73,7 +73,7 @@ def _final_text(message) -> str:
 def _claude(cfg: dict, system: str, prompt: str, schema: type[BaseModel], max_tokens: int) -> BaseModel:
     import anthropic
 
-    model = cfg["anthropic_model"]
+    model = model_for("anthropic", cfg)
     client = anthropic.Anthropic(api_key=cfg["anthropic_api_key"], timeout=900, max_retries=2)
     params = {
         "model": model,
