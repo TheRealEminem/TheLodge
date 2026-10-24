@@ -228,10 +228,51 @@ another module's.
 | Feedback | `useShell().toast / confirm`, `JobStatus`, `JobChip`, `LinkedList`, `Section` | See `DESIGN.md` for the visual rules. |
 | Ask another family app | `family.call("people.search", q="ana")` | Its own modules first, then a running family app that offers it. Raises `family.Unavailable` with a sentence for the screen ("Open The Lodge to see this here"). Only from server code, and never as a substitute for events between modules in one app. |
 
-Backups (`core/server/backup.py`) are the host's: a daily SQLite online backup in `<data folder>/backups/` (kept 14),
-"Back up now", and restore, which makes a backup of what it replaces, copies the chosen one over the live database,
-brings an older one up to date with the current migrations and publishes `core.restored` (a module that caches
-anything built from its tables listens and drops it; the CRM does).
+Backups (`core/server/backup.py`) are the host's: SQLite online backups in `<data folder>/backups/` that **roll over**
+(below), "Back up now", and restore, which makes a backup of what it replaces, copies the chosen one over the live
+database, brings an older one up to date with the current migrations and publishes `core.restored` (a module that
+caches anything built from its tables listens and drops it; the CRM does).
+
+**Backups roll over; they are never a list that grows.** They exist so a person can undo a bad hour, a bad day or a bad
+week, and so an update or a restore can itself be undone. They are not an archive. (The bug this spec answers, seen in
+The Lodge on 2026-10-24 and in Traverse on 2026-10-23: 15 copies across four days in Settings, each kind capped on its
+own so the folder never settled, and three copies made in one minute by the install script, the daily job and the
+pre-update safety copy.)
+
+1. **One rolling rule for every backup,** whoever asked for it. The kind (`auto`, `manual`, `before-update`,
+   `before-restore`) is a label, plus the protections in 5 to 7.
+2. **Taken every hour while the app is open, if the data changed** since the newest backup (the database file's size
+   and modified time, or a change counter the host bumps on every write, kept with the newest copy). A quiet app makes
+   none. There is no "once a day, skipped if one is recent" rule: the hourly copy is what makes "an hour ago" real.
+3. **Never twice for the same data.** Back up now, a copy before an update, before a restore, or the install script's
+   request, when nothing has changed since the newest backup, does not copy again: it adds its kind to the existing copy
+   and returns it. (The kind goes in the file's name or a small sidecar, so a copy can be both "daily" and "before an
+   update".)
+4. **The rolling set is at most four copies:** the newest backup, and the newest backup that is **at least 1 hour old,
+   at least 1 day old, and at least 7 days old.** One file can fill several of these (a fresh install has one file; after
+   a week there are four). Recompute after every backup and delete every copy that fills no slot and has no protection
+   below. As time passes a newer copy becomes a day old and takes "Yesterday"; the one it replaces goes, unless it still
+   fills another slot.
+5. **Made by you** (Back up now): the newest 3 are also kept for 24 hours whatever 4 says, so "back up, do something
+   risky, put it back" always works within a day; after that they fall under 4 like the rest.
+6. **Before an update:** the newest 2 are kept (named for the versions they sit between). The updater's Go back and a
+   failed migration rely on one. Roll-over never deletes them, and they are not one of the simple menu's choices.
+7. **Before a restore:** the newest 1 is kept for 7 days, so a restore can be undone.
+8. **Bound:** at most 4 + 3 + 2 + 1 = 10 files at any moment, typically 3 to 5. If `backups/` passes 2 GB (a very large
+   book), the 24-hour protection goes first, then the oldest slot; the four slots and the newest pre-update copy never
+   do.
+
+The API tells the page what each file is for, so the page never re-derives the rule: `GET /api/backups` returns
+`{"items": [{name, kind, created_at, bytes, counts, slots}], "slots": {"latest": name, "hour": name | null, "day": name |
+null, "week": name | null}, "folder": path}`, where a file's `slots` lists the choices it fills. Tests (each app keeps the
+host's, in `core/tests/test_backup.py`) run on a fake clock: each slot, one file filling several, a newer copy taking a
+slot and the old one going, the same data not copied twice, the 24-hour pin, the pre-update copies and the newest
+pre-restore copy surviving, the size ceiling.
+
+Settings, Your data shows this simply (`DESIGN.md` §7): **Back up now**, and up to four restore choices, "A few minutes
+ago", "An hour ago", "Yesterday", "Last week", each with its real date and time and what it holds ("129 people"), and
+Restore. Under a collapsed **Advanced**: every file on disk (when, kind, size, what it holds, Restore, Delete), the
+folder and Show in Finder, the rule in one sentence, and the JSON export. Advanced is closed on every visit.
 
 ## 8. How modules work together: a walkthrough
 
