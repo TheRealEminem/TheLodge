@@ -1,8 +1,8 @@
-// Settings: what the app keeps for you. A few points to go back to, every copy on disk under Advanced, and a plain
-// JSON copy of everything.
+// Settings: what the app keeps for you. Back up now and a few points to go back to; under Advanced, every copy on disk,
+// the folder, and a plain JSON copy of everything (ARCHITECTURE.md §7, DESIGN.md §7).
 import { useState } from "react";
-import { api } from "../api";
-import type { BackupItem } from "../api";
+import { api, inApp, revealInFinder } from "../api";
+import type { BackupItem, BackupSlot } from "../api";
 import { Section } from "../components/blocks";
 import { AlertIcon, CheckIcon, ChevronDownIcon, DownloadIcon, FolderIcon, RefreshIcon, TrashIcon } from "../components/icons";
 import { Collapse, ControlRow, Spinner, useConfirm } from "../components/ui";
@@ -18,6 +18,7 @@ const KIND: Record<BackupItem["kind"], string> = {
 };
 
 const DAY = 864e5;
+const SLOTS: BackupSlot[] = ["latest", "hour", "day", "week"];
 
 function size(bytes: number) {
   return bytes > 1e6 ? `${(bytes / 1e6).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1e3))} KB`;
@@ -50,22 +51,16 @@ function ago(iso: string, now: number) {
   return `${Math.floor(days / 30)} months ago`;
 }
 
-/** The few copies worth offering: the newest, the newest from before today, the newest at least a week old, and the
- *  one kept before the last update. The server's rotation keeps one for each of these. Newest first, no repeats. */
-function choices(items: BackupItem[], now: number) {
-  const at = (b: BackupItem) => new Date(b.created_at).getTime();
-  const picks: { b: BackupItem; label: string }[] = [];
-  const add = (b: BackupItem | undefined, label?: string) => {
-    if (!b) return;
-    const had = picks.find((p) => p.b.name === b.name);
-    if (had) had.label = label ?? had.label;
-    else picks.push({ b, label: label ?? ago(b.created_at, now) });
-  };
-  add(items[0]);
-  add(items.find((b) => at(b) < startOfDay(now)));
-  add(items.find((b) => at(b) <= now - 7 * DAY));
-  add(items.find((b) => b.kind === "before-update"), "Before the last update");
-  return picks.sort((x, y) => at(y.b) - at(x.b));
+/** "129 people, 40 tasks". */
+function holds(counts: Record<string, number>) {
+  return Object.entries(counts).map(([what, n]) => `${n} ${what}`).join(", ");
+}
+
+/** The restore choices the server picked (the newest, and the newest at least an hour, a day and a week old), once
+ *  each: one copy can fill several. */
+function choices(items: BackupItem[], slots: Record<BackupSlot, string | null> | undefined) {
+  const names = [...new Set(SLOTS.map((s) => slots?.[s]).filter((n): n is string => !!n))];
+  return names.map((n) => items.find((b) => b.name === n)).filter((b): b is BackupItem => !!b);
 }
 
 export default function YourData() {
@@ -101,7 +96,7 @@ export default function YourData() {
     if (!ok) return;
     const r = await api.restoreBackup(b.name);
     await reload();
-    const held = Object.entries(r.counts ?? {}).map(([what, n]) => `${n} ${what}`).join(", ");
+    const held = holds(r.counts ?? {});
     toast(`Restored${held ? `: ${held}` : ""}. The earlier state is kept as a backup.`);
   });
   const remove = (b: BackupItem) => run(b.name, async () => {
@@ -115,6 +110,7 @@ export default function YourData() {
   });
 
   const items = data?.items ?? [];
+  const now = Date.now();
   const restoreButton = (b: BackupItem) => (
     <button className="btn btn-sm btn-soft" disabled={busy !== null} onClick={() => void restore(b)}>
       {busy === b.name ? <Spinner /> : <RefreshIcon size={16} />} Restore
@@ -123,19 +119,19 @@ export default function YourData() {
 
   return (
     <>
-      <Section icon={<FolderIcon size={16} />} title="Your data" blurb="A copy is made every hour, and another before an update changes anything. Older ones thin out on their own, to one a day for a week and one a week for a month. They stay in this Mac's data folder, private to you, and aren't sent anywhere.">
-        <ControlRow label="Back up now" hint="Makes a copy of everything as it is right now." wrap>
+      <Section icon={<FolderIcon size={16} />} title="Your data" blurb="A copy is made each hour while something changes, and before an update or a restore. Only a few are kept: the newest, and one from about an hour, a day and a week ago. They stay in this Mac's data folder, private to you, and aren't sent anywhere.">
+        <ControlRow label="Back up now" hint="Makes a copy of everything as it is right now, kept for at least a day." wrap>
           <button className="btn btn-sm btn-soft" disabled={busy !== null} onClick={() => void backUp()}>
             {busy === "backup" ? <Spinner /> : <RefreshIcon size={16} />} Back up
           </button>
         </ControlRow>
         {items.length ? (
           <ul className="divide-y divide-line">
-            {choices(items, Date.now()).map(({ b, label }) => (
+            {choices(items, data?.slots).map((b) => (
               <li key={b.name} className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 py-3">
                 <div className="min-w-0">
-                  <div className="text-label font-medium">{label}</div>
-                  <div className="text-hint text-ink-soft">{when(b.created_at)}</div>
+                  <div className="text-label font-medium">{ago(b.created_at, now)}</div>
+                  <div className="text-hint text-ink-soft">{[when(b.created_at), holds(b.counts)].filter(Boolean).join(" · ")}</div>
                 </div>
                 {restoreButton(b)}
               </li>
@@ -144,32 +140,29 @@ export default function YourData() {
         ) : (
           <p className="flex items-start gap-1.5 py-3.5 text-hint text-ink-soft"><AlertIcon size={16} className="mt-px shrink-0" /> No backups yet. The first is made shortly after the app starts.</p>
         )}
-        <ControlRow label="Export everything" hint={exportHint} wrap>
-          <button className="btn btn-sm btn-soft" disabled={busy !== null} onClick={() => void exportAll()}>
-            {busy === "export" ? <Spinner /> : <DownloadIcon size={16} />} Export
-          </button>
-        </ControlRow>
-        {exported && (
-          <p className="flex animate-fade-in items-start gap-1.5 py-3.5 text-hint leading-snug text-forest-deep">
-            <CheckIcon size={16} className="mt-px shrink-0" />
-            <span className="break-words">Saved {exported.name} in {exported.folder} ({exported.text}).</span>
-          </p>
-        )}
         <div>
           <button type="button" className="flex w-full items-center justify-between gap-5 py-3.5 text-left" aria-expanded={advanced} onClick={() => setAdvanced(!advanced)}>
             <span className="min-w-0">
               <span className="block text-label font-medium leading-5 text-ink">Advanced</span>
-              <span className="mt-0.5 block text-hint leading-[1.45] text-ink-soft">Every copy on disk, and where they're kept.</span>
+              <span className="mt-0.5 block text-hint leading-[1.45] text-ink-soft">Every copy on disk, where they're kept, and an export.</span>
             </span>
             <ChevronDownIcon size={16} className={`shrink-0 text-ink-faint transition-transform duration-200 ${advanced ? "rotate-180" : ""}`} />
           </button>
           <Collapse open={advanced}>
             <div className="border-t border-line">
+              <p className="py-3.5 text-hint leading-[1.45] text-ink-soft">
+                What stays: the newest copy in each of the last 3 hours, 9 days and 4 weeks; also what you made in the
+                last day, the two from before the last updates, and the one from before a restore for a week. The same
+                data is never copied twice.
+              </p>
               {data && (
-                <p className="py-3.5 text-hint leading-[1.45] text-ink-soft">
-                  {items.length} {items.length === 1 ? "copy" : "copies"}, {size(items.reduce((n, b) => n + b.bytes, 0))} in all, saved in{" "}
-                  <span className="break-all">{data.folder}</span>. Use Show Data Folder in the menu bar to open it.
-                </p>
+                <ControlRow label="Folder" hint={<>{items.length} {items.length === 1 ? "copy" : "copies"}, {size(items.reduce((n, b) => n + b.bytes, 0))} in all, in <span className="break-all">{data.folder}</span></>} wrap>
+                  {inApp && (
+                    <button className="btn btn-sm btn-soft" onClick={() => revealInFinder(data.folder)}>
+                      <FolderIcon size={16} /> Show in Finder
+                    </button>
+                  )}
+                </ControlRow>
               )}
               {items.length > 0 && (
                 <ul className="divide-y divide-line border-t border-line">
@@ -177,7 +170,9 @@ export default function YourData() {
                     <li key={b.name} className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 py-3">
                       <div className="min-w-0">
                         <div className="text-label font-medium">{when(b.created_at)}</div>
-                        <div className="text-hint text-ink-soft">{KIND[b.kind]} · {size(b.bytes)}</div>
+                        <div className="text-hint text-ink-soft">
+                          {[b.kinds.map((k) => KIND[k]).join(", ") + (b.update ? ` (${b.update})` : ""), size(b.bytes), holds(b.counts)].filter(Boolean).join(" · ")}
+                        </div>
                       </div>
                       <div className="flex gap-1.5">
                         {restoreButton(b)}
@@ -189,6 +184,19 @@ export default function YourData() {
                   ))}
                 </ul>
               )}
+              <div className="border-t border-line">
+                <ControlRow label="Export everything" hint={exportHint} wrap>
+                  <button className="btn btn-sm btn-soft" disabled={busy !== null} onClick={() => void exportAll()}>
+                    {busy === "export" ? <Spinner /> : <DownloadIcon size={16} />} Export
+                  </button>
+                </ControlRow>
+                {exported && (
+                  <p className="flex animate-fade-in items-start gap-1.5 py-3.5 text-hint leading-snug text-forest-deep">
+                    <CheckIcon size={16} className="mt-px shrink-0" />
+                    <span className="break-words">Saved {exported.name} in {exported.folder} ({exported.text}).</span>
+                  </p>
+                )}
+              </div>
             </div>
           </Collapse>
         </div>
