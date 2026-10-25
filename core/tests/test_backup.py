@@ -19,12 +19,23 @@ def tidy_backups():
         p.unlink()
 
 
+class Clock:
+    def __init__(self):
+        self.now = datetime(2026, 3, 2, 12, tzinfo=timezone.utc)
+
+    def ago(self, **kw) -> datetime:
+        return self.now - timedelta(**kw)
+
+
 @pytest.fixture
-def utc(monkeypatch):
-    """Hours, days and weeks counted on a UTC clock, so the rotation tests don't depend on where they run."""
+def clock(monkeypatch):
+    """The backups' own clock, moved by hand, with this Mac's days and weeks counted in UTC so the tests don't depend on
+    where they run."""
+    c = Clock()
+    monkeypatch.setattr(backup, "_now", lambda: c.now)
     monkeypatch.setenv("TZ", "UTC")
     time.tzset()
-    yield
+    yield c
     monkeypatch.undo()
     time.tzset()
 
@@ -33,10 +44,15 @@ def stamp(when: datetime) -> str:
     return when.strftime("%Y%m%d-%H%M%S")
 
 
-def fake(when: datetime, kind: str = "auto") -> str:
+def fake(when: datetime, kind: str = "auto", size: int = 1) -> str:
+    """A stand-in copy: only its name (when, what kind) and size matter to the roll-over."""
     name = f"{config.APP_ID}-{stamp(when)}{'' if kind == 'auto' else '-' + kind}.db"
-    (backup.DIR / name).write_bytes(b"x")
+    (backup.DIR / name).write_bytes(b"x" * size)
     return name
+
+
+def on_disk() -> set[str]:
+    return {b["name"] for b in backup.listing()}
 
 
 def put(key, value):
@@ -59,6 +75,7 @@ def test_a_backup_is_a_whole_private_copy_you_can_list(client):
         assert c.execute("SELECT value FROM core_settings WHERE key = 'test.marker'").fetchone()[0] == '"before"'
     assert [b["name"] for b in client.get("/api/backups").json()["items"]] == [made["name"]]
     assert not list(backup.DIR.glob("*-wal")) and not list(backup.DIR.glob(".*"))
+    assert oct((backup.DIR / f"{made['name']}.json").stat().st_mode & 0o777) == "0o600"     # and its label, too
 
 
 def test_restoring_brings_back_exactly_that_and_keeps_what_it_replaced(client):
@@ -109,6 +126,7 @@ def test_a_backup_says_what_it_holds_by_asking_the_modules(client):
     for _ in range(3):
         db.execute("INSERT INTO probe2_items (id) VALUES (?)", (db.new_id(),))
     made = backup.make("manual")
+    assert client.get("/api/backups").json()["items"][0]["counts"]["probes"] == 3
     r = client.post(f"/api/backups/{made['name']}/restore")
     assert r.json()["counts"]["probes"] == 3
 
@@ -127,58 +145,145 @@ def test_a_backup_from_a_newer_app_or_a_damaged_one_is_refused(client):
     assert client.post(f"/api/backups/{config.APP_ID}-nope.db/restore").status_code == 422
 
 
-def test_hourly_copies_roll_over_into_a_few_hours_a_week_of_days_and_a_month_of_weeks(utc):
-    first = datetime(2026, 1, 1, tzinfo=timezone.utc)               # a Thursday
-    names = [fake(first + timedelta(hours=h)) for h in range(40 * 24)]
+# ── Rolling over (ARCHITECTURE.md §7) ─────────────────────────────────
+
+def test_the_choices_are_the_newest_and_the_newest_at_least_an_hour_a_day_and_a_week_old(client, clock):
+    at = {age: fake(clock.ago(**{unit: n})) for age, (unit, n) in {
+        "now": ("hours", 0), "30m": ("minutes", 30), "1h": ("hours", 1), "3h": ("hours", 3),
+        "1d": ("days", 1), "2d": ("days", 2), "7d": ("days", 7), "9d": ("days", 9)}.items()}
+    r = client.get("/api/backups").json()
+    assert r["slots"] == {"latest": at["now"], "hour": at["1h"], "day": at["1d"], "week": at["7d"]}
+    assert {b["name"]: b["slots"] for b in r["items"]}[at["1d"]] == ["day"]
+    assert r["folder"] == str(backup.DIR)
+
+
+def test_one_copy_can_fill_every_choice(client, clock):
+    only = fake(clock.ago(days=8))
     backup.prune()
-    kept = {b["name"] for b in backup.listing()}
-    at = {datetime(2026, 2, d, h, tzinfo=timezone.utc) for d, h in [
-        (9, 23), (9, 22), (9, 21), (9, 20),                           # the last four hours (Mon Feb 9 is the newest day)
-        (8, 23), (7, 23), (6, 23), (5, 23), (4, 23), (3, 23),         # the last of each of the last seven days
-    ]} | {datetime(2026, 2, 1, 23, tzinfo=timezone.utc), datetime(2026, 1, 25, 23, tzinfo=timezone.utc)}   # Sundays: weeks
-    assert kept == {n for n in names if any(stamp(w) in n for w in at)}
+    assert on_disk() == {only}
+    assert client.get("/api/backups").json()["items"][0]["slots"] == ["latest", "hour", "day", "week"]
 
 
-def test_the_rotation_stays_small_and_always_has_yesterday_and_last_week(utc):
-    first = datetime(2026, 3, 1, tzinfo=timezone.utc)
+def test_two_months_of_hourly_copies_stay_few_with_every_choice_there(clock):
+    """60 days of a copy every hour: never more than 14 files, and once there has been time for them, an hour ago is an
+    hour old, yesterday is from yesterday, and last week is 7 to 9 days old."""
+    start = clock.now
     most = 0
     for h in range(60 * 24):
-        now = first + timedelta(hours=h)
-        fake(now)
+        clock.now = start + timedelta(hours=h)
+        fake(clock.now)
         backup.prune()
-        made = [backup._stamp_of(b["name"]) for b in backup.listing()]
-        most = max(most, len(made))
-        if h >= 14 * 24:
-            midnight = now.replace(hour=0)
-            assert any(midnight - timedelta(days=1) <= m < midnight for m in made)
-            assert any(now - timedelta(days=14) <= m <= now - timedelta(days=7) for m in made)
-    assert most <= sum(backup.ROTATE.values())
+        items = backup._items()
+        most = max(most, len(items))
+        slots = backup._slots(items, clock.now)
+        at = {s: next(b["at"] for b in items if b["name"] == n) for s, n in slots.items() if n}
+        if h >= 2:
+            assert clock.now - at["hour"] == timedelta(hours=1)
+        if h >= 24:
+            assert at["day"].date() == (clock.now - timedelta(days=1)).date()
+        if h >= 8 * 24:
+            assert timedelta(days=7) <= clock.now - at["week"] <= timedelta(days=9)
+    assert most <= 14 and len(items) <= 14
 
 
-def test_the_other_kinds_keep_a_few_for_a_month_and_always_the_newest():
-    now = datetime.now(timezone.utc).replace(microsecond=0)
-    recent = [fake(now - timedelta(days=d), "manual") for d in range(1, backup.KEEP["manual"] + 3)]
-    stale = [fake(now - timedelta(days=d), "before-restore") for d in (40, 50, 60)]
+def test_the_newest_in_each_hour_day_and_week_stays_and_the_rest_go(clock):
+    clock.now = datetime(2026, 3, 4, 12, tzinfo=timezone.utc)             # a Wednesday
+    today = [fake(clock.ago(hours=h, minutes=m)) for h in range(6) for m in (0, 30)]     # 12:00, 11:30, 11:00, 10:30…
+    days = [fake(datetime(2026, 3, d, 23, tzinfo=timezone.utc)) for d in (2, 3)] + [fake(datetime(2026, 3, 3, 9, tzinfo=timezone.utc))]
+    week = fake(datetime(2026, 2, 22, 23, tzinfo=timezone.utc))            # the Sunday of two weeks back
     backup.prune()
-    kept = {b["name"] for b in backup.listing()}
-    assert kept == set(recent[:backup.KEEP["manual"]]) | {stale[0]}
+    # today: the newest of this hour, and of the two before; then the last of Monday and Tuesday; then that Sunday
+    assert on_disk() == {today[0], today[1], today[3], days[0], days[1], week}
+    clock.now += timedelta(hours=1)
+    fake(clock.now)
+    backup.prune()
+    assert today[3] not in on_disk()                                       # its hour has rolled off the end
 
 
-def test_the_copy_before_the_last_update_stays_and_older_ones_roll_off():
-    now = datetime.now(timezone.utc).replace(microsecond=0)
-    old = [fake(now - timedelta(days=d), "before-update") for d in (90, 120, 150)]
-    for h in range(48):                                                # plenty of automatic copies made since
-        fake(now - timedelta(hours=h))
+def test_the_same_data_is_never_copied_twice(clock):
+    first = backup.make("auto")
+    again = backup.make("manual")                                       # Back up now, with nothing changed
+    assert again["name"] == first["name"] and again["kinds"] == ["manual", "auto"] and again["kind"] == "manual"
+    assert backup.make("before-restore")["name"] == first["name"]
+    assert len(backup.listing()) == 1
+    put("test.marker", f"changed at {clock.now}")
+    clock.now += timedelta(minutes=5)
+    assert backup.make("manual")["name"] != first["name"]
+    assert len(backup.listing()) == 2
+
+
+def test_a_quiet_app_makes_no_copies_and_a_busy_one_one_an_hour(clock):
+    def hourly():
+        clock.now += timedelta(hours=1)
+        jobs.enqueue("core", "backup", f"at {clock.now}")
+        jobs.drain()
+
+    hourly()
+    hourly()
+    hourly()
+    assert len(backup.listing()) == 1
+    put("test.marker", f"changed at {clock.now}")
+    hourly()
+    assert len(backup.listing()) == 2
+
+
+def test_what_you_make_is_kept_for_a_day_then_rolls_over_like_the_rest(clock):
+    mine = [fake(clock.ago(hours=h), "manual") for h in (2, 3, 4, 5)]
+    for h in range(7):
+        fake(clock.ago(hours=h))
     backup.prune()
-    assert [b["name"] for b in backup.listing() if b["kind"] == "before-update"] == [old[0]]
-    newer = [fake(now - timedelta(days=d), "before-update") for d in (1, 2, 3)]
+    assert {b["name"] for b in backup.listing() if b["kind"] == "manual"} == set(mine[:3])
+    clock.now += timedelta(hours=25)
     backup.prune()
-    assert [b["name"] for b in backup.listing() if b["kind"] == "before-update"] == newer[:backup.KEEP["before-update"]]
+    assert not [b for b in backup.listing() if b["kind"] == "manual"]
+
+
+def test_copies_from_before_an_update_and_the_newest_before_a_restore_survive_the_roll_over(clock):
+    updates = [fake(clock.ago(days=d), "before-update") for d in (90, 120, 150)]
+    restores = [fake(clock.ago(hours=h, minutes=30), "before-restore") for h in (2, 3)]
+    for h in range(30 * 24):
+        fake(clock.ago(hours=h))
+    backup.prune()
+    assert {b["name"] for b in backup.listing() if b["kind"] == "before-update"} == set(updates[:2])
+    assert {b["name"] for b in backup.listing() if b["kind"] == "before-restore"} == {restores[0]}
+    clock.now += timedelta(days=8)                                      # a week on, with the app closed
+    backup.prune()
+    assert {b["name"] for b in backup.listing() if b["kind"] == "before-update"} == set(updates[:2])
+    assert not [b for b in backup.listing() if b["kind"] == "before-restore"]
+
+
+def test_past_the_size_ceiling_only_the_choices_and_the_last_update_copy_stay(clock, monkeypatch):
+    update = [fake(clock.ago(days=d), "before-update", 100) for d in (10, 20)]
+    for h in (2, 3, 4):
+        fake(clock.ago(hours=h), "manual", 100)
+    fake(clock.ago(hours=5), "before-restore", 100)
+    for h in range(30 * 24):
+        fake(clock.ago(hours=h), size=100)
+    monkeypatch.setattr(backup, "CEILING", 450)
+    backup.prune()
+    slots = backup._slots(backup._items(), clock.now)
+    assert on_disk() == set(slots.values()) | {update[0]}
+
+
+def test_a_new_version_names_the_versions_its_copy_sits_between(monkeypatch):
+    backup.record_version()
+    was = config.VERSION
+    monkeypatch.setattr(config, "VERSION", "99.0.0")
+    assert backup.before_update()["update"] == f"{was} → 99.0.0"
+
+
+def test_an_update_with_nothing_changed_labels_the_newest_copy_instead(monkeypatch):
+    backup.record_version()
+    made = backup.make("manual")
+    monkeypatch.setattr(config, "VERSION", "99.0.0")
+    kept = backup.before_update()
+    assert kept["name"] == made["name"] and kept["kind"] == "before-update" and "99.0.0" in kept["update"]
 
 
 def test_restoring_a_copy_that_would_be_pruned_still_works(client):
     put("test.marker", "long ago")
     made = backup.make("manual")
+    put("test.marker", "later")
     backup.make("manual")                                              # a newer one, so the old one is past keeping...
     old = f"{config.APP_ID}-{stamp(datetime.now(timezone.utc) - timedelta(days=90))}-manual.db"
     (backup.DIR / made["name"]).rename(backup.DIR / old)              # ...once it is made old

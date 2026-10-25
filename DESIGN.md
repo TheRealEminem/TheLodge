@@ -252,9 +252,8 @@ appear there.
 A Settings section shows the few choices most people want, in plain words, and nothing else. Everything else (the full
 list, paths, sizes, delete, odd options) sits behind one **Advanced** disclosure at the bottom of the same section,
 built with `Collapse` and closed on every visit (not remembered). The simple view must be enough on its own. Settings,
-Your data is the model: Back up now and three or four restore choices ("An hour ago", "Yesterday", "Last week", "Before
-the last update"), each with its real date and time; under Advanced, the files on disk and the folder (`ARCHITECTURE.md`
-§7, backups).
+Your data is the model: Back up now and three or four restore choices ("An hour ago", "Yesterday", "Last week"), each with
+its real date and time; under Advanced, the files on disk and the folder (`ARCHITECTURE.md` §7, backups).
 
 ## 8. Icons
 

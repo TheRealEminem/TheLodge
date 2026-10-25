@@ -189,11 +189,23 @@ export interface SetupState {
   providers: ProviderInfo[];
 }
 
-export interface BackupItem {
+export type BackupKind = "auto" | "manual" | "before-restore" | "before-update";
+export type BackupSlot = "latest" | "hour" | "day" | "week";
+
+/** One copy on disk. `kind` is its main label; `kinds` all it holds, since the same data is never copied twice. */
+export interface BackupFile {
   name: string;
-  kind: "auto" | "manual" | "before-restore" | "before-update";
+  kind: BackupKind;
+  kinds: BackupKind[];
   created_at: string;
   bytes: number;
+  update?: string;
+}
+
+/** As the list gives it: what it holds, and which restore choices it fills. */
+export interface BackupItem extends BackupFile {
+  counts: Record<string, number>;
+  slots: BackupSlot[];
 }
 
 export interface UsageSummary {
@@ -214,8 +226,8 @@ export const api = {
   shutdown: () => request<{ ok: true }>("/shutdown", json("POST")),
   changes: (since: number) => request<{ seq: number; names: string[] }>(`/changes?since=${since}`),
 
-  backups: () => request<{ items: BackupItem[]; folder: string }>("/backups"),
-  backUpNow: () => request<BackupItem>("/backups", json("POST")),
+  backups: () => request<{ items: BackupItem[]; slots: Record<BackupSlot, string | null>; folder: string }>("/backups"),
+  backUpNow: () => request<BackupFile>("/backups", json("POST")),
   restoreBackup: (name: string) => request<{ restored: string; kept: string; counts: Record<string, number> }>(`/backups/${name}/restore`, json("POST")),
   deleteBackup: (name: string) => request<void>(`/backups/${name}`, { method: "DELETE" }),
   exportAll: () => request<{ name: string; folder: string; bytes: number; counts: Record<string, Record<string, number>> }>("/export", json("POST")),

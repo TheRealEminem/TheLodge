@@ -1,6 +1,6 @@
 {
-  "commit": "7abf288b95b340487ae840130f438aa9cbecc093",
-  "subject": "Backups: hourly copies that roll over and a simple restore menu (from Traverse 0.2.6), and the docs say so",
+  "commit": "94bbdfde568b09243412f984cefc617cbabfc55f",
+  "subject": "Settings: Run setup again, to reopen the first-run screens on an existing install",
   "synced_on": "2026-10-24",
   "note": "The TrailmixFamily commit this app's shared code comes from. Change it with scripts/sync-family."
 }
