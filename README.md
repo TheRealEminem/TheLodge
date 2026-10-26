@@ -42,9 +42,10 @@ to do if something's wrong.
   Merges move meetings, notes and relationships across, and every one can be undone.
 
 **Your network**
-- A map of your people, gathered around the groups they belong to (a company, a fund, an event, a project).
-  Switch groups on to pull their people together, focus on someone, or find the paths to a person you'd like
-  to meet and who could introduce you.
+- **Rings of closeness:** you at the centre, a ring for each tier, and the people on each ring gathered into
+  wedges by organization. Switch a group on to make it a wedge, point at someone to see their ties, or find the
+  paths to a person you'd like to meet and who could introduce you. The same people are also a free-laid map
+  (groups pull their people together) and a list.
 - **Ask the network:** ready-made questions (who do you know at…, investors and advisors, everyone from an event,
   follow-ups waiting), and lists on request: ask "who do I know in climate tech?" and the AI writes the list from
   your own book.

@@ -1,7 +1,8 @@
 // The network: how the people you know connect, and what groups them. Only people are nodes; organizations,
 // topics and tags are groups you switch on to pull their people together; meetings and documents show when you
 // select someone. Presets ask it focused questions ("who could introduce me to X?") and the AI writes more. Also a
-// path finder ("how do I reach X?").
+// path finder ("how do I reach X?"). Three pictures of the same people: rings of closeness (the default: you at the
+// centre, a ring per tier, groups as wedges), the free-laid graph, and a list.
 import { Suspense, lazy, useEffect, useMemo, useState } from "react";
 import { CloseIcon, NetworkIcon, SignpostIcon } from "@core/components/icons";
 import { PageHeader, Segmented, Select, Skeleton } from "@core/components/ui";
@@ -21,6 +22,8 @@ import type { ActivePreset } from "./NetworkPresets";
 import { TIER_META } from "./tier";
 
 const NetworkCanvas = lazy(() => import("./NetworkCanvas"));
+const NetworkRings = lazy(() => import("./NetworkRings"));
+type View = "rings" | "graph" | "list";
 const PRESET = "preset"; // the preset on screen, drawn as one more group
 const DRAWER = 336;      // the side panel's width (21rem) when it floats over the map
 
@@ -44,7 +47,8 @@ export default function Network() {
   const pathTo = params.get("to");
   const depth = Number(params.get("depth") ?? 2);
   const wellsParam = params.get("wells") ?? "";
-  const [view, setView] = useState<"graph" | "list">("graph");
+  const view: View = (["rings", "graph", "list"] as const).find((v) => v === params.get("view")) ?? "rings";
+  const setView = (v: string) => setParams({ view: v === "rings" ? null : v });
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [openGroup, setOpenGroup] = useState<string | null>(null);
   const [hoverWell, setHoverWell] = useState<string | null>(null);
@@ -54,7 +58,8 @@ export default function Network() {
   const [asking, setAsking] = useState(false);
   const wide = useWide();
 
-  const { data: net, error } = useLive(() => crmApi.network({ focus: focus ?? undefined, depth, max_nodes: 600 }), [focus, depth]);
+  // The rings are always drawn from you, so a focus only narrows the graph.
+  const { data: net, error } = useLive(() => crmApi.network({ focus: view === "graph" ? focus ?? undefined : undefined, depth, max_nodes: 600 }), [focus, depth, view === "graph"]);
   const { data: me } = useLive(crmApi.me);
   const { data: paths } = useLive(() => (pathTo && me ? crmApi.netPaths({ target: pathTo }) : Promise.resolve(null)), [pathTo, me?.id]);
   const { data: focusEntity } = useLive(() => (focus ? crmApi.entity(focus) : Promise.resolve(null)), [focus]);
@@ -102,8 +107,8 @@ export default function Network() {
     <>
       <PageHeader
         title="Network"
-        subtitle={focusEntity ? `Around ${focusEntity.entity.name}` : "How the people you know connect, and what groups them."}
-        actions={<Segmented label="View" value={view} onChange={setView} options={[{ id: "graph", label: "Graph" }, { id: "list", label: "List" }]} />}
+        subtitle={view === "graph" && focusEntity ? `Around ${focusEntity.entity.name}` : view === "rings" ? "Who's closest to you, and where they gather." : "How the people you know connect, and what groups them."}
+        actions={<Segmented label="View" value={view} onChange={setView} options={[{ id: "rings", label: "Rings" }, { id: "graph", label: "Graph" }, { id: "list", label: "List" }]} />}
       />
 
       {/* One toolbar: the groups that are on (and a search to add one), then the questions and the ways to narrow the map. */}
@@ -122,7 +127,7 @@ export default function Network() {
         )}
         <div className="ml-auto flex flex-wrap items-center gap-2">
           <PresetBar onRun={(p) => { setPreset(p); setSelectedId(null); }} asking={asking} onAsk={() => setAsking((a) => !a)} />
-          <button
+          {view === "graph" && <button
             aria-pressed={showMe}
             disabled={Boolean(pathTo)}
             onClick={() => setParams({ me: params.get("me") === "1" ? null : "1" })}
@@ -130,15 +135,16 @@ export default function Network() {
             data-tip="Draw the lines from you to everyone you know"
           >
             Your ties
-          </button>
-          {focus ? (
+          </button>}
+          {view === "graph" && (focus ? (
             <>
               <Select label="Depth" size="sm" value={String(depth)} onChange={(v) => setParams({ depth: v })} options={[1, 2, 3].map((d) => ({ value: String(d), label: `${d} hop${d > 1 ? "s" : ""}` }))} />
               <button className="btn btn-sm btn-soft" onClick={() => setParams({ focus: null })}><CloseIcon size={16} /> Everyone</button>
             </>
           ) : (
             <div className="w-44"><EntityPicker kinds={["person"]} placeholder="Focus on someone…" onSelect={(e) => { setParams({ focus: e.id }); select(e.id); }} /></div>
-          )}
+          ))}
+          {view === "rings" && <div className="w-44"><EntityPicker kinds={["person"]} placeholder="Find someone…" onSelect={(e) => select(e.id)} /></div>}
           {me && <div className="w-44"><EntityPicker kinds={["person"]} placeholder="Find path to…" exclude={[me.id]} onSelect={(e) => { setPathIndex(0); setParams({ to: e.id }); }} /></div>}
         </div>
       </div>
@@ -171,11 +177,30 @@ export default function Network() {
               />
             </Suspense>
           )}
+          {net && net.nodes.length > 0 && view === "rings" && (
+            <Suspense fallback={<Skeleton className="h-full w-full" />}>
+              <NetworkRings
+                nodes={nodes}
+                links={net.links}
+                groups={groups}
+                wells={shownWells}
+                me={nodes.find((n) => n.is_self) ?? null}
+                selectedId={selectedId}
+                picked={picked}
+                highlight={highlight}
+                hoverWell={hoverWell}
+                inset={side && wide ? DRAWER : 0}
+                onNodeClick={clickNode}
+                onBackgroundClick={() => select(null)}
+                onOpenGroup={(gid) => { setOpenGroup(gid); setSelectedId(null); }}
+              />
+            </Suspense>
+          )}
           {net && net.nodes.length > 0 && view === "list" && <PeopleList people={listed} groups={groups} onPick={(n) => select(n.id)} />}
-          {view === "graph" && (
+          {view !== "list" && (
             <div className="pointer-events-none absolute bottom-3 left-3 flex flex-col items-start gap-1.5" style={{ right: side && wide ? DRAWER + 12 : 12 }}>
               {/* The legend steps aside while a panel floats over the map: there isn't room for both. */}
-              {!(side && wide) && <div className="panel pointer-events-auto px-3 py-2"><GraphLegend wells={wells.length > 0} preset={Boolean(shown)} events={Boolean(selectedId)} /></div>}
+              {!(side && wide) && <div className="panel pointer-events-auto px-3 py-2"><GraphLegend wells={wells.length > 0} preset={Boolean(shown)} events={Boolean(selectedId)} rings={view === "rings"} /></div>}
               {net?.truncated && <div className="panel bg-sun-soft px-3 py-1.5 text-meta text-sun-deep">Showing the most connected {net.nodes.length} people. Focus on someone to see more.</div>}
             </div>
           )}

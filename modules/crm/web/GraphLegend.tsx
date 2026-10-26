@@ -1,7 +1,7 @@
 import { GROUP_META, GROUP_ORDER, GroupGlyph } from "./groups";
 
 /** What the network's marks mean: how well you know someone (fill), what a line says, and what a group's outline is. */
-export function GraphLegend({ wells, preset = false, events }: { wells: boolean; preset?: boolean; events: boolean }) {
+export function GraphLegend({ wells, preset = false, events, rings = false }: { wells: boolean; preset?: boolean; events: boolean; rings?: boolean }) {
   return (
     <div className="space-y-1 text-meta text-ink-soft">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
@@ -11,6 +11,11 @@ export function GraphLegend({ wells, preset = false, events }: { wells: boolean;
         <span className="inline-flex items-center gap-1"><i className="inline-block h-2.5 w-2.5 rounded-full border-[1.6px] border-forest" /> light</span>
         <span className="inline-flex items-center gap-1"><i className="inline-block h-2.5 w-2.5 rounded-full border-[1.6px] border-dotted border-ink-soft" /> indirect or not linked</span>
       </div>
+      {rings ? (
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+          <span>Rings: closest at the centre. Wedges: who gathers where (switch a group on to make it a wedge). Lines show for the person you point at or choose.</span>
+        </div>
+      ) : (
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
         <span>Lines:</span>
         <span className="inline-flex items-center gap-1.5"><i className="inline-block h-0 w-5 border-t-2 border-line-strong" /> you recorded it</span>
@@ -18,6 +23,7 @@ export function GraphLegend({ wells, preset = false, events }: { wells: boolean;
         <span className="inline-flex items-center gap-1.5"><i className="inline-block h-0 w-5 border-t border-dotted border-ink-soft" /> came up there</span>
         {events && <span>Click a person to see their meetings and documents.</span>}
       </div>
+      )}
       {(wells || preset) && (
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
           <span>Groups:</span>
