@@ -36,7 +36,7 @@ export function GroupChip({ group, onOpen, onRemove, onHover, selected }: {
 }
 
 /** Search every group and switch one on. */
-function GroupPicker({ groups, active, onAdd }: { groups: NetGroup[]; active: string[]; onAdd: (gid: string) => void }) {
+function GroupPicker({ groups, active, onAdd, placeholder = "Add a group…" }: { groups: NetGroup[]; active: string[]; onAdd: (gid: string) => void; placeholder?: string }) {
   const [q, setQ] = useState("");
   const [open, setOpen] = useState(false);
   const [cursor, setCursor] = useState(0);
@@ -44,8 +44,9 @@ function GroupPicker({ groups, active, onAdd }: { groups: NetGroup[]; active: st
   const listId = useId();
   const found = useMemo(() => {
     const needle = q.trim().toLowerCase();
+    // Biggest first, so the list opens on the groups that pull the most people together.
     return groups.filter((g) => !active.includes(g.id) && (!needle || g.name.toLowerCase().includes(needle)))
-      .sort((a, b) => GROUP_ORDER.indexOf(a.kind) - GROUP_ORDER.indexOf(b.kind) || b.size - a.size || a.name.localeCompare(b.name))
+      .sort((a, b) => b.size - a.size || GROUP_ORDER.indexOf(a.kind) - GROUP_ORDER.indexOf(b.kind) || a.name.localeCompare(b.name))
       .slice(0, 40);
   }, [groups, active, q]);
 
@@ -64,7 +65,7 @@ function GroupPicker({ groups, active, onAdd }: { groups: NetGroup[]; active: st
       <SearchIcon size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ink-faint" />
       <input
         className="field h-8 w-full pl-9 text-ui"
-        placeholder="Add a group…"
+        placeholder={placeholder}
         aria-label="Add a group"
         role="combobox"
         aria-expanded={open}
@@ -113,35 +114,15 @@ export function GroupBar({ groups, active, hovered, openGroup, onToggle, onHover
   onApply: (wells: string[]) => void;
 }) {
   const byId = useMemo(() => new Map(groups.map((g) => [g.id, g])), [groups]);
-  const suggestions = groups.filter((g) => !active.includes(g.id)).slice(0, 6);
   return (
-    <div className="mb-3 animate-enter space-y-2">
-      <div className="flex flex-wrap items-center gap-2">
-        {active.map((gid) => {
-          const g = byId.get(gid);
-          return g ? <GroupChip key={gid} group={g} selected={openGroup === gid || hovered === gid} onOpen={() => onOpen(gid)} onRemove={() => onToggle(gid)} onHover={(on) => onHover(on ? gid : null)} /> : null;
-        })}
-        {active.length === 0 && <span className="text-ui text-ink-soft">Switch on a group to pull its people together.</span>}
-        <GroupPicker groups={groups} active={active} onAdd={onToggle} />
-        <ViewsMenu active={active} onApply={onApply} />
-      </div>
-      {suggestions.length > 0 && (
-        <div className="flex flex-wrap items-center gap-1.5">
-          <span className="text-meta text-ink-soft">Biggest:</span>
-          {suggestions.map((g) => (
-            <button
-              key={g.id}
-              className="chip h-6 gap-1 border border-dashed border-line-strong bg-transparent px-2 text-ink-soft hover:bg-forest/[.05] hover:text-ink"
-              onClick={() => onToggle(g.id)}
-              onMouseEnter={() => onHover(g.id)}
-              onMouseLeave={() => onHover(null)}
-            >
-              <PlusIcon size={12} /> {g.name} <span className="tabular-nums">{g.size}</span>
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
+    <>
+      {active.map((gid) => {
+        const g = byId.get(gid);
+        return g ? <GroupChip key={gid} group={g} selected={openGroup === gid || hovered === gid} onOpen={() => onOpen(gid)} onRemove={() => onToggle(gid)} onHover={(on) => onHover(on ? gid : null)} /> : null;
+      })}
+      <GroupPicker groups={groups} active={active} onAdd={onToggle} placeholder={active.length ? "Add a group…" : "Switch on a group…"} />
+      <ViewsMenu active={active} onApply={onApply} />
+    </>
   );
 }
 

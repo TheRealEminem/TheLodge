@@ -1,9 +1,15 @@
 // The people network on a canvas: people are the only nodes; the lines between them are connections; groups are
 // gravity wells (invisible anchors that pull their members together, with a soft labelled outline behind them).
 // Meetings and documents appear only as small satellites around the person you've selected.
+//
+// Where everyone sits is remembered per view (which groups are on, who's in focus) so the map looks the same next
+// time: a remembered layout pins people where they settled, new people find room among them, and "Lay out again"
+// starts fresh. The wheel scrolls the page; zooming takes ⌘ or Ctrl with it, a pinch, or the buttons.
 import { useEffect, useMemo, useRef, useState } from "react";
 import ForceGraph2D from "react-force-graph-2d";
 import type { ForceGraphMethods, LinkObject, NodeObject } from "react-force-graph-2d";
+import { Minus, Scan } from "lucide-react";
+import { PlusIcon, RefreshIcon, icon } from "@core/components/icons";
 import { useShell } from "@core/shell";
 import type { Evidence, NetGroup, NetLink, NetNode } from "./api";
 import { GROUP_META } from "./groups";
@@ -71,12 +77,52 @@ function tracePool(ctx: CanvasRenderingContext2D, members: { x: number; y: numbe
   return { top: Math.min(...h.map((p) => p[1])), cx: members.reduce((s, m) => s + m.x, 0) / members.length };
 }
 
+const MinusIcon = icon(Minus);
+const ScanIcon = icon(Scan);
+
+type Pos = { x: number; y: number };
+const LAYOUTS = "lodge.network.layouts";   // localStorage: {namespace: {viewKey: {t, at: {id: {x, y}}}}}
+const MAX_LAYOUTS = 24;                    // per namespace; the oldest go first
+
+function loadLayouts(ns: string): Map<string, Map<string, Pos>> {
+  const out = new Map<string, Map<string, Pos>>();
+  try {
+    const mine = (JSON.parse(localStorage.getItem(LAYOUTS) ?? "{}") as Record<string, Record<string, { t: number; at: Record<string, Pos> }>>)[ns] ?? {};
+    for (const [key, v] of Object.entries(mine)) out.set(key, new Map(Object.entries(v.at)));
+  } catch {
+    /* private window, or storage cleared: start fresh */
+  }
+  return out;
+}
+
+function storeLayout(ns: string, key: string, at: Record<string, Pos> | null) {
+  try {
+    const all = JSON.parse(localStorage.getItem(LAYOUTS) ?? "{}") as Record<string, Record<string, { t: number; at: Record<string, Pos> }>>;
+    const mine = all[ns] ?? {};
+    if (at) mine[key] = { t: Date.now(), at };
+    else delete mine[key];
+    for (const k of Object.keys(mine).sort((a, b) => mine[b].t - mine[a].t).slice(MAX_LAYOUTS)) delete mine[k];
+    all[ns] = mine;
+    localStorage.setItem(LAYOUTS, JSON.stringify(all));
+  } catch {
+    /* nothing to remember with */
+  }
+}
+
+/** "Amara Diallo" -> "Amara D.", for a crowded map. */
+const shortName = (name: string) => {
+  const parts = name.trim().split(/\s+/);
+  return parts.length > 1 ? `${parts[0]} ${parts[parts.length - 1][0]}.` : name;
+};
+
+const TIER_RANK: Record<string, number> = { strong: 1, working: 2, light: 3, indirect: 4, none: 5 };
+
 const linkEnd = (end: L["source"]): string => (typeof end === "object" && end !== null ? String((end as N).id) : String(end));
 
 const EVENT_SHAPE: Record<Evidence["kind"], Shape> = { meeting: "diamond", document: "page" };
 
 export default function NetworkCanvas({
-  nodes, links, groups, wells, showMe, evidence, selectedId, picked, focusId, highlight, hoverWell, height, labels = "auto",
+  nodes, links, groups, wells, showMe, evidence, selectedId, picked, focusId, highlight, hoverWell, height, labels = "auto", remember, inset = 0,
   onNodeClick, onEventClick, onBackgroundClick,
 }: {
   nodes: NetNode[];
@@ -92,6 +138,10 @@ export default function NetworkCanvas({
   hoverWell?: string | null;
   height?: number;
   labels?: "auto" | "all";
+  /** Keep where people settled, under this name, so the same view looks the same next time. */
+  remember?: string;
+  /** Pixels at the right edge covered by a panel: the map fits and centres in the rest. */
+  inset?: number;
   onNodeClick?: (n: NetNode, e: MouseEvent) => void;
   onEventClick?: (e: Evidence) => void;
   onBackgroundClick?: () => void;
@@ -102,7 +152,11 @@ export default function NetworkCanvas({
   const [hover, setHover] = useState<{ node: CNode; x: number; y: number } | null>(null);
   const { theme } = useShell();
   const colors = useMemo(() => readColors(), [theme.dusk]);
-  const positions = useRef(new Map<string, { x?: number; y?: number }>());
+  const positions = useRef(new Map<string, { x?: number; y?: number }>()); // where everyone was last: the starting point for a new arrangement
+  const [layouts] = useState(() => (remember ? loadLayouts(remember) : new Map<string, Map<string, Pos>>())); // settled arrangements, per view
+  const [relayout, setRelayout] = useState(0);   // bumped by "Lay out again"
+  const viewKey = `${focusId ?? ""}|${wells.join(",")}|${showMe}`;
+  const labelBoxes = useRef<{ x0: number; x1: number; y0: number; y1: number }[]>([]); // labels drawn this frame, so they don't pile up
   const fitted = useRef("");
   const touched = useRef(false); // you've panned or zoomed yourself: stop re-fitting the view after each layout
   const reduce = useMemo(() => window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false, []);
@@ -118,6 +172,8 @@ export default function NetworkCanvas({
   // force-graph mutates what it's given, so build fresh objects, but start each from where it was last laid out.
   const data = useMemo(() => {
     const people = nodes.filter((n) => showMe || !n.is_self || n.id === selectedId || highlight?.nodes.has(n.id));
+    // Drawn in this order, so when labels crowd each other the people who matter most keep theirs.
+    people.sort((a, b) => Number(b.is_self) - Number(a.is_self) || (TIER_RANK[a.tier ?? "none"] ?? 5) - (TIER_RANK[b.tier ?? "none"] ?? 5) || b.degree - a.degree || a.name.localeCompare(b.name));
     const present = new Set(people.map((n) => n.id));
     const cn: CNode[] = people.map((n) => ({ id: n.id, kind: "person", r: radius(n), person: n }));
     const cl: { source: string; target: string; id: string; type: CLink["type"]; tie?: NetLink }[] = [];
@@ -145,8 +201,15 @@ export default function NetworkCanvas({
         if (own.length && !placed.get(n.id)) placed.set(n.id, { x: own.reduce((s, p) => s + (p.x ?? 0), 0) / own.length, y: own.reduce((s, p) => s + (p.y ?? 0), 0) / own.length });
       }
     }
-    return { nodes: cn.map((n) => ({ ...n, ...placed.get(n.id) })) as N[], links: cl as unknown as L[] };
-  }, [nodes, links, wells, showMe, evidence, selectedId, highlight]);
+    // A remembered arrangement for this view pins everyone where they settled; anyone new finds room among them.
+    const kept = layouts.get(viewKey);
+    const placedNodes = cn.map((n) => {
+      const k = kept?.get(n.id);
+      return k ? { ...n, x: k.x, y: k.y, fx: k.x, fy: k.y } : { ...n, ...placed.get(n.id) };
+    }) as N[];
+    return { nodes: placedNodes, links: cl as unknown as L[], people: people.length };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [nodes, links, wells, showMe, evidence, selectedId, highlight, viewKey, relayout]);
 
   const members = useMemo(() => {
     const m = new Map<string, Set<string>>();
@@ -186,13 +249,50 @@ export default function NetworkCanvas({
 
   // Fit the people in the groups (all people when none are on), with room for the group labels.
   const fit = () => {
-    if (focusId) return;
-    fg.current?.zoomToFit(reduce ? 0 : 500, height ? (wells.length ? 52 : 36) : wells.length ? 90 : 56, (n) => (n as N).kind === "person" && (!wells.length || wells.some((w) => members.get(w)?.has(String(n.id)))));
+    const g = fg.current;
+    if (focusId || !g) return;
+    const ms = reduce ? 0 : 500;
+    const pad = height ? (wells.length ? 52 : 36) : wells.length ? 90 : 56;
+    const shown = (n: NodeObject) => (n as N).kind === "person" && (!wells.length || wells.some((w) => members.get(w)?.has(String(n.id))));
+    if (!inset || inset >= size.w) return g.zoomToFit(ms, pad, shown);
+    // A panel covers the right edge: fit the people into what's left, and centre them there.
+    g.zoomToFit(0, pad, shown);
+    g.zoom((g.zoom() * (size.w - inset)) / size.w, 0);
+    const c = g.screen2GraphCoords(size.w / 2 + inset / 2, size.h / 2);
+    g.centerAt(c.x, c.y, ms);
   };
-  // Keep the fit when the canvas changes size (a side panel opens), until you've panned or zoomed yourself.
+  // Keep the fit when the canvas changes size or a panel covers part of it, until you've panned or zoomed yourself.
   useEffect(() => {
     if (!touched.current) fit();
-  }, [size.w, size.h]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [size.w, size.h, inset]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Someone chosen under the panel is brought into the open.
+  useEffect(() => {
+    if (!selectedId || !inset) return;
+    const t = setTimeout(() => {
+      const g = fg.current;
+      const n = data.nodes.find((d) => d.id === selectedId);
+      if (!g || !n || n.x === undefined || n.y === undefined) return;
+      const p = g.graph2ScreenCoords(n.x, n.y);
+      if (p.x < size.w - inset - 24) return;
+      const c = g.screen2GraphCoords(size.w / 2 - ((size.w - inset) / 2 - p.x), size.h / 2);
+      g.centerAt(c.x, c.y, reduce ? 0 : 400);
+    }, 350);
+    return () => clearTimeout(t);
+  }, [selectedId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const zoomBy = (f: number) => {
+    const g = fg.current;
+    if (!g) return;
+    touched.current = true;
+    g.zoom(g.zoom() * f, reduce ? 0 : 250);
+  };
+  const layOutAgain = () => {
+    layouts.delete(viewKey);
+    if (remember) storeLayout(remember, viewKey, null);
+    for (const n of data.nodes) positions.current.delete(String(n.id));
+    touched.current = false;
+    setRelayout((n) => n + 1);
+  };
 
   const dimmed = (id: string) => {
     if (highlight && highlight.nodes.size > 0 && !highlight.nodes.has(id)) return true;
@@ -247,7 +347,7 @@ export default function NetworkCanvas({
   };
 
   return (
-    <div ref={wrap} className="relative h-full w-full overflow-hidden" style={height ? { height } : undefined} onWheel={() => { touched.current = true; }} onMouseMove={(e) => { if (e.buttons === 1) touched.current = true; }}>
+    <div ref={wrap} className="relative h-full w-full overflow-hidden" style={height ? { height } : undefined} onWheel={(e) => { if (e.ctrlKey || e.metaKey) touched.current = true; }} onMouseMove={(e) => { if (e.buttons === 1) touched.current = true; }}>
       <ForceGraph2D<CNode, CLink>
         ref={fg}
         graphData={data}
@@ -255,14 +355,21 @@ export default function NetworkCanvas({
         height={size.h}
         cooldownTicks={150}
         warmupTicks={20}
+        enableZoomInteraction={(ev) => ev.ctrlKey || ev.metaKey} // a plain wheel scrolls the page; ⌘/Ctrl with it, or a pinch, zooms
         onEngineStop={() => {
-          for (const n of data.nodes) positions.current.set(String(n.id), { x: n.x, y: n.y });
-          const key = `${focusId ?? ""}|${wells.join(",")}|${showMe}|${nodes.length}`;
+          const at: Record<string, Pos> = {};
+          for (const n of data.nodes) {
+            positions.current.set(String(n.id), { x: n.x, y: n.y });
+            if (n.kind !== "event" && n.x !== undefined && n.y !== undefined) at[String(n.id)] = { x: Math.round(n.x * 10) / 10, y: Math.round(n.y * 10) / 10 };
+          }
+          layouts.set(viewKey, new Map(Object.entries(at)));
+          if (remember) storeLayout(remember, viewKey, at);
+          const key = `${viewKey}|${nodes.length}`;
           if (fitted.current !== key) touched.current = false;
           fitted.current = key;
           if (!touched.current) fit();
         }}
-        onRenderFramePre={(ctx, scale) => drawPools(ctx, scale)}
+        onRenderFramePre={(ctx, scale) => { labelBoxes.current = []; drawPools(ctx, scale); }}
         linkVisibility={(l) => l.type !== "well" && (l.type === "event" || !wells.length || inAnyWell(linkEnd(l.source)) || inAnyWell(linkEnd(l.target)))}
         linkColor={(l) => (highlight?.links.has(l.id) ? colors.forest : l.type === "event" ? colors.faint : colors.edge)}
         linkWidth={(l) => (highlight?.links.has(l.id) ? 2.6 : l.type === "event" ? 0.6 : 0.5 + (l.tie?.weight ?? 1) * 0.3)}
@@ -321,18 +428,31 @@ export default function NetworkCanvas({
 
           const important = person.is_self || n.id === selectedId || n.id === focusId || highlight?.nodes.has(n.id) || picked?.has(n.id);
           const inWell = wells.some((w) => person.groups.includes(w));
-          // Zoomed out, only hubs get names; with groups on, members get them sooner; close up, everyone does.
-          if ((labels === "all" || important || scale >= 1.8 || (scale >= 1.1 && inWell) || (scale >= 0.9 && person.degree >= 8)) && !faded) {
-            ctx.font = `${important ? 600 : 500} ${Math.max(11 / scale, 2)}px system-ui, -apple-system, sans-serif`;
-            ctx.textAlign = "center";
-            ctx.textBaseline = "top";
+          const close = person.tier === "strong" || person.tier === "working";
+          // A small map names everyone. A big one names the people who matter (you, the selection, a path, group
+          // members, close ties, hubs) first and the rest as you zoom in; a crowded map shortens names, and a name
+          // that would land on another is left off, the important ones excepted.
+          const wanted = labels === "all" || important || data.people <= 80 || scale >= 1.8 || (scale >= 0.8 && (inWell || close)) || (scale >= 0.9 && person.degree >= 8);
+          if (wanted && !faded) {
+            const crowded = data.people > 40 && scale < 1.4;
+            const text = crowded && !important ? shortName(person.name) : person.name;
+            const px = Math.max(11 / scale, 2);
+            ctx.font = `${important ? 600 : 500} ${px}px system-ui, -apple-system, sans-serif`;
+            const w = ctx.measureText(text).width;
             const ty = y + r + 3 / scale;
-            ctx.lineWidth = 3 / scale;
-            ctx.strokeStyle = colors.surface;
-            ctx.lineJoin = "round";
-            ctx.strokeText(person.name, x, ty);
-            ctx.fillStyle = colors.ink;
-            ctx.fillText(person.name, x, ty);
+            const box = { x0: x - w / 2, x1: x + w / 2, y0: ty, y1: ty + px };
+            const clash = labelBoxes.current.some((b) => box.x0 < b.x1 && box.x1 > b.x0 && box.y0 < b.y1 && box.y1 > b.y0);
+            if (!clash || important) {
+              labelBoxes.current.push(box);
+              ctx.textAlign = "center";
+              ctx.textBaseline = "top";
+              ctx.lineWidth = 3 / scale;
+              ctx.strokeStyle = colors.surface;
+              ctx.lineJoin = "round";
+              ctx.strokeText(text, x, ty);
+              ctx.fillStyle = colors.ink;
+              ctx.fillText(text, x, ty);
+            }
           }
           ctx.globalAlpha = 1;
         }}
@@ -361,6 +481,12 @@ export default function NetworkCanvas({
         }}
         onZoom={() => hover && setHover(null)} // only when there is one to clear: the graph calls this while mounting, inside its own render
       />
+      <div className="panel absolute left-3 top-3 z-10 flex flex-col p-0.5 shadow-md" role="group" aria-label="Zoom">
+        <button className="icon-btn h-7 w-7" aria-label="Zoom in" data-tip="Zoom in (or ⌘ and the wheel, or pinch)" onClick={() => zoomBy(1.4)}><PlusIcon size={14} /></button>
+        <button className="icon-btn h-7 w-7" aria-label="Zoom out" data-tip="Zoom out" onClick={() => zoomBy(1 / 1.4)}><MinusIcon size={14} /></button>
+        <button className="icon-btn h-7 w-7" aria-label="Fit everyone in view" data-tip="Fit everyone in view" onClick={() => { touched.current = false; fit(); }}><ScanIcon size={14} /></button>
+        {remember && <button className="icon-btn h-7 w-7" aria-label="Lay out again" data-tip="Lay out again from scratch" onClick={layOutAgain}><RefreshIcon size={14} /></button>}
+      </div>
       {hover && (
         <div className="panel pointer-events-none absolute z-10 max-w-64 px-3 py-2 shadow-lg" style={{ left: Math.min(hover.x + 14, size.w - 260), top: hover.y + 14 }}>
           {hover.node.person ? (

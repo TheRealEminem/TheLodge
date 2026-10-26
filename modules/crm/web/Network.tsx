@@ -2,7 +2,7 @@
 // topics and tags are groups you switch on to pull their people together; meetings and documents show when you
 // select someone. Presets ask it focused questions ("who could introduce me to X?") and the AI writes more. Also a
 // path finder ("how do I reach X?").
-import { Suspense, lazy, useMemo, useState } from "react";
+import { Suspense, lazy, useEffect, useMemo, useState } from "react";
 import { CloseIcon, NetworkIcon, SignpostIcon } from "@core/components/icons";
 import { PageHeader, Segmented, Select, Skeleton } from "@core/components/ui";
 import { useLive } from "@core/live";
@@ -22,6 +22,21 @@ import { TIER_META } from "./tier";
 
 const NetworkCanvas = lazy(() => import("./NetworkCanvas"));
 const PRESET = "preset"; // the preset on screen, drawn as one more group
+const DRAWER = 336;      // the side panel's width (21rem) when it floats over the map
+
+/** True when the side panel floats over the map's right edge rather than stacking below it. */
+function useWide() {
+  const query = "(min-width: 1024px)";
+  const [wide, setWide] = useState(() => window.matchMedia?.(query).matches ?? true);
+  useEffect(() => {
+    const mq = window.matchMedia?.(query);
+    if (!mq) return;
+    const on = () => setWide(mq.matches);
+    mq.addEventListener("change", on);
+    return () => mq.removeEventListener("change", on);
+  }, []);
+  return wide;
+}
 
 export default function Network() {
   const [params, setParams] = useQueryParams();
@@ -37,6 +52,7 @@ export default function Network() {
   const [pathIndex, setPathIndex] = useState(0);
   const [preset, setPreset] = useState<ActivePreset | null>(null);
   const [asking, setAsking] = useState(false);
+  const wide = useWide();
 
   const { data: net, error } = useLive(() => crmApi.network({ focus: focus ?? undefined, depth, max_nodes: 600 }), [focus, depth]);
   const { data: me } = useLive(crmApi.me);
@@ -90,46 +106,46 @@ export default function Network() {
         actions={<Segmented label="View" value={view} onChange={setView} options={[{ id: "graph", label: "Graph" }, { id: "list", label: "List" }]} />}
       />
 
-      <PresetBar onRun={(p) => { setPreset(p); setSelectedId(null); }} asking={asking} onAsk={() => setAsking((a) => !a)} />
-
-      {net && (
-        <GroupBar
-          groups={net.groups}
-          active={wells}
-          hovered={hoverWell}
-          openGroup={openGroup}
-          onToggle={toggleWell}
-          onHover={setHoverWell}
-          onOpen={(gid) => { setOpenGroup(gid); setSelectedId(null); }}
-          onApply={setWells}
-        />
-      )}
-
-      <div className="mb-3 flex flex-wrap items-center gap-2">
-        <button
-          aria-pressed={showMe}
-          disabled={Boolean(pathTo)}
-          onClick={() => setParams({ me: params.get("me") === "1" ? null : "1" })}
-          className={`chip h-7 px-2.5 ${showMe ? "bg-forest-soft text-forest-deep" : "bg-surface-subtle text-ink-soft"}`}
-          data-tip="Draw the lines from you to everyone you know"
-        >
-          Your ties
-        </button>
+      {/* One toolbar: the groups that are on (and a search to add one), then the questions and the ways to narrow the map. */}
+      <div className="mb-3 flex animate-enter flex-wrap items-center gap-2">
+        {net && (
+          <GroupBar
+            groups={net.groups}
+            active={wells}
+            hovered={hoverWell}
+            openGroup={openGroup}
+            onToggle={toggleWell}
+            onHover={setHoverWell}
+            onOpen={(gid) => { setOpenGroup(gid); setSelectedId(null); }}
+            onApply={setWells}
+          />
+        )}
         <div className="ml-auto flex flex-wrap items-center gap-2">
+          <PresetBar onRun={(p) => { setPreset(p); setSelectedId(null); }} asking={asking} onAsk={() => setAsking((a) => !a)} />
+          <button
+            aria-pressed={showMe}
+            disabled={Boolean(pathTo)}
+            onClick={() => setParams({ me: params.get("me") === "1" ? null : "1" })}
+            className={`chip h-8 px-2.5 ${showMe ? "bg-forest-soft text-forest-deep" : "bg-surface-subtle text-ink-soft"}`}
+            data-tip="Draw the lines from you to everyone you know"
+          >
+            Your ties
+          </button>
           {focus ? (
             <>
               <Select label="Depth" size="sm" value={String(depth)} onChange={(v) => setParams({ depth: v })} options={[1, 2, 3].map((d) => ({ value: String(d), label: `${d} hop${d > 1 ? "s" : ""}` }))} />
               <button className="btn btn-sm btn-soft" onClick={() => setParams({ focus: null })}><CloseIcon size={16} /> Everyone</button>
             </>
           ) : (
-            <div className="w-56"><EntityPicker kinds={["person"]} placeholder="Focus on someone…" onSelect={(e) => { setParams({ focus: e.id }); select(e.id); }} /></div>
+            <div className="w-44"><EntityPicker kinds={["person"]} placeholder="Focus on someone…" onSelect={(e) => { setParams({ focus: e.id }); select(e.id); }} /></div>
           )}
-          {me && <div className="w-56"><EntityPicker kinds={["person"]} placeholder="Find path to…" exclude={[me.id]} onSelect={(e) => { setPathIndex(0); setParams({ to: e.id }); }} /></div>}
+          {me && <div className="w-44"><EntityPicker kinds={["person"]} placeholder="Find path to…" exclude={[me.id]} onSelect={(e) => { setPathIndex(0); setParams({ to: e.id }); }} /></div>}
         </div>
       </div>
 
-      <div className={`grid gap-4 ${side ? "lg:grid-cols-[minmax(0,1fr)_21rem]" : ""}`}>
-        <div className="panel relative overflow-hidden" style={{ height: "clamp(440px, 66vh, 760px)" }}>
+      {/* The map takes the height that's left; the side panel floats over its right edge (below it, on a narrow window). */}
+      <div className="relative">
+        <div className="panel relative overflow-hidden" style={{ height: "clamp(440px, calc(100vh - 230px), 1000px)" }}>
           {error && <p className="p-5 text-ui text-trail-deep">{error}</p>}
           {!net && !error && <Skeleton className="h-full w-full" />}
           {net && net.nodes.length === 0 && <div className="grid h-full place-items-center p-6"><Empty icon={<NetworkIcon size={20} />} title="Nothing to show yet">Add people and how they connect and they appear here.</Empty></div>}
@@ -147,6 +163,8 @@ export default function Network() {
                 focusId={focus}
                 highlight={highlight}
                 hoverWell={hoverWell}
+                remember="network"
+                inset={side && wide ? DRAWER : 0}
                 onNodeClick={clickNode}
                 onEventClick={(e) => navigate(`crm/e/${e.id}`)}
                 onBackgroundClick={() => select(null)}
@@ -155,15 +173,16 @@ export default function Network() {
           )}
           {net && net.nodes.length > 0 && view === "list" && <PeopleList people={listed} groups={groups} onPick={(n) => select(n.id)} />}
           {view === "graph" && (
-            <div className="pointer-events-none absolute bottom-3 left-3 right-3 flex flex-col items-start gap-1.5">
-              <div className="panel pointer-events-auto px-3 py-2"><GraphLegend wells={wells.length > 0} preset={Boolean(shown)} events={Boolean(selectedId)} /></div>
+            <div className="pointer-events-none absolute bottom-3 left-3 flex flex-col items-start gap-1.5" style={{ right: side && wide ? DRAWER + 12 : 12 }}>
+              {/* The legend steps aside while a panel floats over the map: there isn't room for both. */}
+              {!(side && wide) && <div className="panel pointer-events-auto px-3 py-2"><GraphLegend wells={wells.length > 0} preset={Boolean(shown)} events={Boolean(selectedId)} /></div>}
               {net?.truncated && <div className="panel bg-sun-soft px-3 py-1.5 text-meta text-sun-deep">Showing the most connected {net.nodes.length} people. Focus on someone to see more.</div>}
             </div>
           )}
         </div>
 
         {side && net && (
-          <aside className="space-y-4">
+          <aside className="mt-4 space-y-3 lg:absolute lg:inset-y-0 lg:right-0 lg:z-20 lg:mt-0 lg:w-[21rem] lg:overflow-y-auto lg:p-2 lg:[&>section]:shadow-lg">
             {preset && (
               <PresetPanel
                 result={found}
