@@ -28,6 +28,9 @@ export interface ActivePreset {
   savedId?: string;
 }
 
+const ASK = "\u0000ask";
+
+/** One menu: the ready-made questions, a list the AI writes, and the presets you saved. */
 export function PresetBar({ onRun, asking, onAsk }: {
   onRun: (p: ActivePreset) => void;
   asking: boolean;
@@ -35,34 +38,30 @@ export function PresetBar({ onRun, asking, onAsk }: {
 }) {
   const [setup, setSetup] = useState<(typeof BUILT_IN)[number] | null>(null);
   const { data: saved } = useLive<SavedPreset[]>(crmApi.presets);
+  const options = [
+    { value: "", label: "Ask the network…" },
+    ...BUILT_IN.map((p) => ({ value: p.kind, label: p.label, hint: p.hint })),
+    { value: ASK, label: "Ask for a list…", hint: "The AI writes a list from what you ask for" },
+    ...(saved ?? []).map((p) => ({ value: `saved:${p.id}`, label: p.name, hint: p.about || "Saved" })),
+  ];
+  const choose = (value: string) => {
+    if (!value) return;
+    if (value === ASK) return onAsk();
+    if (value.startsWith("saved:")) {
+      const p = saved?.find((x) => x.id === value.slice(6));
+      if (p) onRun({ spec: p.spec, savedId: p.id });
+      return;
+    }
+    const p = BUILT_IN.find((x) => x.kind === value);
+    if (!p) return;
+    if (p.needs) setSetup(p);
+    else onRun({ spec: { kind: p.kind } });
+  };
   return (
-    <div className="mb-3 flex animate-enter flex-wrap items-center gap-1.5">
-      <span className="mr-1 text-ui font-medium">Ask the network</span>
-      {BUILT_IN.map((p) => (
-        <button
-          key={p.kind}
-          className="chip h-7 bg-surface-subtle px-2.5 text-ink hover:bg-forest/[.08]"
-          data-tip={p.hint}
-          onClick={() => (p.needs ? setSetup(p) : onRun({ spec: { kind: p.kind } }))}
-        >
-          {p.label}
-        </button>
-      ))}
-      <button aria-pressed={asking} onClick={onAsk} className={`chip h-7 gap-1 px-2.5 ${asking ? "bg-forest-soft text-forest-deep" : "bg-surface-subtle text-ink hover:bg-forest/[.08]"}`}>
-        <SparkleIcon size={14} /> Ask for a list…
-      </button>
-      {(saved?.length ?? 0) > 0 && (
-        <Select
-          label="Saved presets"
-          size="sm"
-          className="w-44"
-          value=""
-          options={[{ value: "", label: "Saved presets" }, ...(saved ?? []).map((p) => ({ value: p.id, label: p.name, hint: p.about || undefined }))]}
-          onChange={(id) => { const p = saved?.find((x) => x.id === id); if (p) onRun({ spec: p.spec, savedId: p.id }); }}
-        />
-      )}
+    <>
+      <Select label="Ask the network" size="sm" className={`w-48 ${asking ? "border-forest" : ""}`} value="" options={options} onChange={choose} />
       {setup && <PresetSetup preset={setup} onClose={() => setSetup(null)} onRun={(spec) => { setSetup(null); onRun({ spec }); }} />}
-    </div>
+    </>
   );
 }
 
