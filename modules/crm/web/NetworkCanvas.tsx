@@ -359,7 +359,7 @@ export default function NetworkCanvas({
           if (wrap.current) wrap.current.style.cursor = "default";
           onBackgroundClick?.();
         }}
-        onZoom={() => setHover(null)}
+        onZoom={() => hover && setHover(null)} // only when there is one to clear: the graph calls this while mounting, inside its own render
       />
       {hover && (
         <div className="panel pointer-events-none absolute z-10 max-w-64 px-3 py-2 shadow-lg" style={{ left: Math.min(hover.x + 14, size.w - 260), top: hover.y + 14 }}>

@@ -162,13 +162,13 @@ export default function HomeBlock() {
           icon={<SearchIcon size={16} />}
           title="Needs research"
           blurb={data.research_close > 0
-            ? `${data.research_close} ${data.research_close === 1 ? "person" : "people"} you know well ${data.research_close === 1 ? "has" : "have"} nothing on file. The ones who matter most are first.`
-            : "People with nothing on file. The ones who matter most are first."}
+            ? `${data.research_close} ${data.research_close === 1 ? "person" : "people"} you know well ${data.research_close === 1 ? "has" : "have"} no background on file. The ones who matter most are first.`
+            : "People with no background on file. The ones who matter most are first."}
           href="#/crm/people?research=needed"
           more={`All ${data.research_needed}`}
           delay={165}
         >
-          <PersonRows rows={data.research} empty="" detail={(r) => connectionLine(r.connection) || "nothing on file"} />
+          <PersonRows rows={data.research} empty="" detail={(r) => connectionLine(r.connection) || "no background yet"} />
           <ResearchThese rows={data.research} />
         </HomeSection>
       )}
@@ -192,7 +192,7 @@ export default function HomeBlock() {
         )}
       </HomeSection>
 
-      <HomeSection icon={<CalendarIcon size={16} />} title="Recent meetings" delay={210}>
+      <HomeSection icon={<CalendarIcon size={16} />} title="Recent meetings" href="#/crm/meetings" more="All meetings" delay={210}>
         {data.recent_meetings.length === 0 ? (
           <p className="inset-surface px-5 py-4 text-ui text-ink-soft">No meetings yet.</p>
         ) : (

@@ -14,6 +14,10 @@ def test_create_list_search(client):
     assert body["total"] == 1 and body["items"][0]["name"] == "Ana Diaz"
     assert [e["name"] for e in client.get("/api/crm/entities", params={"q": "acme"}).json()["items"]] == ["Acme Corp"]
     assert client.get("/api/crm/entities", params={"q": "100%_"}).json()["total"] == 0
+    # The search reads attribute values ("ana@x.com"), never their keys: "email" matches nobody.
+    assert [e["name"] for e in client.get("/api/crm/entities", params={"q": "ana@x"}).json()["items"]] == ["Ana Diaz"]
+    assert client.get("/api/crm/entities", params={"q": "email"}).json()["total"] == 0
+    assert store.list_entities(q="ana@x")[1] == 1 and store.list_entities(q="email")[1] == 0
     assert client.get("/api/crm/entities", params={"tag": "investor"}).json()["total"] == 1
 
     groups = client.get("/api/search", params={"q": "Ana"}).json()
