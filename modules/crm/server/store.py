@@ -428,7 +428,8 @@ def list_entities(kind: str | None = None, q: str | None = None, tag: str | None
         args.append(tag.lower())
     if q and q.strip():
         like = "%" + q.strip().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
-        where.append("(name LIKE ? ESCAPE '\\' OR summary LIKE ? ESCAPE '\\' OR attributes LIKE ? ESCAPE '\\')")
+        where.append("(name LIKE ? ESCAPE '\\' OR summary LIKE ? ESCAPE '\\' OR EXISTS "
+                     "(SELECT 1 FROM json_tree(attributes) WHERE type = 'text' AND value LIKE ? ESCAPE '\\'))")
         args += [like, like, like]
     clause = ("WHERE " + " AND ".join(where)) if where else ""
     order = {

@@ -85,7 +85,7 @@ function Header({ entity, ctx }: { entity: Entity; ctx?: EntityContext }) {
     if (!(await confirm({ title: `Delete ${entity.name}?`, body: "Its relationships and notes are deleted too. This can’t be undone.", confirmLabel: "Delete", tone: "danger" }))) return;
     try {
       await crmApi.deleteEntity(entity.id);
-      navigate(entity.kind === "organization" ? "crm/organizations" : entity.kind === "person" ? "crm/people" : "crm/people");
+      navigate(KIND_LABEL[entity.kind].path);
     } catch (e) {
       toast((e as Error).message, "error");
     }
@@ -101,8 +101,8 @@ function Header({ entity, ctx }: { entity: Entity; ctx?: EntityContext }) {
 
   return (
     <header className="mb-6 animate-enter">
-      <a href={`#/${entity.kind === "organization" ? "crm/organizations" : "crm/people"}`} className="btn btn-sm btn-ghost -ml-2 mb-3">
-        <BackIcon size={16} /> {entity.kind === "organization" ? "Organizations" : "People"}
+      <a href={`#/${label.path}`} className="btn btn-sm btn-ghost -ml-2 mb-3">
+        <BackIcon size={16} /> {label.many}
       </a>
       <div className="flex flex-wrap items-start gap-4">
         <button className="group relative shrink-0 rounded-full" aria-label="Change the picture" data-tip="Add or change the picture" onClick={() => setPicturing(true)}>

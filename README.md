@@ -26,9 +26,10 @@ the app: its own Python, the server and the web app. It updates itself from **Se
 turn on **Beta updates** there to get new versions a few days early, and **Go back** returns to the version you had.
 
 **Where things are kept:** `~/Library/Application Support/The Lodge` holds your people, notes, settings and keys
-(readable only by you), plus `logs/server.log`. A backup is made there every day and kept for two weeks. Deleting
-the app leaves them alone; updating is just replacing the app. [INSTALL.md](INSTALL.md) has the rest: Granola and
-calendars, backups and restore, and what to do if something's wrong.
+(readable only by you), plus `logs/server.log`. A backup is made there every hour something changes, and a few are
+kept: the newest, and one from about an hour, a day and a week ago. Deleting the app leaves them alone; updating is
+just replacing the app. [INSTALL.md](INSTALL.md) has the rest: Granola and calendars, backups and restore, and what
+to do if something's wrong.
 
 ## Features
 
@@ -72,8 +73,9 @@ calendars, backups and restore, and what to do if something's wrong.
   they came from.
 
 **Your data**
-- One SQLite file on your Mac. Daily backups kept for two weeks, **Back up now**, **Restore** (which keeps a backup
-  of how things were first, so it can be undone) and **Export** to readable JSON (Settings → Your data).
+- One SQLite file on your Mac. Hourly backups that roll over (the newest, and one from about an hour, a day and a
+  week ago), **Back up now**, **Restore** (which keeps a backup of how things were first, so it can be undone) and
+  **Export** to readable JSON (Settings → Your data).
 - Any AI: Ollama (local), Claude, OpenAI, Gemini, DeepSeek or any OpenAI-compatible API. Keys are typed into
   Settings, never into a file, and are never sent back to the page. A key entered in one Trailmix family app is
   there for the others on the same Mac.

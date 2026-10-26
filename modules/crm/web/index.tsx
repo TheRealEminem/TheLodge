@@ -1,8 +1,9 @@
 // The People module's web half: what it adds to the sidebar, its pages and its block on Home.
 import { Suspense, lazy } from "react";
-import { InboxIcon, NetworkIcon, UsersIcon } from "@core/components/icons";
+import { InboxIcon, NetworkIcon, PlusIcon, UsersIcon } from "@core/components/icons";
 import { Skeleton } from "@core/components/ui";
 import { useLive } from "@core/live";
+import { navigate } from "@core/router";
 import { GroupGlyph } from "./groups";
 import type { ModuleWeb } from "@core/registry";
 import { NavCount } from "@core/Sidebar";
@@ -38,6 +39,8 @@ const crm: ModuleWeb = {
     { label: "Groups", icon: <GroupGlyph kind="organization" size={16} />, path: "crm/groups" },
     { label: "Inbox", icon: <InboxIcon size={16} />, path: "crm/inbox", badge: InboxCount },
   ],
+  // The sidebar's big button: the Inbox is where notes and files go in. (Without this, the tasks module's "New task" takes it.)
+  primary: { label: "Add notes", icon: <PlusIcon size={16} />, run: () => navigate("crm/inbox") },
   routes: [
     { path: "crm/people", view: People },
     { path: "crm/groups", view: Groups },

@@ -28,6 +28,20 @@ def entity_out(v: views.Views, e: Entity, now: datetime | None = None) -> Entity
     )
 
 
+def _in_attributes(needle: str, attributes: dict) -> bool:
+    """Does the text appear in an attribute's value? The keys ("email", "title") are not what anyone is searching for."""
+    def values(v):
+        if isinstance(v, dict):
+            for x in v.values():
+                yield from values(x)
+        elif isinstance(v, (list, tuple)):
+            for x in v:
+                yield from values(x)
+        elif v is not None:
+            yield str(v)
+    return any(needle in v.lower() for v in values(attributes or {}))
+
+
 def list_entities(kind: str | None, q: str | None, tag: str | None, sort: str, limit: int, offset: int):
     v = views.get()
     now = datetime.now(UTC)
@@ -39,9 +53,8 @@ def list_entities(kind: str | None, q: str | None, tag: str | None, sort: str, l
         items = [e for e in items if tag.lower() in e.tags]
     needle = (q or "").strip().lower()
     if needle:
-        import json
         items = [e for e in items if needle in e.name.lower() or needle in (e.summary or "").lower()
-                 or needle in json.dumps(e.attributes).lower()]
+                 or _in_attributes(needle, e.attributes)]
     total = len(items)
     far = datetime.min.replace(tzinfo=UTC)
     if sort == "recent":

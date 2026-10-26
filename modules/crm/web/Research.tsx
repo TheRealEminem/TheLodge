@@ -1,4 +1,4 @@
-// People with nothing on file: the flag, the brief for a deep-research tool, and bringing the report back.
+// People with no background on file: the flag, the brief for a deep-research tool, and bringing the report back.
 import { useRef, useState } from "react";
 import { CheckIcon, ClockIcon, CopyIcon, DocIcon, PlusIcon, SearchIcon, SparkleIcon } from "@core/components/icons";
 import { useLive } from "@core/live";
@@ -114,7 +114,7 @@ export function ResearchCard({ person }: { person: Entity }) {
   const first = person.name.split(" ")[0];
 
   if (data.state === "name_needed") {
-    return <p className="inset-surface px-5 py-3.5 text-ui text-ink-soft">Nothing on file about {first} yet. Add a surname first: a first name alone would find the wrong person.</p>;
+    return <p className="inset-surface px-5 py-3.5 text-ui text-ink-soft">No background on {first} yet. Add a surname first: a first name alone would find the wrong person.</p>;
   }
   if (data.state !== "needed") {
     const when = data.until ? formatDate(data.until, { year: undefined }) : null;
@@ -134,7 +134,7 @@ export function ResearchCard({ person }: { person: Entity }) {
         <span className="well"><SearchIcon size={16} /></span>
         <div className="min-w-52 flex-1">
           <div className="flex flex-wrap items-center gap-2">
-            <h2 className="text-label font-medium">Nothing on file about {first}</h2>
+            <h2 className="text-label font-medium">No background on {first} yet</h2>
             <span className={NEEDS_RESEARCH_CHIP}>needs research</span>
           </div>
           <p className="mt-0.5 text-hint text-ink-soft">Have The Lodge research them with Gemini, or copy the brief into Gemini Deep Research and bring the report back here (or drop it in the Inbox with any others).</p>
