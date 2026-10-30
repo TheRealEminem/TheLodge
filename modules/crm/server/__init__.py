@@ -6,7 +6,7 @@ Everything is a node (crm_entities) or an edge (crm_relationships). See store.py
 from core.server import jobs, schedule
 from core.server.module import Module
 
-from . import calendar_sync, duplicates, exporting, gemini_research, granola, ingest, pictures, presets, profiles, roles, routes, sheet_sync, store
+from . import calendar_sync, dossier, duplicates, exporting, gemini_research, granola, ingest, pictures, presets, profiles, roles, routes, sheet_sync, store
 
 def on_settings_changed(payload: dict) -> None:
     """Pasting a key or an address is the cue to try it, so the first sync doesn't wait for its turn."""
@@ -45,6 +45,8 @@ MODULE = Module(
     count=exporting.count,
     search=store.search,
     describe=store.describe,
+    offers={dossier.OFFER: dossier.handle},
+    people=dossier.people,
     ai_jobs=roles.ai_jobs(),
     startup=roles.keep_what_people_have,
 )
