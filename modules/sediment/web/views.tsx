@@ -1,4 +1,5 @@
-// Sediment's pages: where you choose someone (with the latest readings and your products), and one person's readings.
+// Sediment's pages: where you choose someone (with the latest readings and your products), and one person: their
+// readings, their portrait and rehearsals (rehearse.tsx).
 import { useEffect, useMemo, useState } from "react";
 import { api } from "@core/api";
 import type { PersonChoice } from "@core/api";
@@ -13,6 +14,7 @@ import { useShell } from "@core/shell";
 import { sedimentApi } from "./api";
 import type { PersonPage, Reading, SavedSubject, Subject } from "./api";
 import { Dialog, Field, Layers, ReadingView, STANCE, StanceChip, firstName } from "./bits";
+import { PortraitPanel, RehearsePanel } from "./rehearse";
 
 // ── Choosing someone ──────────────────────────────────────────────────
 
@@ -274,10 +276,36 @@ function SubjectChip({ s, chosen, last, onPick }: { s: Subject; chosen: boolean;
   );
 }
 
+type Tab = "readings" | "portrait" | "rehearse";
+
+/** One person: readings of how they feel, their portrait, and rehearsals. The tab and subject are kept in the address. */
 function Person({ page }: { page: PersonPage }) {
+  const { person } = page;
+  const first = page.person.first ?? firstName(person.name ?? "");
+  const [query, setQuery] = useQueryParams();
+  const tab = (["readings", "portrait", "rehearse"].includes(query.get("tab") ?? "") ? query.get("tab") : "readings") as Tab;
+  return (
+    <>
+      <header className="mb-5">
+        <h1 className="page-title">{person.name}</h1>
+        <p className="mt-1.5 text-body leading-relaxed text-ink-soft">
+          How {first} seems to feel, and {first} as a whole, read from what's on file. <a href={`#/crm/e/${person.ref.replace(/^crm:/, "")}`} className="font-medium text-forest-deep hover:underline">Their profile</a>
+        </p>
+      </header>
+      <div className="mb-4">
+        <Segmented<Tab> kind="tab" label="Sediment" value={tab} onChange={(t) => setQuery({ tab: t === "readings" ? null : t })}
+          options={[{ id: "readings", label: "Readings" }, { id: "portrait", label: "Portrait" }, { id: "rehearse", label: "Rehearse" }]} />
+      </div>
+      {tab === "readings" ? <Readings page={page} first={first} />
+        : tab === "portrait" ? <PortraitPanel personRef={person.ref} first={first} />
+        : <RehearsePanel personRef={person.ref} first={first} />}
+    </>
+  );
+}
+
+function Readings({ page, first }: { page: PersonPage; first: string }) {
   const { toast } = useShell();
   const { person, subjects, readings, provider } = page;
-  const first = person.first ?? firstName(person.name ?? "");
   const [query, setQuery] = useQueryParams();   // the subject is kept in the address, so a link can open it
   const key = query.get("subject") || "me";
   const [active, setActive] = useState<string | null>(null);
@@ -310,13 +338,6 @@ function Person({ page }: { page: PersonPage }) {
 
   return (
     <>
-      <header className="mb-6">
-        <h1 className="page-title">{person.name}</h1>
-        <p className="mt-1.5 text-body leading-relaxed text-ink-soft">
-          How {first} seems to feel, read from what's on file. <a href={`#/crm/e/${person.ref.replace(/^crm:/, "")}`} className="font-medium text-forest-deep hover:underline">Their profile</a>
-        </p>
-      </header>
-
       <section className="panel animate-enter p-5 sm:px-6">
         <p className="mb-2.5 text-ui font-medium">About what?</p>
         <div className="flex flex-wrap gap-1.5">

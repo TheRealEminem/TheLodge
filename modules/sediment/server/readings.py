@@ -83,11 +83,12 @@ def written_by(pid: str) -> str:
 
 # ── What's on file ────────────────────────────────────────────────────
 
-def dossier(person_ref: str, about: dict | None, local: bool) -> dict:
-    """The People module's answer. Raises LookupError when they're not in the book, SedimentError for you."""
+def dossier(person_ref: str, about: dict | None, local: bool, voice: bool = False) -> dict:
+    """The People module's answer (with `voice`, their own lines from transcripts too). Raises LookupError when
+    they're not in the book, SedimentError for you."""
     try:
         return family.call(DOSSIER, id=person_ref, about=about or {}, scale="local" if local else "cloud",
-                           transcripts=bool(settings.section("sediment")["transcripts"]))
+                           transcripts=bool(settings.section("sediment")["transcripts"]), voice=voice)
     except family.Unavailable as e:
         raise SedimentError(str(e)) from e
     except ValueError as e:
