@@ -6,7 +6,7 @@ from pydantic import BaseModel
 
 from core.server import contracts, events, jobs, module, settings
 
-from . import readings, store
+from . import readings, store, talk
 
 router = APIRouter()
 ME = "core:me"
@@ -23,6 +23,14 @@ class SubjectIn(BaseModel):
     ref: str | None = None
     description: str = ""
     terms: list[str] = []
+
+
+class ConversationIn(BaseModel):
+    scenario: str = ""
+
+
+class LineIn(BaseModel):
+    text: str
 
 
 class SubjectEdit(BaseModel):
@@ -98,11 +106,57 @@ def take_reading(ref: str, body: ReadingIn):
     return _guard(lambda: readings.request(_person_ref(ref), body.subject, body.again))
 
 
-@router.delete("/people/{ref}/readings", status_code=204)
-def delete_person_readings(ref: str):
-    for rid in store.delete_readings_of(ref):
+@router.delete("/people/{ref}", status_code=204)
+def forget_person(ref: str):
+    """Everything Sediment holds about someone: readings, portrait and rehearsals. People isn't touched."""
+    for rid in store.delete_person(ref):
         jobs.cancel_for("sediment", rid)
+    jobs.cancel_for("sediment", ref)
     events.publish("sediment.reading.changed", {"person": ref})
+    return Response(status_code=204)
+
+
+@router.get("/people/{ref}/portrait")
+def portrait(ref: str):
+    """Their portrait, whether it's up to date, and the work on it. A missing or out-of-date one is asked for."""
+    return _guard(lambda: talk.portrait_state(_person_ref(ref)))
+
+
+@router.post("/people/{ref}/portrait")
+def redo_portrait(ref: str):
+    return _guard(lambda: talk.redo_portrait(_person_ref(ref)))
+
+
+@router.get("/people/{ref}/conversations")
+def conversations(ref: str):
+    return talk.conversations(ref)
+
+
+@router.post("/people/{ref}/conversations", status_code=201)
+def start_conversation(ref: str, body: ConversationIn):
+    """A new rehearsal with them, with an optional scene ("I'm asking for an intro to their CFO")."""
+    return _guard(lambda: talk.start(_person_ref(ref), body.scenario))
+
+
+@router.get("/conversations/{conversation_id}")
+def conversation(conversation_id: str):
+    return _guard(talk.conversation, conversation_id)
+
+
+@router.post("/conversations/{conversation_id}/lines", status_code=201)
+def say(conversation_id: str, body: LineIn):
+    """Your next line. Their reply is written in the background and appears on the conversation."""
+    return _guard(talk.say, conversation_id, body.text)
+
+
+@router.post("/lines/{message_id}/retry")
+def retry_line(message_id: str):
+    return _guard(talk.retry, message_id)
+
+
+@router.delete("/conversations/{conversation_id}", status_code=204)
+def delete_conversation(conversation_id: str):
+    talk.delete(conversation_id)
     return Response(status_code=204)
 
 
@@ -176,6 +230,9 @@ def delete_subject(subject_id: str):
 
 
 @router.get("/ai")
-def ai_job():
-    """Who takes readings, for Settings → Sediment."""
-    return {"choice": settings.section("sediment")["reading_provider"], **_provider()}
+def ai_jobs():
+    """Who takes readings and who plays people in rehearsals, for Settings → Sediment."""
+    t = talk.provider()
+    return {"readings": {"choice": settings.section("sediment")["reading_provider"], **_provider()},
+            "talk": {"choice": settings.section("sediment")["talk_provider"], "label": t["label"], "model": t["model"],
+                     "ready": t["ready"], "reason": t["reason"], "local": t["local"]}}

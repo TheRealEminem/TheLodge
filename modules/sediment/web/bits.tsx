@@ -3,6 +3,7 @@ import { useEffect } from "react";
 import type { ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { api } from "@core/api";
+import type { Job } from "@core/api";
 import { AlertIcon, CloseIcon, RefreshIcon, TrashIcon } from "@core/components/icons";
 import { Skeleton, Spinner } from "@core/components/ui";
 import { formatDate, relativeTime } from "@core/format";
@@ -93,6 +94,25 @@ function List({ title, items }: { title: string; items?: string[] }) {
   );
 }
 
+/** Work parked until the AI can take it (memory, a rate limit), with Go ahead anyway. The reason can be long ("Waiting
+ * for memory: … free up some disk space…"), so it wraps here instead of sitting in the host's one-line chip. */
+export function Waiting({ job, cancel }: { job: Job; cancel?: { label: string; run: () => void } }) {
+  const { toast } = useShell();
+  return (
+    <div className="space-y-3">
+      <p className="flex items-start gap-2 text-ui">
+        <span className="mt-[7px] h-2 w-2 shrink-0 rounded-full bg-sun" aria-hidden />
+        <span className="min-w-0 break-words">Waiting to start. {job.wait_reason}</span>
+      </p>
+      <div className="flex flex-wrap gap-2">
+        <button className="btn btn-sm btn-soft" onClick={() => api.jobGo(job.id, true).catch((e: Error) => toast(e.message, "error"))}>Go ahead anyway</button>
+        {cancel && <button className="btn btn-sm btn-ghost" onClick={cancel.run}>{cancel.label}</button>}
+      </div>
+      <p className="text-hint text-ink-soft">It starts by itself once the AI can take it.</p>
+    </div>
+  );
+}
+
 /** One reading: the stance, how sure, why, and the evidence it rests on. */
 export function ReadingView({ reading, first, provider }: { reading: Reading; first: string; provider: string }) {
   const { toast, confirm } = useShell();
@@ -103,22 +123,7 @@ export function ReadingView({ reading, first, provider }: { reading: Reading; fi
   };
 
   if (reading.status === "queued" && reading.job?.status === "waiting") {
-    // The reason can be long ("Waiting for memory: … free up some disk space…"), so it wraps here instead of
-    // sitting in a one-line chip.
-    const job = reading.job;
-    return (
-      <div className="space-y-3">
-        <p className="flex items-start gap-2 text-ui">
-          <span className="mt-[7px] h-2 w-2 shrink-0 rounded-full bg-sun" aria-hidden />
-          <span className="min-w-0 break-words">Waiting to start. {job.wait_reason}</span>
-        </p>
-        <div className="flex flex-wrap gap-2">
-          <button className="btn btn-sm btn-soft" onClick={() => api.jobGo(job.id, true).catch((e: Error) => toast(e.message, "error"))}>Go ahead anyway</button>
-          <button className="btn btn-sm btn-ghost" onClick={() => void remove()}>Cancel this reading</button>
-        </div>
-        <p className="text-hint text-ink-soft">It starts by itself once the AI can take it.</p>
-      </div>
-    );
+    return <Waiting job={reading.job} cancel={{ label: "Cancel this reading", run: () => void remove() }} />;
   }
   if (reading.status === "queued") {
     return (

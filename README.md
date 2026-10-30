@@ -69,7 +69,10 @@ to do if something's wrong.
   read by AI from what's on file (notes, meetings and, if you allow it, what they said in transcripts). Each reading
   gives a stance from very cool to very warm, how sure it is, and dated evidence marked quoted or paraphrased, checked
   against your records. Readings of the same thing stack up as layers, so you can see a feeling change over time.
-  Nothing it writes goes back into your people.
+  It also writes a **portrait** of each person (how they talk, what they care about, how they seem to see you, what's
+  left open) and lets you **rehearse** a conversation with them: the AI plays them from that portrait and your records,
+  underlines anything it makes up, and shows what each reply rests on. It always says it's a simulation, never makes
+  up anything about someone's health, family, money or private life, and nothing it writes goes back into your people.
 - **Research.** Flag people you'd like to know better; The Lodge researches them with Gemini and Google Search
   (as a half-price batch by default) and files the brief on their profile. Or copy a research brief into Gemini
   Deep Research and bring the reports back in bulk.

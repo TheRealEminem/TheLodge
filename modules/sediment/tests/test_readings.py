@@ -189,7 +189,7 @@ def test_a_deleted_person_keeps_their_readings_until_you_delete_them(client, boo
     assert client.delete(f"/api/crm/entities/{book['priya']['id']}").status_code in (200, 204)
     p = page(client, book["ref"])
     assert p["missing"] is True and p["person"]["name"] == "Priya Nair" and len(p["readings"]) == 1
-    assert client.delete(f"/api/sediment/people/{book['ref']}/readings").status_code == 204
+    assert client.delete(f"/api/sediment/people/{book['ref']}").status_code == 204
     assert page(client, book["ref"])["readings"] == []
 
 
