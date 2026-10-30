@@ -1,7 +1,7 @@
 // One record's page: a person, organization, meeting, document or topic.
 import { useState } from "react";
 import type { ReactNode } from "react";
-import { BackIcon, MergeIcon, NetworkIcon, PencilIcon, PersonIcon, TrashIcon } from "@core/components/icons";
+import { BackIcon, LinesIcon, MergeIcon, NetworkIcon, PencilIcon, PersonIcon, TrashIcon } from "@core/components/icons";
 import { Segmented, Skeleton } from "@core/components/ui";
 import { useLive } from "@core/live";
 import type { RouteProps } from "@core/registry";
@@ -75,9 +75,11 @@ function HeaderLine({ entity, ctx }: { entity: Entity; ctx?: EntityContext }) {
 }
 
 function Header({ entity, ctx }: { entity: Entity; ctx?: EntityContext }) {
-  const { toast, confirm } = useShell();
+  const { toast, confirm, app } = useShell();
   const [editing, setEditing] = useState(false);
   const [picturing, setPicturing] = useState(false);
+  // Sediment reads how people feel; it's its own module, so this is a link to its page when it's on, not an import.
+  const sediment = entity.kind === "person" && !entity.is_self && app.modules.some((m) => m.id === "sediment");
   const [merging, setMerging] = useState(false);
   const label = KIND_LABEL[entity.kind];
 
@@ -129,6 +131,7 @@ function Header({ entity, ctx }: { entity: Entity; ctx?: EntityContext }) {
       <div className="mt-4 flex flex-wrap gap-2">
         <a className="btn btn-sm btn-soft" href={`#/crm/network?focus=${entity.id}`}><NetworkIcon size={16} /> Network</a>
         <button className="btn btn-sm btn-soft" onClick={() => setEditing(true)}><PencilIcon size={16} /> Edit</button>
+        {sediment && <a className="btn btn-sm btn-soft" href={`#/sediment/crm:${entity.id}`} data-tip="How they seem to feel about you, your company or your product"><LinesIcon size={16} /> Sediment</a>}
         {entity.kind === "person" && !entity.is_self && <button className="btn btn-sm btn-ghost" onClick={() => void makeMe()}><PersonIcon size={16} /> This is me</button>}
         <button className="btn btn-sm btn-ghost" data-tip="Merge a duplicate into another record" onClick={() => setMerging(true)}><MergeIcon size={16} /> Merge</button>
         <button className="btn btn-sm btn-danger-ghost" aria-label="Delete" onClick={() => void remove()}><TrashIcon size={16} /></button>

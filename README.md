@@ -65,6 +65,11 @@ to do if something's wrong.
 **Knowing more**
 - **AI on every profile:** an overview of what you know about someone, and questions about them ("what should I
   follow up on?", "who do we both know?") answered from what's on file.
+- **Sediment Analysis:** how someone seems to feel about you, your company, someone else or a product you describe,
+  read by AI from what's on file (notes, meetings and, if you allow it, what they said in transcripts). Each reading
+  gives a stance from very cool to very warm, how sure it is, and dated evidence marked quoted or paraphrased, checked
+  against your records. Readings of the same thing stack up as layers, so you can see a feeling change over time.
+  Nothing it writes goes back into your people.
 - **Research.** Flag people you'd like to know better; The Lodge researches them with Gemini and Google Search
   (as a half-price batch by default) and files the brief on their profile. Or copy a research brief into Gemini
   Deep Research and bring the reports back in bulk.

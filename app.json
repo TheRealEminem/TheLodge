@@ -8,6 +8,7 @@
   "updateRepo": "TheRealEminem/TheLodge",
   "modules": [
     "crm",
+    "sediment",
     "tasks"
   ],
   "localAiMinGb": 24

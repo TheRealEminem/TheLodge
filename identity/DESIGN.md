@@ -39,6 +39,12 @@ To check a change, simulate it: the simulation script and the comparison page ar
 
 The mark's tile is lake too (`#3B72B8 → #1D4F8C`), so the icon stands apart from Trailmix's green one in the Dock.
 
+**Warm and cool (Sediment, 2026-10-29).** How someone seems to feel sits on the same blue–yellow axis: warm is lake
+(`forest`, solid for very warm, about half strength for warm), cool is lantern (`sun`, solid for very cool, about
+60% for cool), and mixed is neutral ink at low strength. "Not enough on file" is an empty band with a dashed line.
+Never ember (`trail` stays for errors), never red against green, and every band, dot and gauge carries its word
+("Warm", "Leans cool") beside it or in its label. The pieces are `STANCE` and `LEAN` in `modules/sediment/web/bits.tsx`.
+
 ## Artwork and atmosphere
 
 | | Trailmix | The Lodge |
