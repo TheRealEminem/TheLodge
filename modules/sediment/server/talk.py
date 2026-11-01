@@ -10,6 +10,7 @@ It is a simulation for practice, and says so: on the page, in the prompt, and wh
 health, family, money, legal matters or private life, and nothing it says goes back into People.
 """
 import hashlib
+import re
 from datetime import UTC, datetime
 
 from pydantic import BaseModel, Field
@@ -21,6 +22,16 @@ from .readings import SedimentError
 
 PROMPT_VERSION = "1"
 HISTORY = 16                  # earlier lines sent along with each reply
+MIN_GUESS_WORDS = 3           # shorter "guesses" are connecting words and names (the 2026-11-01 model test)
+HELD_BACK = "I'd rather not get into that."
+# A first-person claim about their private life. Local models made these up in the 2026-11-01 test ("My health has been
+# good") despite the prompt, so a reply with one that the records don't support is held back.
+PRIVATE = re.compile(
+    r"\b(?:my|our)\s+(?:health|doctor|diagnosis|illness|surgery|treatment|therapy|therapist|medication|wife|husband|"
+    r"spouse|kids|children|son|daughter|baby|marriage|divorce|salary|income|debts?|finances|mortgage|lawsuit|lawyer|"
+    r"religion|faith|church)\b"
+    r"|\bI(?:'m| am| was|'ve been| have been)\s+(?:sick|ill|unwell|pregnant|divorced|married|engaged|in (?:the )?hospital|"
+    r"in therapy|broke|in debt)\b", re.IGNORECASE)
 MAX_LINE = 2_000
 MAX_SCENARIO = 600
 PORTRAIT_KINDS = ("portrait",)
@@ -38,13 +49,17 @@ def reply_system(name: str, first: str) -> str:
         f"You are playing {name} in a rehearsal, so the owner of a personal CRM can practice a conversation with "
         f"{first}. It is a simulation built from the owner's own records, for the owner's practice only. Speak as "
         f"{first}, in the first person, to the owner, the way the portrait and records show {first} talks, and keep "
-        "replies short, like a real conversation (one to four sentences unless asked for more). Base what you say on "
-        "the portrait and records. Where they don't say, you may answer the way the records suggest "
-        f"{first} would, but copy every such made-up phrase, word for word, into `guesses`. Put what the records do "
-        "support into `grounds`, each with the record it rests on. Never invent facts about their health, family, "
-        "relationships, money, legal matters, beliefs or private life: if the owner asks, deflect the way they might "
-        "(\"I'd rather not get into that\"). If asked whether you are real, an AI or a simulation, say plainly that "
-        "you are a simulation built from the owner's notes. Don't play a caricature, and don't agree just to please."
+        "replies short, like a real conversation (one to four sentences unless asked for more). Stay in character: talk "
+        f"the way {first} would, never like an assistant, and don't end every reply with a question. Base what you say "
+        "on the portrait and records. Where they don't say, you may answer the way the records suggest "
+        f"{first} would, but list each such made-up claim in `guesses`: a whole sentence or clause copied word for word "
+        "from the reply, about a fact, a plan or an opinion. Greetings, small talk, questions, connecting words and "
+        "saying you're a simulation are not guesses. Put what the records do support into `grounds`, each with the "
+        "record it rests on. Never invent facts about their health, family, relationships, money, legal matters, "
+        "beliefs or private life, not even something harmless like \"my health is fine\": if the owner asks, deflect "
+        "the way they might (\"I'd rather not get into that\"). If asked whether you are real, an AI or a simulation, "
+        "say plainly that you are a simulation built from the owner's notes. Don't play a caricature, and don't agree "
+        "just to please."
     )
 
 
@@ -259,6 +274,21 @@ def _spans(reply: str, phrases: list[str]) -> list[str]:
     return out
 
 
+def guesses_of(reply: str, given: list[str]) -> list[str]:
+    """The made-up claims worth marking: in the reply, a few words at least, and not a question or the simulation line."""
+    return [g for g in _spans(reply, given)
+            if len(g.split()) >= MIN_GUESS_WORDS and not g.rstrip().endswith("?") and "simulation" not in g.lower()]
+
+
+def private_claim(reply: str, d: dict, portrait: dict | None) -> str | None:
+    """A first-person claim about their private life that nothing on file says, or None."""
+    on_file = " ".join([d["records"], (portrait or {}).get("body") or "", _voice(d)]).lower()
+    for m in PRIVATE.finditer(reply):
+        if m.group(0).lower() not in on_file:
+            return m.group(0)
+    return None
+
+
 def reply(job: jobs.Job) -> None:
     """Writes their next line. A failure stays on the line with Try again; an AI that can't answer for now waits."""
     m = store.message(job.target)
@@ -284,8 +314,9 @@ def reply(job: jobs.Job) -> None:
     done = [x for x in store.messages(c["id"]) if x["status"] == "done" and x["created_at"] <= m["created_at"]]
     history = done[-HISTORY:]
     job.stage("Writing a reply")
+    portrait = store.portrait(d["ref"])
     try:
-        answer, pid = ai.structured(reply_prompt(d, store.portrait(d["ref"]), c["scenario"], history, len(done) - len(history)),
+        answer, pid = ai.structured(reply_prompt(d, portrait, c["scenario"], history, len(done) - len(history)),
                                     reply_system(d["name"], d["first"]), Reply, choice(), purpose="Sediment rehearsals")
     except ai.AIError as e:
         if e.provider_down:
@@ -294,7 +325,10 @@ def reply(job: jobs.Job) -> None:
     text = answer.reply.strip()  # type: ignore[attr-defined]
     if not text:
         return fail("The reply came back empty")
-    guesses = _spans(text, answer.guesses)  # type: ignore[attr-defined]
+    if private_claim(text, d, portrait):
+        store.finish_message(m["id"], HELD_BACK, [], [], readings.written_by(pid), held_back=True)
+        return _changed(c["person_ref"])
+    guesses = guesses_of(text, answer.guesses)  # type: ignore[attr-defined]
     grounds = [{"phrase": span, "source": g.source.strip()} for g in answer.grounds  # type: ignore[attr-defined]
                for span in _spans(text, [g.phrase]) if g.source.strip()]
     store.finish_message(m["id"], text, guesses, grounds, readings.written_by(pid))

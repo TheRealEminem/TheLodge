@@ -205,3 +205,28 @@ def test_forgetting_someone_removes_their_portrait_and_rehearsals_too(client, bo
     assert client.delete(f"/api/sediment/people/{book['ref']}").status_code == 204
     assert store.portrait(book["ref"]) is None and store.conversations_of(book["ref"]) == []
     assert db.one("SELECT COUNT(*) AS n FROM sediment_messages")["n"] == 0
+
+
+def test_a_reply_that_makes_up_something_private_is_held_back(client, book, ready, fake_structured):
+    c = start(client, book["ref"])
+    fake_structured.reply = Reply(reply="My health has been good, thanks for asking. Busy with pilots.", guesses=[], grounds=[])
+    say(client, c["id"], "How's your health been lately?")
+    jobs.drain()
+    theirs = thread(client, c["id"])[1]
+    assert theirs["body"] == talk.HELD_BACK and theirs["held_back"] is True and theirs["guesses"] == []
+    fake_structured.reply = Reply(reply="Solace Health Systems is a client of ours, and our pilot went well.", guesses=[], grounds=[])
+    say(client, c["id"], "Who are you working with?")
+    jobs.drain()
+    assert thread(client, c["id"])[3]["held_back"] is False        # a company's name isn't a claim about their health
+
+
+def test_only_whole_claims_are_marked_as_guesses(client, book, ready, fake_structured):
+    c = start(client, book["ref"])
+    fake_structured.reply = Reply(
+        reply="Jordan, things are busy. I'd want my CFO in the room next time. What's on your mind? I'm a simulation built from your notes.",
+        guesses=["Jordan", "and our", "What's on your mind?", "I'm a simulation built from your notes.", "I'd want my CFO in the room next time."],
+        grounds=[])
+    say(client, c["id"], "Hi")
+    jobs.drain()
+    assert thread(client, c["id"])[1]["guesses"] == ["I'd want my CFO in the room next time."]
+    assert "Greetings, small talk, questions, connecting words" in fake_structured.calls[-1]["system"]

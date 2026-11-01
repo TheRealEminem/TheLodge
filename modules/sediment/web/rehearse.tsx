@@ -120,6 +120,9 @@ function TheirLine({ line, first }: { line: Line; first: string }) {
         {line.status === "done" ? (
           <>
             <Marked text={line.body} guesses={line.guesses} />
+            {line.held_back && (
+              <p className="mt-1 text-meta text-ink-soft">The AI's reply made up something private about {first}, so it was held back.</p>
+            )}
             {(line.grounds.length > 0 || line.guesses.length > 0) && (
               <button className="mt-1 text-meta font-medium text-forest-deep hover:underline" onClick={() => setWhy(!why)} aria-expanded={why}>
                 {why ? "Hide why" : "Why?"}
@@ -205,6 +208,7 @@ export function RehearsePanel({ personRef, first }: { personRef: string; first: 
       {talk && (
         <p className="mt-3 text-meta text-ink-soft">
           {first} is played by {talk.label}{talk.local ? " on this Mac" : ""}, from their portrait and what's on file. Nothing said here is added to their profile.
+          {talk.local && <> Small models on this Mac play people loosely; a cloud AI does it far better (Settings → Sediment).</>}
         </p>
       )}
     </section>

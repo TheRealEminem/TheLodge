@@ -100,6 +100,8 @@ export interface Line {
   guesses: string[];
   /** Phrases in their reply the records support, and the record each rests on. */
   grounds: { phrase: string; source: string }[];
+  /** The AI's reply made up something private about them, so a deflection stands in for it. */
+  held_back: boolean;
   job?: Job | null;
 }
 
