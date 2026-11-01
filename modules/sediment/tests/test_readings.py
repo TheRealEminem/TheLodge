@@ -87,7 +87,7 @@ def test_a_reading_is_taken_checked_and_kept(client, book, ready, fake_structure
     assert real["quoted"] is True and real["date"] == "2026-09-01"
     assert invented["quoted"] is False and invented["date"] == ""      # not in the records: a paraphrase, undated
     assert plain["quoted"] is False
-    assert r["confidence"] == "high"
+    assert r["confidence"] == "medium"                                  # "high", but one of its quotes was made up
     call = fake_structured.calls[-1]
     assert call["schema"] is Reading and "most responsive vendor" in call["prompt"]
     assert "your company, Lumen Labs" in call["prompt"]
@@ -223,3 +223,37 @@ def test_a_cloud_reading_carries_an_estimate(client, book, monkeypatch, fake_str
     jobs.drain()
     body = page(client, book["ref"])["readings"][0]["body"]
     assert 0 < body["estimate"] < 1 and body["characters"] > 100
+
+
+def test_the_prompt_counts_what_they_did_and_your_company_is_you_at_work(client, book, ready, fake_structured):
+    fake_structured.reply = warm()
+    take(client, book["ref"], "company")
+    jobs.drain()
+    call = fake_structured.calls[-1]
+    assert "What they did counts as well as what they said" in call["system"]
+    assert "Your own rating and tags are your view, not theirs" in call["system"]
+    assert "You work there, so what they've done with you at work is evidence about how they see Lumen Labs too" in call["prompt"]
+
+
+def test_quotes_that_are_not_in_the_records_hold_confidence_down(client, book, ready, fake_structured):
+    made_up = [Evidence(date="", source="Your notes on them", leans="warm", quoted=True, text=f"I truly love working with Lumen {i}")
+               for i in range(2)]
+    real = Evidence(date="2026-09-01", source="Your notes on them", leans="warm", quoted=True,
+                    text="the most responsive vendor she'd worked with")
+    fake_structured.reply = warm(stance="very_warm", confidence="high", evidence=[*made_up, real])
+    take(client, book["ref"], "me")
+    jobs.drain()
+    assert page(client, book["ref"])["readings"][0]["confidence"] == "low"       # 2 of 3 "quotes" made up
+    fake_structured.reply = warm(confidence="high", evidence=[made_up[0], real, real, real])
+    take(client, book["ref"], "me", again=True)
+    jobs.drain()
+    assert page(client, book["ref"])["readings"][0]["confidence"] == "medium"    # 1 of 4: held to medium
+
+
+def test_high_confidence_needs_words_found_in_the_records(client, book, ready, fake_structured):
+    acts = [Evidence(date="", source="Your notes on them", leans="warm", quoted=False, text=f"She kept the engagement going ({i})")
+            for i in range(4)]
+    fake_structured.reply = warm(stance="very_warm", confidence="high", evidence=acts)
+    take(client, book["ref"], "company")
+    jobs.drain()
+    assert page(client, book["ref"])["readings"][0]["confidence"] == "medium"

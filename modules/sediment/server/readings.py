@@ -19,7 +19,7 @@ from core.server import ai, events, family, jobs, settings, usage
 
 from . import store
 
-PROMPT_VERSION = "1"
+PROMPT_VERSION = "2"   # 2: actions count, your company is you at work, quotes that fail lower confidence (2026-11-01 model test)
 DOSSIER = "people.dossier"
 STANCES = ("very_warm", "warm", "mixed", "cool", "very_cool", "unknown")
 MAX_EVIDENCE = 6
@@ -27,10 +27,13 @@ OUTPUT_TOKENS = 1_500              # about what a reading's answer costs, for th
 
 SYSTEM = (
     "You judge how one person feels about something, for the owner of a personal CRM, using only the owner's own "
-    "records below. Address the owner as \"you\". Separate what the person said or did from what others said about "
-    "them, and weigh direct, recent evidence most. When the records don't show how they feel, say the stance is "
-    "unknown rather than guess. Never invent facts, quotes or dates, and add nothing from general knowledge, even "
-    "about well-known people or companies."
+    "records below. Address the owner as \"you\". What they did counts as well as what they said: choosing to work "
+    "with you and keeping at it, coming back for more, bringing you into important moments, offering introductions, "
+    "praise or complaints passed on, delays, going quiet, or walking away. Separate what they said or did from what "
+    "others said about them, and weigh direct, recent evidence most. Your own rating and tags are your view, not "
+    "theirs. Say the stance is unknown only when nothing they said or did bears on it, and say so when a reading rests "
+    "on what they did rather than on anything they said. Never invent facts, quotes or dates, and add nothing from "
+    "general knowledge, even about well-known people or companies."
 )
 
 
@@ -132,7 +135,8 @@ def _subject_line(d: dict, key: str, name: str) -> str:
     if key == "me":
         return "you, the owner of these records"
     if key == "company":
-        line = f"your company, {name}"
+        line = (f"your company, {name}. You work there, so what they've done with you at work is evidence about how "
+                f"they see {name} too, unless the records keep the two apart")
     elif s.get("kind") == "person":
         line = f"{name}, another person in your book"
     elif s.get("kind") == "organization":
@@ -157,6 +161,8 @@ def prompt(d: dict, key: str, name: str) -> str:
         heading = (f"What {first} said in meetings with you, newest first:" if key == "me"
                    else f"Passages from your records that mention {name}, newest first:")
         parts.append(heading + "\n" + "\n".join(f"[{p['date']} · {p['source']}] {p['text']}" for p in d["passages"]))
+    elif key == "company":
+        parts.append(f"Nothing in your records about {first} names {name}; judge it from what they've done with you at work.")
     elif key != "me":
         parts.append(f"Nothing in your records about {first} mentions {name} by name.")
     parts.append(
@@ -171,23 +177,27 @@ def _fold(text: str) -> str:
 
 
 def check(answer: Reading, d: dict) -> dict:
-    """The answer as kept: quotes and dates checked against the records, confidence held down on thin records."""
+    """The answer as kept: quotes and dates checked against the records, confidence held down on thin records, and
+    held down further when "quotes" turn out not to be in the records (small models do this; it's a sign the rest of
+    the reading is loose too)."""
     corpus = "\n".join([d["records"], d.get("key_points") or "",
                         *(f"{p['date']} {p['source']} {p['text']}" for p in d.get("passages") or [])])
     folded = _fold(corpus)
-    evidence = []
+    evidence, claimed, false_quotes = [], 0, 0
     for e in answer.evidence[:MAX_EVIDENCE]:
         text = e.text.strip()
         if not text:
             continue
         quoted = bool(e.quoted) and len(_fold(text)) >= 8 and _fold(text) in folded
+        claimed += bool(e.quoted)
+        false_quotes += bool(e.quoted) and not quoted
         evidence.append({"date": e.date if e.date and e.date in corpus else "", "source": e.source.strip(),
                          "text": text, "quoted": quoted, "leans": e.leans})
     confidence = answer.confidence
-    if answer.stance == "unknown" or not d["material"] or not evidence:
+    if answer.stance == "unknown" or not d["material"] or not evidence or (claimed and false_quotes * 2 > claimed):
         confidence = "low"
-    elif confidence == "high" and len(evidence) < 3:
-        confidence = "medium"
+    elif confidence == "high" and (len(evidence) < 3 or false_quotes or not any(e["quoted"] for e in evidence)):
+        confidence = "medium"   # high needs words the check found in the records, not only what they did
     return {"stance": answer.stance, "confidence": confidence, "summary": answer.summary.strip(), "evidence": evidence,
             "drivers": [x.strip() for x in answer.drivers if x.strip()][:3], "change": (answer.change or "").strip(),
             "helps": [x.strip() for x in answer.helps if x.strip()][:3],

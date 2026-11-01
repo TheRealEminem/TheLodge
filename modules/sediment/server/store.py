@@ -76,6 +76,8 @@ MIGRATIONS = [
     );
     CREATE INDEX sediment_messages_conversation ON sediment_messages(conversation_id, created_at);
     """,
+    # A reply that made up something private about them is kept back, and the page says so.
+    "ALTER TABLE sediment_messages ADD COLUMN held_back INTEGER NOT NULL DEFAULT 0",
 ]
 
 
@@ -193,7 +195,7 @@ MESSAGE_FIELDS = ("id", "conversation_id", "role", "body", "status", "error", "w
 
 def message_out(row: dict) -> dict:
     return {**{k: row[k] for k in MESSAGE_FIELDS}, "guesses": json.loads(row["guesses"] or "[]"),
-            "grounds": json.loads(row["grounds"] or "[]")}
+            "grounds": json.loads(row["grounds"] or "[]"), "held_back": bool(row.get("held_back"))}
 
 
 def conversation(conversation_id: str) -> dict | None:
@@ -230,9 +232,10 @@ def add_message(conversation_id: str, role: str, body: str = "", status: str = "
     return mid
 
 
-def finish_message(message_id: str, body: str, guesses: list[str], grounds: list[dict], written_by: str) -> None:
-    db.execute("UPDATE sediment_messages SET status = 'done', body = ?, guesses = ?, grounds = ?, error = NULL, written_by = ? "
-               "WHERE id = ?", (body, json.dumps(guesses), json.dumps(grounds), written_by, message_id))
+def finish_message(message_id: str, body: str, guesses: list[str], grounds: list[dict], written_by: str,
+                   held_back: bool = False) -> None:
+    db.execute("UPDATE sediment_messages SET status = 'done', body = ?, guesses = ?, grounds = ?, error = NULL, written_by = ?, "
+               "held_back = ? WHERE id = ?", (body, json.dumps(guesses), json.dumps(grounds), written_by, int(held_back), message_id))
 
 
 def fail_message(message_id: str, error: str) -> None:
