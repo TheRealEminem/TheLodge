@@ -194,3 +194,40 @@ def test_a_ref_that_matches_no_one_is_ignored(client, book, fake_structured):
     fake_structured.reply = profile_reply()
     job = post_notes(client, "Lodge ref: 0000000000\n" + REPORT)
     assert "subject_by" not in job["payload"]
+
+
+def apply(client, job):
+    r = client.post(f"/api/crm/ingest/jobs/{job['id']}/apply", json={"proposal": job["proposal"]})
+    assert r.status_code == 200, r.text
+    return r.json()
+
+
+def reports(client, person):
+    return client.get(f"/api/crm/people/{person['id']}/research").json()["reports"]
+
+
+def test_a_report_about_someone_is_listed_on_their_profile(client, book, fake_structured):
+    jordan = book["nothing"]
+    fake_structured.reply = extraction([entity("p1", "Jordan Reyes", role="subject", summary="Runs fleet operations.")],
+                                       doc_type="person_profile", subject_ref="p1", title="Jordan Reyes Deep Research")
+    apply(client, post_notes(client, REPORT, subject_id=jordan["id"]))
+    [report] = reports(client, jordan)
+    assert report["about_them"] is True and report["about"] == "Jordan Reyes" and report["inbox_id"]
+    assert client.get(f"/api/crm/ingest/jobs/{report['inbox_id']}").status_code == 200        # "Open the report" leads somewhere
+
+
+def test_a_report_on_their_organization_that_names_them_shows_on_their_profile_too(client, book, fake_structured):
+    priya = book["summary"]
+    org = make(client, "organization", "Helio Cold Chain")
+    fake_structured.reply = extraction([entity("o1", "Helio Cold Chain", kind="organization", role="subject"),
+                                       entity("p1", "Priya Nair", role="mentioned", title="CEO")],
+                                       doc_type="organization_profile", subject_ref="o1", title="Helio Organization Deep Research")
+    job = post_notes(client, "Helio Cold Chain is led by Priya Nair. " + REPORT)
+    apply(client, job)
+    [report] = reports(client, priya)
+    assert report["about_them"] is False and report["about"] == "Helio Cold Chain"
+    assert reports(client, book["nothing"]) == []                         # named nowhere in it: not listed
+
+    twin = make(client, "person", "Priya N.")
+    assert client.post(f"/api/crm/entities/{priya['id']}/merge", json={"into_id": twin["id"]}).status_code == 200
+    assert [r["about"] for r in reports(client, twin)] == ["Helio Cold Chain"]   # the record kept after a merge has them
