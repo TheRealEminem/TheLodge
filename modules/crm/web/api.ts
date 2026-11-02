@@ -92,10 +92,22 @@ export interface SheetStatus {
 
 export type ResearchState = "needed" | "snoozed" | "dismissed" | "name_needed" | "has_context";
 
+/** A research report you brought in (a person or organization profile from the Inbox) that is about them or names them. */
+export interface ResearchReport {
+  inbox_id: string;
+  title: string;
+  date: string;
+  about_them: boolean;
+  /** Who the report is about, when that's someone or something else (their organization, say). */
+  about: string | null;
+  about_id: string | null;
+}
+
 export interface ResearchStatus {
   state: ResearchState;
   until: string | null;
   at: string | null;
+  reports: ResearchReport[];
 }
 
 export interface OrgRow {

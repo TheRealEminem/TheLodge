@@ -1,11 +1,12 @@
-// People with no background on file: the flag, the brief for a deep-research tool, and bringing the report back.
+// Research on a person: the flag when nothing is on file, the reports you have, the brief for a deep-research tool,
+// and bringing a report back.
 import { useRef, useState } from "react";
 import { CheckIcon, ClockIcon, CopyIcon, DocIcon, PlusIcon, SearchIcon, SparkleIcon } from "@core/components/icons";
 import { useLive } from "@core/live";
 import { navigate } from "@core/router";
 import { useShell } from "@core/shell";
 import { crmApi } from "./api";
-import type { Entity } from "./api";
+import type { Entity, ResearchReport } from "./api";
 import { Dialog } from "./forms";
 import { formatDate } from "./format";
 import { GeminiDialog, GeminiRunLine } from "./GeminiResearch";
@@ -85,15 +86,38 @@ function AddResearchDialog({ person, onClose }: { person: Entity; onClose: () =>
   );
 }
 
-/** On a person's page: what to do about missing research, or what you decided. Shows nothing once they have some. */
+/** The research reports about someone or naming them, newest first. Each one's full text is where it was filed (often
+ *  on their organization), so "Open the report" goes to it in the Inbox. */
+export function ReportList({ reports, first }: { reports: ResearchReport[]; first: string }) {
+  return (
+    <ul className="divide-y divide-line">
+      {reports.map((r) => (
+        <li key={r.inbox_id} className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2.5">
+          <DocIcon size={16} className="shrink-0 text-ink-faint" />
+          <div className="min-w-0 flex-1">
+            <p className="text-label font-medium">{r.title}</p>
+            <p className="text-meta text-ink-soft">
+              {formatDate(r.date)} · {r.about_them ? `About ${first}` : r.about ? `About ${r.about}, and names ${first}` : `Names ${first}`}
+            </p>
+          </div>
+          <button className="btn btn-sm btn-ghost" onClick={() => navigate(`crm/inbox/${r.inbox_id}`)}>Open the report</button>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+/** On a person's page: research reports on file, ways to get more (Gemini, the brief for a deep-research tool, adding a
+ *  report), and the flag when nothing is on file. */
 export function ResearchCard({ person }: { person: Entity }) {
   const { toast } = useShell();
   const { data } = useLive(() => crmApi.researchStatus(person.id), [person.id]);
+  const { data: gemini_ } = useLive(() => crmApi.geminiRun(person.id), [person.id]);
   const [adding, setAdding] = useState(false);
   const [shown, setShown] = useState<string | null>(null);
   const [gemini, setGemini] = useState(false);
   if (!data) return null;
-  if (data.state === "has_context") return <GeminiRunLine person={person} offerMore />;
+  const ran = !!gemini_?.run && gemini_.run.status !== "cancelled";   // its own line offers "Research more deeply"
 
   const act = async (action: "snooze" | "dismiss" | "restore") => {
     try {
@@ -112,6 +136,41 @@ export function ResearchCard({ person }: { person: Entity }) {
     }
   };
   const first = person.name.split(" ")[0];
+  const dialogs = (
+    <>
+      {gemini && <GeminiDialog people={[person]} onClose={() => setGemini(false)} />}
+      {adding && <AddResearchDialog person={person} onClose={() => setAdding(false)} />}
+      {shown && <BriefDialog text={shown} onClose={() => setShown(null)} />}
+    </>
+  );
+
+  if (data.state === "has_context") {
+    // Something is on file already (a summary, a long note, a report); research can still go further.
+    const n = data.reports.length;
+    return (
+      <>
+        <section className="panel p-4 sm:px-5">
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-3">
+            <span className="well"><SearchIcon size={16} /></span>
+            <div className="min-w-52 flex-1">
+              <h2 className="text-label font-medium">Research</h2>
+              <p className="mt-0.5 text-hint text-ink-soft">
+                {n ? `${n} report${n === 1 ? "" : "s"} on file about ${first} or naming them.` : `No research report on ${first} yet, only what's in your notes.`}
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {!ran && <button className="btn btn-sm btn-soft" onClick={() => setGemini(true)}><SparkleIcon size={16} /> Research with Gemini</button>}
+              <button className="btn btn-sm btn-soft" onClick={() => void copy()}><CopyIcon size={16} /> Copy research brief</button>
+              <button className="btn btn-sm btn-ghost" onClick={() => setAdding(true)}><PlusIcon size={16} /> Add the research</button>
+            </div>
+          </div>
+          {n > 0 && <div className="mt-3 border-t border-line"><ReportList reports={data.reports} first={first} /></div>}
+        </section>
+        <GeminiRunLine person={person} offerMore />
+        {dialogs}
+      </>
+    );
+  }
 
   if (data.state === "name_needed") {
     return <p className="inset-surface px-5 py-3.5 text-ui text-ink-soft">No background on {first} yet. Add a surname first: a first name alone would find the wrong person.</p>;
@@ -146,11 +205,10 @@ export function ResearchCard({ person }: { person: Entity }) {
           <button className="btn btn-sm btn-ghost" onClick={() => void act("snooze")}>Snooze 30 days</button>
           <button className="btn btn-sm btn-ghost" onClick={() => void act("dismiss")}>Not worth it</button>
         </div>
+        {data.reports.length > 0 && <div className="mt-1 basis-full border-t border-line"><ReportList reports={data.reports} first={first} /></div>}
       </section>
       <GeminiRunLine person={person} />
-      {gemini && <GeminiDialog people={[person]} onClose={() => setGemini(false)} />}
-      {adding && <AddResearchDialog person={person} onClose={() => setAdding(false)} />}
-      {shown && <BriefDialog text={shown} onClose={() => setShown(null)} />}
+      {dialogs}
     </>
   );
 }

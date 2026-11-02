@@ -100,7 +100,40 @@ def state_of(person_id: str) -> dict:
     if p is None or p.kind != "person" or p.is_self:
         raise ResearchError("Research flags are for people other than you")
     research = (p.attributes or {}).get("research") or {}
-    return {"state": states(v).get(person_id, HAS_CONTEXT), "until": research.get("until"), "at": research.get("at")}
+    return {"state": states(v).get(person_id, HAS_CONTEXT), "until": research.get("until"), "at": research.get("at"),
+            "reports": reports(person_id, v)}
+
+
+PROFILE_TYPES = ("person_profile", "organization_profile")
+REPORTS = 12
+
+
+def reports(person_id: str, v: views.Views | None = None) -> list[dict]:
+    """The research reports you've brought in that are about this person or that named them: person and organization
+    profiles applied from the Inbox (a Deep Research report, or Gemini's own), newest first. A report's full text stays
+    where it was filed (on its subject, under Notes and history); this points at it, so a report on someone's
+    organization shows on their profile too. Records merged into them count as them."""
+    v = v or views.get()
+    ids = [person_id, *(r["source_id"] for r in db.query(
+        "SELECT source_id FROM crm_merges WHERE target_id = ? AND undone_at IS NULL", (person_id,)))]
+    marks = ",".join("?" * len(ids))
+    rows = db.query(
+        "SELECT id, title, occurred_at, created_at, json_extract(result, '$.subject_id') AS subject_id FROM crm_inbox "
+        f"WHERE status = 'applied' AND json_extract(proposal, '$.doc_type') IN ({','.join('?' * len(PROFILE_TYPES))}) "
+        f"AND (json_extract(result, '$.subject_id') IN ({marks}) "
+        f"OR EXISTS (SELECT 1 FROM json_each(result, '$.entity_ids') WHERE value IN ({marks}))) "
+        "ORDER BY coalesce(occurred_at, created_at) DESC LIMIT ?",
+        (*PROFILE_TYPES, *ids, *ids, REPORTS))
+    out = []
+    for r in rows:
+        subject = r["subject_id"]
+        if subject and subject not in v.snap.entities:
+            subject = store.merged_into(subject) or subject
+        about = v.snap.entities.get(subject) if subject else None
+        out.append({"inbox_id": r["id"], "title": r["title"] or "Research report", "date": r["occurred_at"] or r["created_at"],
+                    "about_them": subject in ids, "about": about.name if about else None,
+                    "about_id": about.id if about else None})
+    return out
 
 
 # ── What you do about a flag ──────────────────────────────────────────

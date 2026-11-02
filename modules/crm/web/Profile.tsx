@@ -16,7 +16,7 @@ import { DuplicatesCard, MergedCard } from "./Duplicates";
 import { EntityFormDialog, MergeDialog } from "./forms";
 import { formatDate } from "./format";
 import { PictureDialog } from "./PictureDialog";
-import { ResearchCard } from "./Research";
+import { ReportList, ResearchCard } from "./Research";
 import { TierBadge, connectionLine } from "./tier";
 
 export default function Profile({ params }: RouteProps) {
@@ -182,12 +182,14 @@ const flush = (title: string, body: ReactNode, action?: ReactNode) => <Card titl
 
 function PersonTabs({ entity, relationships, ctx }: { entity: Entity; relationships: RelationshipView[]; ctx?: EntityContext }) {
   const [tab, setTab] = useTab("overview");
+  // Research reports on file show under Documents too: they're filed on their subject, often someone's organization.
+  const { data: research } = useLive(() => (entity.is_self ? Promise.resolve(null) : crmApi.researchStatus(entity.id)), [entity.id, entity.is_self]);
   const known = ctx?.people.filter((l) => ["strong", "working", "light"].includes(l.tier)) ?? [];
   const others = ctx?.people.filter((l) => !["strong", "working", "light"].includes(l.tier)) ?? [];
   const tabs: TabDef[] = [
     { id: "overview", label: "Overview" },
     { id: "meetings", label: "Meetings", count: ctx?.meetings.length },
-    { id: "documents", label: "Documents", count: ctx?.documents.length },
+    { id: "documents", label: "Documents", count: ctx ? ctx.documents.length + (research?.reports.length ?? 0) : undefined },
     { id: "people", label: "People", count: ctx?.people.length },
     { id: "history", label: "Notes and history" },
   ];
@@ -209,7 +211,12 @@ function PersonTabs({ entity, relationships, ctx }: { entity: Entity; relationsh
           <MiniNetwork entity={entity} />
         </Stack>
       ) : tab === "meetings" ? flush("Meetings", <EventList events={ctx.meetings} empty="No meetings with or about them yet." />)
-        : tab === "documents" ? flush("Documents", <EventList events={ctx.documents} empty="No documents by or about them yet." />)
+        : tab === "documents" ? (
+          <Stack>
+            {flush("Documents", <EventList events={ctx.documents} empty="No documents by or about them yet." />)}
+            {!!research?.reports.length && flush("Research reports", <div className="px-5 sm:px-6"><ReportList reports={research.reports} first={entity.name.split(" ")[0]} /></div>)}
+          </Stack>
+        )
         : tab === "people" ? (
           <Stack>
             {flush(`People you both know (${known.length})`, <PeopleList people={known} empty="No one in common yet." />)}
