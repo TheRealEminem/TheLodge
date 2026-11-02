@@ -7,6 +7,7 @@ import { crmApi } from "./api";
 import type { GroupKind } from "./api";
 import { Empty } from "./bits";
 import { GROUP_META, GROUP_ORDER, GroupGlyph } from "./groups";
+import { RoundupFromGroup } from "./Roundups";
 
 export default function Groups() {
   const [kind, setKind] = useState<GroupKind | "all">("all");
@@ -49,6 +50,7 @@ export default function Groups() {
                   <div className="text-meta text-ink-soft">{GROUP_META[g.kind].one} · {g.size} people</div>
                 </div>
                 {g.ref && <a className="btn btn-sm btn-ghost" href={`#/crm/e/${g.ref}`}>Open record</a>}
+                <RoundupFromGroup group={g.id} />
                 <a className="btn btn-sm btn-soft" href={`#/crm/network?wells=${encodeURIComponent(g.id)}`}><NetworkIcon size={16} /> In the network</a>
               </li>
             ))}

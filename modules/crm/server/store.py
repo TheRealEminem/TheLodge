@@ -221,6 +221,21 @@ MIGRATIONS = [
         updated_at  TEXT NOT NULL
     );
     """,
+    # Roundups (roundups.py): packets about a set of people, for someone to take to an event.
+    """
+    CREATE TABLE crm_roundups (
+        id          TEXT PRIMARY KEY,
+        title       TEXT NOT NULL,
+        event       TEXT NOT NULL DEFAULT '',       -- the event, and what the reader should look out for there
+        audience    TEXT NOT NULL DEFAULT '',       -- who it's for ("Sam")
+        origin      TEXT NOT NULL DEFAULT '',       -- the group it started from ("org:…"), empty when picked one by one
+        people      TEXT NOT NULL DEFAULT '[]',     -- JSON: person ids, in order
+        packet      TEXT,                           -- JSON: the packet as it was prepared, pictures and all
+        progress    TEXT NOT NULL DEFAULT '{}',     -- JSON: lines already written, so a restarted job picks up where it was
+        created_at  TEXT NOT NULL,
+        updated_at  TEXT NOT NULL
+    );
+    """,
 ]
 
 _version = 0
