@@ -621,6 +621,85 @@ export interface GeminiOverview {
   runs: ResearchRun[];
 }
 
+// ── Roundups (roundups.py): a packet about a set of people, for someone to take to an event ──
+
+export type RoundupFormat = "docx" | "pdf" | "md";
+
+export interface RoundupGroup {
+  id: string;
+  kind: "organization" | "topic" | "tag";
+  name: string;
+  size: number;
+}
+
+export interface RoundupFile {
+  name: string;
+  format: RoundupFormat;
+  bytes: number;
+  saved_at: string;
+}
+
+export interface RoundupRow {
+  id: string;
+  title: string;
+  audience: string;
+  event: string;
+  people: number;
+  origin: string | null;
+  prepared_at: string | null;
+  job: Job | null;
+  files: number;
+  updated_at: string;
+}
+
+export interface PacketPerson {
+  id: string;
+  name: string;
+  headline: string | null;
+  location: string | null;
+  email: string | null;
+  linkedin: string | null;
+  website: string | null;
+  summary: string | null;
+  summary_from: "overview" | "profile" | null;
+  organizations: { name: string; role: string | null; current: boolean }[];
+  connections: { name: string; headline: string | null; relation: string; in_packet: boolean }[];
+  with_owner: string | null;
+  blurb: string | null;
+}
+
+export interface Packet {
+  title: string;
+  event: string;
+  audience: string;
+  owner: string;
+  prepared_at: string;
+  written_by: string;
+  intro: string;
+  people: PacketPerson[];
+}
+
+export interface Roundup {
+  id: string;
+  title: string;
+  event: string;
+  audience: string;
+  origin: string | null;
+  origin_name: string | null;
+  people: (EntitySummary & { overview: boolean })[];
+  packet: Packet | null;
+  stale: boolean;
+  job: Job | null;
+  files: RoundupFile[];
+  folder: string;
+  ready: boolean;
+  reason: string;
+  provider: string;
+  local: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
 export const crmApi = {
   inbox: (statuses?: string) => request<InboxRow[]>(`/crm/ingest/jobs${qs({ status: statuses, limit: 200 })}`),
   inboxSummary: () => request<InboxSummary>("/crm/ingest/summary"),
@@ -734,4 +813,17 @@ export const crmApi = {
   lookUpPicture: (id: string) => request<{ found: boolean }>(`/crm/people/${id}/picture/lookup`, json("POST")),
   lookUpPictures: () => request<{ job: string }>("/crm/pictures/lookup", json("POST")),
   pictureLookup: () => request<{ allowed: boolean; reason: string | null; job: Job | null }>("/crm/pictures/lookup"),
+  roundups: () => request<RoundupRow[]>("/crm/roundups"),
+  roundupGroups: () => request<RoundupGroup[]>("/crm/roundups/groups"),
+  roundup: (id: string) => request<Roundup>(`/crm/roundups/${id}`),
+  createRoundup: (b: { title?: string; event?: string; audience?: string; group?: string; people?: string[] }) =>
+    request<Roundup>("/crm/roundups", json("POST", b)),
+  updateRoundup: (id: string, b: { title?: string; event?: string; audience?: string; people?: string[] }) =>
+    request<Roundup>(`/crm/roundups/${id}`, json("PATCH", b)),
+  addToRoundup: (id: string, b: { group?: string; people?: string[] }) => request<Roundup>(`/crm/roundups/${id}/people`, json("POST", b)),
+  deleteRoundup: (id: string) => request<void>(`/crm/roundups/${id}`, json("DELETE")),
+  prepareRoundup: (id: string) => request<Roundup>(`/crm/roundups/${id}/prepare`, json("POST")),
+  exportRoundup: (id: string, format: RoundupFormat) =>
+    request<{ name: string; folder: string; path: string; bytes: number }>(`/crm/roundups/${id}/export`, json("POST", { format })),
+  roundupFileUrl: (id: string, name: string) => `/api/crm/roundups/${id}/files/${encodeURIComponent(name)}`,
 };

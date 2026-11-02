@@ -5,6 +5,8 @@ import json
 
 from core.server import db
 
+from . import roundups
+
 _JSON = ("attributes", "tags", "properties", "wells", "snapshot", "spec")
 
 
@@ -21,6 +23,7 @@ def export() -> dict:
         "presets": [_parsed(r) for r in db.query("SELECT * FROM crm_presets ORDER BY created_at")],
         # Records merged into others, each with all it held when it was merged, so nothing a merge folded away is lost.
         "merges": [_parsed(r) for r in db.query("SELECT * FROM crm_merges ORDER BY created_at, id")],
+        "roundups": roundups.export_rows(),
     }
 
 

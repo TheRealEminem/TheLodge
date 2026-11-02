@@ -5,10 +5,11 @@ httpx>=0.27
 psutil>=5.9
 anthropic>=1.0
 
-# The Lodge: document and spreadsheet import
+# The Lodge: document and spreadsheet import, and roundup files (Word via python-docx, PDF via reportlab)
 python-dateutil>=2.9
 python-multipart>=0.0.9
 python-docx>=1.1
 openpyxl>=3.1
 pypdf>=5.0
 python-pptx>=1.0
+reportlab>=4.2

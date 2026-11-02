@@ -73,6 +73,11 @@ to do if something's wrong.
   left open) and lets you **rehearse** a conversation with them: the AI plays them from that portrait and your records,
   underlines anything it makes up, and shows what each reply rests on. It always says it's a simulation, never makes
   up anything about someone's health, family, money or private life, and nothing it writes goes back into your people.
+- **Roundups:** a packet about a set of people for someone else to take to an event. Start from an organization, a
+  topic or a tag, or pick people one by one, and say what the event is and who it's for. The AI writes an opening and
+  a couple of sentences on each person for that event; the rest is what's already summarized (their overview, picture,
+  LinkedIn, organizations and closest connections), never your meeting notes or a full research report. Save it as
+  Word, PDF or Markdown; every roundup and its files stay in Roundups to find again.
 - **Research.** Flag people you'd like to know better; The Lodge researches them with Gemini and Google Search
   (as a half-price batch by default) and files the brief on their profile. Or copy a research brief into Gemini
   Deep Research and bring the reports back in bulk.
