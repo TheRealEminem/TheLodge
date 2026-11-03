@@ -609,12 +609,24 @@ export interface MergeRecord {
 type Brief = { id: string; name: string; kind: EntityKind };
 
 export type ResearchLevel = "quick" | "better" | "best";
+/** How research runs: "api" is Gemini with your key; the others are AI tools signed in on this Mac, on your own plan. */
+export type ResearchVia = "api" | "claude" | "codex" | "gemini_cli";
+
+export interface ResearchTool {
+  id: Exclude<ResearchVia, "api">;
+  label: string;
+  plan: string;
+  hint: string;
+  ready: boolean;
+  reason: string | null;
+}
 
 export interface ResearchRun {
   id: string;
   person_id: string;
   person: string | null;
-  level: ResearchLevel;
+  level: ResearchLevel | ResearchTool["id"]; // a tool's run carries the tool here
+  via: ResearchVia;
   batch: boolean;
   status: "queued" | "running" | "waiting" | "done" | "failed" | "cancelled";
   stage: "ask" | "check" | "more" | "write" | "done";
@@ -631,6 +643,8 @@ export interface GeminiOverview {
   reason: string | null;
   level: ResearchLevel;
   batch: boolean;
+  via: ResearchVia;
+  tools: ResearchTool[];
   budget: number;
   spent: number;
   prices_as_of: string;
@@ -760,8 +774,8 @@ export const crmApi = {
   setResearch: (id: string, action: "snooze" | "dismiss" | "restore") =>
     request<ResearchStatus>(`/crm/people/${id}/research`, json("POST", { action })),
   geminiOverview: () => request<GeminiOverview>("/crm/research/gemini"),
-  startGemini: (personIds: string[], level: ResearchLevel, batch: boolean) =>
-    request<{ started: number; skipped: { id: string; reason: string }[]; estimate_each: number }>("/crm/research/gemini", json("POST", { person_ids: personIds, level, batch })),
+  startGemini: (personIds: string[], level: ResearchLevel, batch: boolean, via: ResearchVia = "api") =>
+    request<{ started: number; skipped: { id: string; reason: string }[]; estimate_each: number }>("/crm/research/gemini", json("POST", { person_ids: personIds, level, batch, via })),
   geminiRun: (personId: string) => request<{ run: ResearchRun | null }>(`/crm/people/${personId}/research/gemini`),
   cancelRun: (runId: string) => request<ResearchRun>(`/crm/research/gemini/${runId}/cancel`, json("POST")),
   retryRun: (runId: string) => request<ResearchRun>(`/crm/research/gemini/${runId}/retry`, json("POST")),

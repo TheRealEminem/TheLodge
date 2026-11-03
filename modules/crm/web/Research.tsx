@@ -107,7 +107,7 @@ export function ReportList({ reports, first }: { reports: ResearchReport[]; firs
   );
 }
 
-/** On a person's page: research reports on file, ways to get more (Gemini, the brief for a deep-research tool, adding a
+/** On a person's page: research reports on file, ways to get more (an AI tool or Gemini, the brief for a deep-research tool, adding a
  *  report), and the flag when nothing is on file. */
 export function ResearchCard({ person }: { person: Entity }) {
   const { toast } = useShell();
@@ -159,7 +159,7 @@ export function ResearchCard({ person }: { person: Entity }) {
               </p>
             </div>
             <div className="flex flex-wrap gap-2">
-              {!ran && <button className="btn btn-sm btn-soft" onClick={() => setGemini(true)}><SparkleIcon size={16} /> Research with Gemini</button>}
+              {!ran && <button className="btn btn-sm btn-soft" onClick={() => setGemini(true)}><SparkleIcon size={16} /> Research {first}</button>}
               <button className="btn btn-sm btn-soft" onClick={() => void copy()}><CopyIcon size={16} /> Copy research brief</button>
               <button className="btn btn-sm btn-ghost" onClick={() => setAdding(true)}><PlusIcon size={16} /> Add the research</button>
             </div>
@@ -196,10 +196,10 @@ export function ResearchCard({ person }: { person: Entity }) {
             <h2 className="text-label font-medium">No background on {first} yet</h2>
             <span className={NEEDS_RESEARCH_CHIP}>needs research</span>
           </div>
-          <p className="mt-0.5 text-hint text-ink-soft">Have The Lodge research them with Gemini, or copy the brief into Gemini Deep Research and bring the report back here (or drop it in the Inbox with any others).</p>
+          <p className="mt-0.5 text-hint text-ink-soft">Have The Lodge research them (through Claude Code, Codex or Gemini CLI on your own plan, or with Gemini), or copy the brief into a deep-research tool and bring the report back here (or drop it in the Inbox with any others).</p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <button className="btn btn-sm btn-primary" onClick={() => setGemini(true)}><SparkleIcon size={16} /> Research with Gemini</button>
+          <button className="btn btn-sm btn-primary" onClick={() => setGemini(true)}><SparkleIcon size={16} /> Research {first}</button>
           <button className="btn btn-sm btn-soft" onClick={() => void copy()}><CopyIcon size={16} /> Copy research brief</button>
           <button className="btn btn-sm btn-soft" onClick={() => setAdding(true)}><PlusIcon size={16} /> Add the research</button>
           <button className="btn btn-sm btn-ghost" onClick={() => void act("snooze")}>Snooze 30 days</button>

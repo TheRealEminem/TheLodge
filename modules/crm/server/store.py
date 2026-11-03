@@ -236,6 +236,10 @@ MIGRATIONS = [
         updated_at  TEXT NOT NULL
     );
     """,
+    # Research through an AI tool you're signed in to (cli_research.py): which way each run goes. level is the tool too.
+    """
+    ALTER TABLE crm_research_runs ADD COLUMN via TEXT NOT NULL DEFAULT 'api';   -- api (Gemini, gemini_research.py) | claude | codex | gemini_cli
+    """,
 ]
 
 _version = 0
