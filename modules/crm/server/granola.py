@@ -162,8 +162,10 @@ def meeting_from(note: dict, my_email: str | None) -> dict:
 # ── The sync ──────────────────────────────────────────────────────────
 
 def _seen(note_id: str) -> bool:
-    return db.one("SELECT 1 AS x FROM crm_inbox WHERE source = 'meeting' AND json_extract(payload, '$.origin') = 'granola' "
-                  "AND json_extract(payload, '$.external_id') = ?", (note_id,)) is not None
+    """Brought in before, from Granola or through Trailmix (which may have taken it from Granola)."""
+    return db.one("SELECT 1 AS x FROM crm_inbox WHERE source = 'meeting' AND ((json_extract(payload, '$.origin') = 'granola' "
+                  "AND json_extract(payload, '$.external_id') = ?) OR json_extract(payload, '$.also.granola') = ?)",
+                  (note_id, note_id)) is not None
 
 
 def _since(state: dict, now: datetime) -> datetime:

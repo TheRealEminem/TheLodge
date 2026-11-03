@@ -300,16 +300,20 @@ def _attendee_line(a: dict) -> str:
 
 def create_meeting_job(*, origin: str = "granola", external_id: str | None = None, title: str | None = None,
                        started_at: str | None = None, attendees: list[dict] | None = None, notes: str | None = None,
-                       transcript: str | None = None, auto_apply: bool = True) -> tuple[dict, bool]:
+                       transcript: str | None = None, auto_apply: bool = True,
+                       also: dict[str, str] | None = None) -> tuple[dict, bool]:
     """Queue a recorded meeting. Returns (row, already_imported).
 
     A meeting seen before (same origin and external id, or identical text) returns the earlier row instead of
-    queuing a duplicate, so a sync can resend freely."""
-    if external_id:
+    queuing a duplicate, so a sync can resend freely. `also` is the same meeting's id elsewhere ({"granola": id} for
+    one Trailmix brought in from Granola): seen there counts too, and the meeting keeps both ids."""
+    for o, x in [(origin, external_id), *(also or {}).items()]:
+        if not x:
+            continue
         earlier = db.one(
-            "SELECT id FROM crm_inbox WHERE source = 'meeting' AND json_extract(payload, '$.origin') = ? "
-            "AND json_extract(payload, '$.external_id') = ? AND status IN ('pending', 'processing', 'review', 'applied', 'discarded') "
-            "ORDER BY created_at DESC LIMIT 1", (origin, external_id))
+            "SELECT id FROM crm_inbox WHERE source = 'meeting' AND status IN ('pending', 'processing', 'review', 'applied', 'discarded') "
+            "AND ((json_extract(payload, '$.origin') = ? AND json_extract(payload, '$.external_id') = ?) "
+            "OR json_extract(payload, ?) = ?) ORDER BY created_at DESC LIMIT 1", (o, x, f'$.also."{o}"', x))
         if earlier:
             return inbox.require(earlier["id"]), True
     people = [a for a in (attendees or []) if a.get("name") or a.get("email")]
@@ -331,7 +335,8 @@ def create_meeting_job(*, origin: str = "granola", external_id: str | None = Non
         return earlier_row, True
     row = inbox.create("meeting", title=(title or "Untitled meeting")[:300], occurred_at=started_at, raw_text=raw,
                        content_hash=digest, payload={"origin": origin, "external_id": external_id, "attendees": people,
-                                                     "auto_apply": auto_apply, "words": len(raw.split())})
+                                                     "auto_apply": auto_apply, "words": len(raw.split()),
+                                                     **({"also": also} if also else {})})
     queue([row["id"]])
     return row, False
 
@@ -735,7 +740,8 @@ def _apply(row_id: str, proposal: dict) -> tuple[dict, list[str], str | None]:
     counts = {"created": 0, "linked": 0, "relationships": 0, "notes": 0}
     spec = proposal["record"]
     occurred = parse_dt(spec.get("occurred_at")) or parse_dt(row["occurred_at"]) or parse_iso(row["created_at"])
-    external = ({payload["origin"]: payload["external_id"]} if payload.get("origin") and payload.get("external_id") else {})
+    external = ({**(payload.get("also") or {}), payload["origin"]: payload["external_id"]}
+                if payload.get("origin") and payload.get("external_id") else {})
     new_actions: list[str] = []
 
     with db.connect() as c:
