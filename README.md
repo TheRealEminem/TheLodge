@@ -90,6 +90,8 @@ to do if something's wrong.
 - One SQLite file on your Mac. Hourly backups that roll over (the newest, and one from about an hour, a day and a
   week ago), **Back up now**, **Restore** (which keeps a backup of how things were first, so it can be undone) and
   **Export** to readable JSON (Settings → Your data).
+- **Quick export:** any person or organization, from the Export button on their page, as Markdown to copy straight
+  into an AI chat, or saved as a Markdown or PDF file. Email addresses and phone numbers are left out.
 - Any AI: Ollama (local), Claude, OpenAI, Gemini, DeepSeek or any OpenAI-compatible API. Keys are typed into
   Settings, never into a file, and are never sent back to the page. A key entered in one Trailmix family app is
   there for the others on the same Mac.

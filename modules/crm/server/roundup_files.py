@@ -412,6 +412,53 @@ def pdf(p: dict) -> bytes:
     return out.getvalue()
 
 
+def markdown_pdf(title: str, md: str, author: str = "") -> bytes:
+    """Any Markdown (headings, paragraphs, lists, bold, italics, links) as a plain PDF in the packets' type, for quick
+    export (quick_export.py). The first heading is the title; the rest are section headings."""
+    from reportlab.lib import colors
+    from reportlab.lib.pagesizes import LETTER
+    from reportlab.lib.styles import ParagraphStyle
+    from reportlab.lib.units import inch
+    from reportlab.platypus import ListFlowable, ListItem, Paragraph, SimpleDocTemplate
+
+    regular, bold, _ = _fonts()
+    ink, soft = colors.HexColor("#1D2420"), colors.HexColor("#5B635F")
+    body = ParagraphStyle("body", fontName=regular, fontSize=10.5, leading=15, textColor=ink, spaceAfter=6)
+    big = ParagraphStyle("title", parent=body, fontName=bold, fontSize=22, leading=27, spaceAfter=4)
+    h1 = ParagraphStyle("h1", parent=body, fontName=bold, fontSize=13.5, leading=17, spaceBefore=12, spaceAfter=5)
+
+    story: list = []
+    items: list[str] = []
+
+    def bullets() -> None:
+        if items:
+            story.append(ListFlowable([ListItem(Paragraph(i, body), leftIndent=12, value="•") for i in items],
+                                      bulletType="bullet", start="•", leftIndent=12, bulletFontName=regular, bulletColor=soft))
+            items.clear()
+
+    for kind, line in blocks(md):
+        if kind == "li":
+            items.append(_markup(line))
+            continue
+        bullets()
+        style = (big if not story else h1) if kind == "h" else body
+        story.append(Paragraph(_markup(line), style))
+    bullets()
+
+    def footer(canvas, doc) -> None:
+        canvas.saveState()
+        canvas.setFont(regular, 8)
+        canvas.setFillColor(soft)
+        canvas.drawString(0.9 * inch, 0.55 * inch, title)
+        canvas.drawRightString(LETTER[0] - 0.9 * inch, 0.55 * inch, str(doc.page))
+        canvas.restoreState()
+
+    out = io.BytesIO()
+    SimpleDocTemplate(out, pagesize=LETTER, leftMargin=0.9 * inch, rightMargin=0.9 * inch, topMargin=0.8 * inch,
+                      bottomMargin=0.9 * inch, title=title, author=author).build(story, onFirstPage=footer, onLaterPages=footer)
+    return out.getvalue()
+
+
 def render(packet: dict, fmt: str) -> bytes:
     if fmt == "md":
         return markdown(packet).encode()
