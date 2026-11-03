@@ -17,7 +17,8 @@ Costs are counted from what Google reports for each answer: tokens at the list p
 halved for Batch, plus every search at $14 per 1,000. Google gives the first 5,000 searches a month free on
 Gemini 3 and newer; that isn't subtracted here, so the figures are what it would cost past the free searches.
 
-    crm_research_runs   one per person per run (the table is in store.py)
+    crm_research_runs   one per person per run (the table is in store.py), via = api. Runs through an AI tool you're
+                        signed in to (via = claude | codex | gemini_cli) share the table; cli_research.py works them
 """
 import json
 import logging
@@ -29,7 +30,7 @@ import httpx
 from core.server import db, events, jobs, lockdown, settings
 from core.server import usage as tally   # absorb() has a local named usage
 
-from . import ingest, research
+from . import cli_research, ingest, research
 
 log = logging.getLogger("crm.gemini_research")
 
@@ -268,7 +269,8 @@ def overview() -> dict:
     usual = LEVELS[crm["research_level"]]
     return {
         "ready": ready, "reason": locked() or (None if ready else "Add a Gemini API key in Settings → AI first"),
-        "level": crm["research_level"], "batch": crm["research_batch"],
+        "level": crm["research_level"], "batch": crm["research_batch"], "via": crm["research_via"],
+        "tools": cli_research.tools(),
         "budget": budget(), "spent": spent_this_month(), "prices_as_of": PRICES_AS_OF, "warn_over": tally.warn_over(),
         "levels": [{"id": k, "label": v["label"], "hint": v["hint"],
                     "models": sorted({MODEL_NAMES.get(m, m) for m in models_for(k).values() if m}),
@@ -282,7 +284,7 @@ def overview() -> dict:
 
 def _out(r: dict) -> dict:
     name = db.one("SELECT name FROM crm_entities WHERE id = ?", (r["entity_id"],))
-    return {"id": r["id"], "person_id": r["entity_id"], "person": name["name"] if name else None, "level": r["level"],
+    return {"id": r["id"], "person_id": r["entity_id"], "person": name["name"] if name else None, "level": r["level"], "via": r["via"],
             "batch": bool(r["batch"]), "status": r["status"], "stage": r["stage"], "error": r["error"],
             "searches": r["searches"], "cost": round(r["cost"], 4), "inbox_id": r["inbox_id"],
             "created_at": r["created_at"], "finished_at": r["finished_at"]}
@@ -336,7 +338,7 @@ def start(person_ids: list[str], level: str, batch: bool) -> dict:
 
 def _committed() -> float:
     """What runs still under way are likely to cost on top of what they've spent."""
-    rows = db.query(f"SELECT level, batch, cost FROM crm_research_runs WHERE status IN {UNFINISHED}")
+    rows = db.query(f"SELECT level, batch, cost FROM crm_research_runs WHERE via = 'api' AND status IN {UNFINISHED}")
     return sum(max(0.0, estimate(r["level"], bool(r["batch"])) - r["cost"]) for r in rows)
 
 
@@ -345,6 +347,7 @@ def cancel(run_id: str) -> dict:
     if r is None:
         raise ResearchRunError("That research run isn't on record")
     if r["status"] in UNFINISHED:
+        cli_research.stop(run_id)
         if r["batch_name"] and not db.one("SELECT 1 AS x FROM crm_research_runs WHERE batch_name = ? AND id != ? AND status IN "
                                           f"{UNFINISHED}", (r["batch_name"], run_id)):
             try:
@@ -360,8 +363,13 @@ def retry(run_id: str) -> dict:
     r = db.one("SELECT * FROM crm_research_runs WHERE id = ?", (run_id,))
     if r is None or r["status"] not in ("failed", "cancelled"):
         raise ResearchRunError("Only a run that failed or was cancelled can be tried again")
-    _update(run_id, status="queued", error=None, batch_name=None, finished_at=None)
-    jobs.enqueue("crm", "research_advance", "scheduled")
+    if r["via"] != "api":
+        if (why := cli_research.problem(r["via"])):
+            raise ResearchRunError(why)
+        cli_research.retry(run_id)
+    else:
+        _update(run_id, status="queued", error=None, batch_name=None, finished_at=None)
+        jobs.enqueue("crm", "research_advance", "scheduled")
     _changed(r["entity_id"])
     return _out(db.one("SELECT * FROM crm_research_runs WHERE id = ?", (run_id,)))
 
@@ -533,7 +541,8 @@ def handle_advance(job: jobs.Job) -> None:
                 _update(r["id"], status="failed", error=error or f"Google's batch {state}", batch_name=None, finished_at=_now())
                 _changed(r["entity_id"])
 
-    ready = db.query(f"SELECT * FROM crm_research_runs WHERE status IN {UNFINISHED} AND batch_name IS NULL ORDER BY created_at")
+    ready = db.query(f"SELECT * FROM crm_research_runs WHERE via = 'api' AND status IN {UNFINISHED} AND batch_name IS NULL "
+                     "ORDER BY created_at")
     batches: dict[str, list[tuple[dict, list[tuple[str, dict]]]]] = {}
     for r in ready:
         if spent_this_month() >= budget():
@@ -595,4 +604,4 @@ def seconds() -> int:
     """Every minute while a run is under way (a batch is checked on), otherwise not at all."""
     if locked():
         return 0
-    return 60 if db.one(f"SELECT 1 AS x FROM crm_research_runs WHERE status IN {UNFINISHED}") else 0
+    return 60 if db.one(f"SELECT 1 AS x FROM crm_research_runs WHERE via = 'api' AND status IN {UNFINISHED}") else 0

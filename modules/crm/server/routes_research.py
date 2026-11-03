@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field
 
 from core.server import settings
 
-from . import gemini_research, research
+from . import cli_research, gemini_research, research
 
 router = APIRouter()
 
@@ -48,32 +48,37 @@ def research_brief(person_id: str):
     return {"text": _guard(research.brief, person_id)}
 
 
-# ── The Lodge researching people itself, with Gemini ─────────────────
+# ── The Lodge researching people itself: with Gemini, or through an AI tool you're signed in to ──
 
 class RunIn(BaseModel):
     person_ids: list[str] = Field(min_length=1, max_length=200)
     level: Literal["quick", "better", "best"] | None = None   # None: the usual level from Settings
     batch: bool | None = None                                 # None: as Settings says
+    via: Literal["api", "claude", "codex", "gemini_cli"] | None = None   # None: the usual way from Settings; api is Gemini
 
 
 def _run_guard(fn, *args):
     try:
         return fn(*args)
-    except gemini_research.ResearchRunError as e:
+    except (gemini_research.ResearchRunError, cli_research.CliResearchError) as e:
         raise HTTPException(422, str(e)) from e
 
 
 @router.get("/research/gemini")
 def gemini_overview():
-    """The levels with what a person typically costs at each, the month's budget and spend, and recent runs."""
+    """The levels with what a person typically costs at each, the month's budget and spend, the AI tools signed in
+    on this Mac, and recent runs."""
     return gemini_research.overview()
 
 
 @router.post("/research/gemini", status_code=202)
 def gemini_start(body: RunIn):
-    """Research these people with Gemini: as many as fit in what's left of the month's budget. Each report waits
-    in the Inbox for your OK."""
+    """Research these people with Gemini (as many as fit in what's left of the month's budget), or through an AI tool
+    signed in on this Mac (as many as you like, one at a time). Each report waits in the Inbox for your OK."""
     cfg = settings.section("crm")
+    via = body.via or cfg["research_via"]
+    if via != "api":
+        return _run_guard(cli_research.start, body.person_ids, via)
     level = body.level or cfg["research_level"]
     batch = cfg["research_batch"] if body.batch is None else body.batch
     return _run_guard(gemini_research.start, body.person_ids, level, batch)

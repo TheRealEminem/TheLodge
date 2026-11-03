@@ -78,9 +78,11 @@ to do if something's wrong.
   a couple of sentences on each person for that event; the rest is what's already summarized (their overview, picture,
   LinkedIn, organizations and closest connections), never your meeting notes or a full research report. Save it as
   Word, PDF or Markdown; every roundup and its files stay in Roundups to find again.
-- **Research.** Flag people you'd like to know better; The Lodge researches them with Gemini and Google Search
-  (as a half-price batch by default) and files the brief on their profile. Or copy a research brief into Gemini
-  Deep Research and bring the reports back in bulk.
+- **Research.** Flag people you'd like to know better; The Lodge researches them and files the report on their
+  profile. It can go through Claude Code, Codex or Gemini CLI if one is signed in on your Mac, on a Claude, ChatGPT
+  or Google plan you already pay for, so nothing is charged per person; or with Gemini and Google Search through
+  your own key (as a half-price batch by default). Or copy a research brief into Gemini Deep Research and bring the
+  reports back in bulk.
 
 **Tasks**
 - My tasks, projects and a board. Action items found in notes and meetings become tasks, linked back to where
@@ -99,8 +101,8 @@ to do if something's wrong.
   writes summaries, action items, overviews and answers; reading long documents for relationships and facts is
   better with a cloud AI, so the careful job can use one while everything else stays here ("Mixed").
 - **Lockdown** (Settings → Privacy): nothing leaves the computer. Only AI that runs here answers, the app doesn't
-  check for updates by itself, and research by Gemini, Granola, calendars, the shared Sheet and Gravatar pictures
-  stop. Everything on your own data keeps working.
+  check for updates by itself, and research (by Gemini or an AI tool), Granola, calendars, the shared Sheet and
+  Gravatar pictures stop. Everything on your own data keeps working.
 - **Pictures:** add one to anyone by choosing, dropping or pasting an image, or let The Lodge look people up on
   Gravatar (off until you turn it on).
 

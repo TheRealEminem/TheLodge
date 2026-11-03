@@ -15,14 +15,14 @@ import { GeminiDialog } from "./GeminiResearch";
 import PersonFinder from "./PersonFinder";
 import { TIER_META, TierBars, connectionLine } from "./tier";
 
-/** "Research these with Gemini" under the Needs research list. */
+/** "Research these" under the Needs research list. */
 function ResearchThese({ rows }: { rows: PersonRow[] }) {
   const [open, setOpen] = useState(false);
   const people = rows.filter((r) => r.person.name.trim().includes(" ")).map((r) => ({ id: r.person.id, name: r.person.name }));
   if (!people.length) return null;
   return (
     <div className="mt-3 px-1">
-      <button className="btn btn-sm btn-soft" onClick={() => setOpen(true)}><SparkleIcon size={16} /> Research {people.length === 1 ? "them" : `these ${people.length}`} with Gemini</button>
+      <button className="btn btn-sm btn-soft" onClick={() => setOpen(true)}><SparkleIcon size={16} /> Research {people.length === 1 ? "them" : `these ${people.length}`}</button>
       {open && <GeminiDialog people={people} onClose={() => setOpen(false)} />}
     </div>
   );
