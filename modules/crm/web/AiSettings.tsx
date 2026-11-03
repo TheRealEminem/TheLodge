@@ -1,8 +1,9 @@
 // The People module's section on the Settings page: which AI does each of its jobs.
 import { useState } from "react";
 import { api } from "@core/api";
-import type { ProviderInfo } from "@core/api";
+import type { ProviderId, ProviderInfo } from "@core/api";
 import { Section } from "@core/components/blocks";
+import { ModelPicker } from "@core/components/ModelPicker";
 import { AlertIcon, CheckIcon, SparkleIcon } from "@core/components/icons";
 import { ControlRow, Select, Spinner, SwitchRow } from "@core/components/ui";
 import { useLive } from "@core/live";
@@ -28,7 +29,7 @@ function Job({ job, providers }: { job: AiRole; providers: ProviderInfo[] }) {
     setTesting(true);
     setResult(null);
     try {
-      setResult({ ok: true, text: (await api.providerTest(job.provider as ProviderInfo["id"])).message });
+      setResult({ ok: true, text: (await api.providerTest(job.provider as ProviderId, job.ownModel)).message });
     } catch (e) {
       setResult({ ok: false, text: (e as Error).message });
     } finally {
@@ -51,6 +52,13 @@ function Job({ job, providers }: { job: AiRole; providers: ProviderInfo[] }) {
       >
         <Select label={job.label} size="sm" className="w-full sm:w-64" value={job.choice} options={options} onChange={(v) => void save({ [job.setting]: v })} />
       </ControlRow>
+      {providers.some((p) => p.id === job.provider) && (
+        <ControlRow label="Model" hint={`Only for this job, while ${job.providerLabel} does it.`} className="!py-0 mt-2.5">
+          <ModelPicker provider={job.provider as ProviderId} value={job.ownModel} label={`${job.label}: model`}
+            blank={{ label: `Same as ${job.providerLabel}`, hint: job.providerModel || undefined }}
+            onSave={(m) => void save({ [job.modelSetting]: m ? `${job.provider}:${m}` : "" })} />
+        </ControlRow>
+      )}
       <div className="mt-2.5">
         <button className="btn btn-sm btn-soft" disabled={testing || !job.ready || job.provider === "rules"} onClick={() => void test().catch((e) => toast(e.message, "error"))}>
           {testing ? <Spinner /> : <SparkleIcon size={16} />}

@@ -2,6 +2,7 @@
 // is up to on a profile, and its Settings section.
 import { useState } from "react";
 import { Section } from "@core/components/blocks";
+import { ModelPicker } from "@core/components/ModelPicker";
 import { AlertIcon, ClockIcon, SearchIcon, SparkleIcon } from "@core/components/icons";
 import { ControlRow, Select, Spinner, SwitchRow } from "@core/components/ui";
 import { useLive } from "@core/live";
@@ -166,6 +167,18 @@ export function GeminiSettings() {
           options={(data?.levels ?? []).map((l) => ({ value: l.id, label: l.label, hint: l.models.join(", ") }))}
           onChange={(v) => void save({ "crm.research_level": v })} />
       </ControlRow>
+      {data?.ready && (
+        <>
+          <ControlRow label="Model for searching" hint="Asks the questions with Google Search. Instead of the level's own, at every level.">
+            <ModelPicker provider="gemini" label="Model for searching" value={get<string>("crm.research_ask_model") ?? ""}
+              blank={{ label: "The level's own", hint: data.level_models.ask }} onSave={(m) => void save({ "crm.research_ask_model": m })} />
+          </ControlRow>
+          <ControlRow label="Model for writing" hint="Checks what's missing (Best) and writes the report. A model without a listed price is costed at the Pro price.">
+            <ModelPicker provider="gemini" label="Model for writing" value={get<string>("crm.research_write_model") ?? ""}
+              blank={{ label: "The level's own", hint: data.level_models.write }} onSave={(m) => void save({ "crm.research_write_model": m })} />
+          </ControlRow>
+        </>
+      )}
       <SwitchRow label="Use Google Batch" hint="Half the price for Gemini's reading and writing; reports come back within a day, usually in minutes. Search fees are the same either way."
         checked={!!get<boolean>("crm.research_batch")} onChange={(v) => void save({ "crm.research_batch": v })} />
       <ControlRow label="Monthly budget" hint={data ? `Spent this month: ${money(data.spent)}. Research stops before it would go over. Prices as of ${data.prices_as_of}.` : undefined}>

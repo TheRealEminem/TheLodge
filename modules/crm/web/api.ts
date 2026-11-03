@@ -547,6 +547,9 @@ export interface AiRole {
   reason: string;
   local: boolean;
   rules: boolean; // whether "Rules only (no AI)" is a choice for this job
+  modelSetting: string; // the setting that picks this job's own model, as "provider:model"
+  ownModel: string; // this job's own model for the provider doing it now, or "" for the provider's
+  providerModel: string; // the provider's own model, used when ownModel is ""
 }
 
 // ---- Overviews and questions about a person ----
@@ -633,6 +636,7 @@ export interface GeminiOverview {
   prices_as_of: string;
   warn_over: number;
   levels: { id: ResearchLevel; label: string; hint: string; models: string[]; estimate: number; estimate_batch: number }[];
+  level_models: { ask: string; write: string }; // what the usual level uses when no model is chosen in Settings
   runs: ResearchRun[];
 }
 

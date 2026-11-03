@@ -4,6 +4,7 @@ import { api, inApp, quitApp, sendUpdates } from "../api";
 import type { FamilyStatus, ProviderId, ProviderInfo, SystemInfo, UpdateReport } from "../api";
 import { Section, SecretSetting, TextSetting } from "../components/blocks";
 import { ChooseAi } from "../components/ChooseAi";
+import { ModelPicker } from "../components/ModelPicker";
 import { OllamaSetup } from "../components/OllamaSetup";
 import { CheckIcon, AlertIcon, BackIcon, DownloadIcon, LaptopIcon, LockIcon, MonitorIcon, MoonIcon, NetworkIcon, PowerIcon, RefreshIcon, SparkleIcon, SunIcon, UsersIcon, LeafIcon } from "../components/icons";
 import { ControlRow, PageHeader, Segmented, Select, Spinner, StatusChip, SwitchRow } from "../components/ui";
@@ -13,26 +14,6 @@ import { useSettings, useShell } from "../shell";
 import type { ThemePref } from "../theme";
 import { UsageRows } from "./Usage";
 import YourData from "./YourData";
-
-function ModelPicker({ provider, value, onSave }: { provider: ProviderId; value: string; onSave: (v: string) => void }) {
-  const [models, setModels] = useState<string[] | null>(null);
-  const [typing, setTyping] = useState(false);
-  useEffect(() => {
-    setModels(null);
-    api.providerModels(provider).then((r) => setModels(r.models), () => setModels([]));
-  }, [provider]);
-  if (models === null) return <Spinner className="text-ink-faint" />;
-  if (typing || models.length === 0) {
-    return <TextSetting label="Model" value={value} onSave={onSave} mono placeholder={provider === "ollama" ? "automatic" : "model id"} />;
-  }
-  const options = [
-    ...(provider === "ollama" ? [{ value: "", label: "Automatic", hint: "The best installed model" }] : []),
-    ...models.map((m) => ({ value: m, label: m })),
-    ...(value && !models.includes(value) ? [{ value, label: value, hint: "Not found" }] : []),
-    { value: "\u0000other", label: "Other…", hint: "Type a model id" },
-  ];
-  return <Select label="Model" size="sm" className="w-full sm:w-64" value={value} options={options} onChange={(v) => (v === "\u0000other" ? setTyping(true) : onSave(v))} />;
-}
 
 function ProviderFields({ id, values, hints, save }: { id: ProviderId; values: Record<string, unknown>; hints: Record<string, string | null>; save: (c: Record<string, string>) => void }) {
   const { toast } = useShell();
@@ -73,7 +54,8 @@ function ProviderFields({ id, values, hints, save }: { id: ProviderId; values: R
         </ControlRow>
       )}
       <ControlRow label="Model">
-        <ModelPicker provider={id} value={v(`${id}_model`)} onSave={(x) => save({ [`ai.${id}_model`]: x })} />
+        <ModelPicker provider={id} value={v(`${id}_model`)} onSave={(x) => save({ [`ai.${id}_model`]: x })}
+          blank={id === "ollama" ? { label: "Automatic", hint: "The best installed model" } : undefined} />
       </ControlRow>
       <div className="py-3.5">
         <button className="btn btn-sm btn-soft" disabled={testing} onClick={() => void test().catch((e) => toast(e.message, "error"))}>

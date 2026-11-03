@@ -245,11 +245,11 @@ async def ai_models(pid: str):
 
 
 @core_router.post("/ai/providers/{pid}/test")
-async def ai_test(pid: str):
+async def ai_test(pid: str, model: str = ""):
     if pid not in ai.PROVIDERS:
         raise HTTPException(404, "No such provider")
     try:
-        return {"message": await run_in_threadpool(ai.test, pid)}
+        return {"message": await run_in_threadpool(ai.test, pid, model)}
     except ai.AIError as e:
         raise HTTPException(502, str(e)) from e
 

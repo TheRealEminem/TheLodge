@@ -133,6 +133,22 @@ def test_best_has_the_pro_model_check_and_ask_again_before_it_writes(client, goo
         ("Who founded Frostline?", "Answer to: Who founded Frostline?")]
 
 
+def test_models_chosen_in_settings_replace_the_levels_own(client, google):
+    settings.update({"crm.research_ask_model": "gemini-3.6-flash", "crm.research_write_model": "gemini-3.1-pro-preview"})
+    jordan = person(client)
+    client.post("/api/crm/research/gemini", json={"person_ids": [jordan["id"]], "level": "best", "batch": False})
+    jobs.drain()
+    done = run(client, jordan["id"])
+    models = [c[1].split("/")[1].split(":")[0] for c in google.calls]
+    assert models == ["gemini-3.6-flash"] * 6 + ["gemini-3.1-pro-preview"] + ["gemini-3.6-flash"] * 2 + ["gemini-3.1-pro-preview"]
+    item = client.get(f"/api/crm/ingest/jobs/{done['inbox_id']}").json()
+    assert "Gemini 3.6 Flash and Gemini 3.1 Pro" in item["raw_text"]
+    over = client.get("/api/crm/research/gemini").json()
+    assert {lv["id"]: lv["models"] for lv in over["levels"]}["quick"] == ["Gemini 3.1 Pro", "Gemini 3.6 Flash"]
+    assert over["level_models"] == {"ask": "gemini-3.8-flash", "write": "gemini-3.8-flash"}
+    settings.update({"crm.research_ask_model": "", "crm.research_write_model": ""})
+
+
 def test_the_budget_stops_new_runs_and_says_so(client, google):
     jordan = person(client)
     settings.update({"crm.research_budget": 0})

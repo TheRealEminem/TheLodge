@@ -8,6 +8,8 @@ Levels, which models do the work:
     quick    Flash-Lite asks and writes. Cheap, but it often answers without searching
     better   Flash asks and writes                                       the default, through Batch
     best     Flash asks; the Pro model checks what's missing, has it asked, and writes
+Settings can swap in other Gemini models: `crm.research_ask_model` for the searching, `crm.research_write_model` for
+the checking and writing (blank: the level's own). A model missing from PRICES is costed at the Pro price.
 Each can go through Google's Batch API: half the token price, answers within a day (usually minutes). Google bills
 each search the model runs the same either way.
 
@@ -233,7 +235,7 @@ def _thinks(model: str) -> bool:
 
 def estimate(level: str, batch: bool) -> float:
     """What one person costs at this level, typically (searches past the free 5,000 a month counted)."""
-    lv = LEVELS[level]
+    lv = models_for(level)
     ask_in, ask_out, per = TYPICAL["ask_thinking" if _thinks(lv["ask"]) else "ask"]
     total = cost(lv["ask"], {"in": ask_in * len(ANGLES), "out": ask_out * len(ANGLES)}, per * len(ANGLES), batch)
     if lv["check"]:
@@ -262,13 +264,16 @@ def budget() -> int:
 def overview() -> dict:
     """For Settings and the start dialog: the levels with typical costs, the budget and what's been spent."""
     ready = bool(api_key()) and not locked()
+    crm = settings.section("crm")
+    usual = LEVELS[crm["research_level"]]
     return {
         "ready": ready, "reason": locked() or (None if ready else "Add a Gemini API key in Settings → AI first"),
-        "level": settings.section("crm")["research_level"], "batch": settings.section("crm")["research_batch"],
+        "level": crm["research_level"], "batch": crm["research_batch"],
         "budget": budget(), "spent": spent_this_month(), "prices_as_of": PRICES_AS_OF, "warn_over": tally.warn_over(),
         "levels": [{"id": k, "label": v["label"], "hint": v["hint"],
-                    "models": sorted({MODEL_NAMES.get(m, m) for m in (v["ask"], v["check"], v["write"]) if m}),
+                    "models": sorted({MODEL_NAMES.get(m, m) for m in models_for(k).values() if m}),
                     "estimate": estimate(k, False), "estimate_batch": estimate(k, True)} for k, v in LEVELS.items()],
+        "level_models": {"ask": usual["ask"], "write": usual["write"]},   # what the usual level uses unless Settings says
         "runs": [_out(r) for r in db.query("SELECT * FROM crm_research_runs ORDER BY created_at DESC LIMIT 20")],
     }
 
@@ -369,6 +374,14 @@ def _update(run_id: str, **fields) -> None:
     db.execute(f"UPDATE crm_research_runs SET {', '.join(f'{k} = ?' for k in fields)} WHERE id = ?", (*fields.values(), run_id))
 
 
+def models_for(level: str) -> dict:
+    """The models a level uses right now: {ask, check, write}, with any chosen in Settings in place of the level's."""
+    lv, crm = LEVELS[level], settings.section("crm")
+    ask = (crm.get("research_ask_model") or "").strip() or lv["ask"]
+    own_write = (crm.get("research_write_model") or "").strip()
+    return {"ask": ask, "check": lv["check"] and (own_write or lv["check"]), "write": own_write or lv["write"]}
+
+
 # ── The stages ────────────────────────────────────────────────────────
 
 def _who(sub: research.Subject) -> str:
@@ -378,7 +391,7 @@ def _who(sub: research.Subject) -> str:
 
 
 def _model(r: dict, stage: str) -> str:
-    lv = LEVELS[r["level"]]
+    lv = models_for(r["level"])
     return lv["write"] if stage == "write" else lv["check"] if stage == "check" else lv["ask"]
 
 
@@ -484,7 +497,7 @@ def _follow_ups(answers: dict[str, dict]) -> list[str]:
 def _file(r: dict, report: str, searches: int, spent: float) -> dict:
     """The report into the Inbox, as research on this person, with how it was made at the end."""
     sub = research.subject(r["entity_id"])
-    lv = LEVELS[r["level"]]
+    lv = models_for(r["level"])
     models = " and ".join(dict.fromkeys(MODEL_NAMES.get(m, m) for m in (lv["ask"], lv["check"], lv["write"]) if m))
     footer = (f"\n\n---\nResearched by The Lodge with {models}{' through Google Batch' if r['batch'] else ''} on {sub.today}: "
               f"{searches} Google search{'' if searches == 1 else 'es'}, about ${spent:.2f}.")
