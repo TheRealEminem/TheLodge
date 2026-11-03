@@ -164,7 +164,7 @@ export default function HomeBlock() {
           blurb={data.research_close > 0
             ? `${data.research_close} ${data.research_close === 1 ? "person" : "people"} you know well ${data.research_close === 1 ? "has" : "have"} no background on file. The ones who matter most are first.`
             : "People with no background on file. The ones who matter most are first."}
-          href="#/crm/people?research=needed"
+          href="#/crm/research"
           more={`All ${data.research_needed}`}
           delay={165}
         >

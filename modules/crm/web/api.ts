@@ -634,8 +634,37 @@ export interface ResearchRun {
   searches: number;
   cost: number;
   inbox_id: string | null;
+  /** A first pass that hands over to deep research through this tool when it ends. */
+  then_via: ResearchTool["id"] | null;
   created_at: string;
   finished_at: string | null;
+}
+
+/** On the Research page: where someone's research has got (research_desk.py). */
+export type DeskShow = "new" | "first" | "deep" | "running" | "skipped";
+
+/** A finished pass: when, by whom ("you" for a report you added), and its report (`waiting` while it's in the Inbox). */
+export interface DeskMark {
+  at: string;
+  via: ResearchVia | "you";
+  inbox_id: string | null;
+  waiting: boolean;
+}
+
+export interface DeskItem {
+  row: PersonRow;
+  state: ResearchStatus["state"];
+  first: DeskMark | null;
+  deep: DeskMark | null;
+  /** The run under way, or the last one if it failed. */
+  run: ResearchRun | null;
+}
+
+export interface DeskPage {
+  show: DeskShow;
+  total: number;
+  counts: Record<DeskShow, number>;
+  items: DeskItem[];
 }
 
 export interface GeminiOverview {
@@ -649,7 +678,10 @@ export interface GeminiOverview {
   spent: number;
   prices_as_of: string;
   warn_over: number;
-  levels: { id: ResearchLevel; label: string; hint: string; models: string[]; estimate: number; estimate_batch: number }[];
+  /** What a person typically costs: with searches charged, and (free_) while the month's free searches last. */
+  levels: { id: ResearchLevel; label: string; hint: string; models: string[]; estimate: number; estimate_batch: number;
+    free_estimate: number; free_estimate_batch: number; searches_each: number }[];
+  free_searches: number;
   level_models: { ask: string; write: string }; // what the usual level uses when no model is chosen in Settings
   runs: ResearchRun[];
 }
@@ -774,8 +806,9 @@ export const crmApi = {
   setResearch: (id: string, action: "snooze" | "dismiss" | "restore") =>
     request<ResearchStatus>(`/crm/people/${id}/research`, json("POST", { action })),
   geminiOverview: () => request<GeminiOverview>("/crm/research/gemini"),
-  startGemini: (personIds: string[], level: ResearchLevel, batch: boolean, via: ResearchVia = "api") =>
-    request<{ started: number; skipped: { id: string; reason: string }[]; estimate_each: number }>("/crm/research/gemini", json("POST", { person_ids: personIds, level, batch, via })),
+  startGemini: (personIds: string[], level: ResearchLevel, batch: boolean, via: ResearchVia = "api", then: ResearchTool["id"] | null = null) =>
+    request<{ started: number; skipped: { id: string; reason: string }[]; estimate_each: number }>("/crm/research/gemini", json("POST", { person_ids: personIds, level, batch, via, then })),
+  researchDesk: (p: { show: DeskShow; q?: string; limit?: number }) => request<DeskPage>(`/crm/research/desk${qs(p)}`),
   geminiRun: (personId: string) => request<{ run: ResearchRun | null }>(`/crm/people/${personId}/research/gemini`),
   cancelRun: (runId: string) => request<ResearchRun>(`/crm/research/gemini/${runId}/cancel`, json("POST")),
   retryRun: (runId: string) => request<ResearchRun>(`/crm/research/gemini/${runId}/retry`, json("POST")),

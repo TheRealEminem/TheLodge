@@ -240,6 +240,10 @@ MIGRATIONS = [
     """
     ALTER TABLE crm_research_runs ADD COLUMN via TEXT NOT NULL DEFAULT 'api';   -- api (Gemini, gemini_research.py) | claude | codex | gemini_cli
     """,
+    # A first pass with Gemini that hands over to deep research through an AI tool when it ends (the Research page).
+    """
+    ALTER TABLE crm_research_runs ADD COLUMN then_via TEXT;   -- claude | codex | gemini_cli, started when this run ends
+    """,
 ]
 
 _version = 0

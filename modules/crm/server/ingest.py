@@ -208,14 +208,17 @@ def ref_subject(text: str):
 
 
 def create_note_job(text: str, title: str | None = None, occurred_at: str | None = None,
-                    subject_id: str | None = None) -> dict:
+                    subject_id: str | None = None, auto_apply: bool = False) -> dict:
+    """Notes or a report to read. auto_apply adds it to your people when nothing needs a decision (needs_review)."""
     subject = subject_person(subject_id)
     by = "you" if subject else None
     if subject is None and (subject := ref_subject(text)):
         by = "ref"
+    payload = {"subject_id": subject.id, "subject_by": by} if subject else {}
+    if auto_apply:
+        payload["auto_apply"] = True
     row = inbox.create("manual_note", title=title or (f"Research on {subject.name}" if subject else None),
-                       occurred_at=occurred_at, raw_text=text,
-                       payload={"subject_id": subject.id, "subject_by": by} if subject else None)
+                       occurred_at=occurred_at, raw_text=text, payload=payload or None)
     queue([row["id"]])
     return row
 
