@@ -8,8 +8,9 @@
 
 Each job's provider is a setting (`crm.extraction_provider`, `crm.utility_provider`): "auto" follows the
 app-wide provider and fallback chosen in Settings → AI, any one provider by id, or "rules" (no AI: a plain-text
-reading that a person always reviews). The keys and models of each
-provider live there too.
+reading that a person always reviews). The keys of each provider live there too, and so do the models, unless a job
+picks its own: `crm.extraction_model` is "provider:model" ("anthropic:claude-sonnet-5-5"), blank for the provider's
+own, and only used while that provider does the job, so changing the provider never sends it a model it doesn't have.
 """
 from pydantic import BaseModel
 
@@ -23,7 +24,8 @@ ROLES = {
 # "auto" follows the choice made in setup (Settings → AI): the app-wide provider, or the cloud one for heavy jobs. These were
 # Claude and Gemini before setup existed; keep_what_people_have() keeps them for anyone who was using them.
 OLD_DEFAULTS = {"extraction": "anthropic", "utility": "gemini"}
-SETTINGS = {"extraction_provider": "auto", "utility_provider": "auto", "profiles_provider": "auto", "providers_kept": False}
+SETTINGS = {"extraction_provider": "auto", "utility_provider": "auto", "profiles_provider": "auto",
+            "extraction_model": "", "utility_model": "", "profiles_model": "", "providers_kept": False}
 CHOICES = {f"{role}_provider": ("auto", *ai.PROVIDERS, *(("rules",) if info.get("rules", True) else ())) for role, info in ROLES.items()}
 ROLES["utility"]["rules_when_local"] = True   # sorting and column mapping: the rules matched a 7B model (measured)
 
@@ -39,6 +41,12 @@ def choice(role: str) -> str:
     if raw(role) == "auto" and ROLES[role].get("rules_when_local") and ai.describe(chosen)["local"]:
         return "rules"            # not worth a local model's time; a model you name yourself is still used
     return chosen
+
+
+def models(role: str) -> dict[str, str]:
+    """This job's own model, as ai.complete/structured take it: {provider: model}, or {} for the provider's own."""
+    pid, _, model = (settings.section("crm")[f"{role}_model"] or "").partition(":")
+    return {pid: model} if model else {}
 
 
 def keep_what_people_have() -> None:
@@ -71,7 +79,7 @@ def ai_jobs() -> dict:
 def structured(role: str, prompt: str, system: str | None, schema: type[BaseModel],
                max_tokens: int | None = None) -> tuple[BaseModel, str]:
     """A structured answer from whoever does this job. Raises ai.AIError; check .provider_down."""
-    return ai.structured(prompt, system, schema, choice(role), max_tokens, purpose=ROLES[role]["label"])
+    return ai.structured(prompt, system, schema, choice(role), max_tokens, purpose=ROLES[role]["label"], models=models(role))
 
 
 def status() -> list[dict]:
@@ -80,8 +88,10 @@ def status() -> list[dict]:
         if choice(role) == "rules":
             d = {"provider": "rules", "label": "Rules (no AI)", "model": "", "ready": True, "reason": "", "local": True}
         else:
-            d = ai.describe(choice(role))
+            d = ai.describe(choice(role), models(role))
         out.append({"role": role, "setting": f"crm.{role}_provider", "choice": raw(role), **info, "rules": info.get("rules", True),
+                    "modelSetting": f"crm.{role}_model", "ownModel": models(role).get(d["provider"], ""),
+                    "providerModel": ai.describe(d["provider"])["model"] if d["provider"] in ai.PROVIDERS else "",
                     "provider": d["provider"], "providerLabel": d["label"], "model": d["model"], "ready": d["ready"],
                     "reason": d["reason"], "local": d["local"]})
     return out

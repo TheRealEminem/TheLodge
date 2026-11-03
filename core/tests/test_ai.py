@@ -381,6 +381,26 @@ def test_describe_says_who_would_answer_and_whether_they_are_ready(cfg):
     assert (d["provider"], d["ready"], d["model"]) == ("gemini", True, "gemini-flash-latest")
 
 
+def test_a_job_can_name_its_own_model_and_it_only_goes_to_that_provider(http, claude, cfg):
+    cfg(provider="gemini", fallback="anthropic", gemini_api_key="g", anthropic_api_key="k")
+    own = {"gemini": "gemini-pro-latest"}
+    http.replies = [completion(GOOD)]
+    ai.structured("x", "s", Extraction, models=own)
+    assert http.calls[0]["json"]["model"] == "gemini-pro-latest"
+    assert ai.describe("auto", own)["model"] == "gemini-pro-latest" and ai.describe("auto")["model"] == "gemini-flash-latest"
+    http.replies = [(503, {"error": {"message": "down"}})]
+    ai.structured("x", "s", Extraction, models=own)            # the fallback keeps its own model
+    assert claude.calls[0]["model"] == ai.DEFAULTS["anthropic_model"]
+    assert ai.with_models({"gemini_model": "a"}, {"gemini": " ", "nope": "b"}) == {"gemini_model": "a"}
+
+
+def test_the_test_button_can_try_a_jobs_own_model(http, cfg):
+    cfg(gemini_api_key="g")
+    http.replies = [completion('{"answer": "OK", "number": 7}')]
+    assert "gemini-pro-latest" in ai.test("gemini", "gemini-pro-latest")
+    assert http.calls[0]["json"]["model"] == "gemini-pro-latest"
+
+
 @pytest.mark.parametrize("blank", ["", "  "])
 def test_a_cleared_model_setting_means_the_default_model(http, cfg, blank):
     # A model field emptied in Settings once sent Gemini a request for a model named "", which it answers with 404.

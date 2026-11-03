@@ -387,7 +387,7 @@ def _intro_prompt(row: dict, owner: str, people: list[dict]) -> str:
 
 def _write(prompt: str) -> tuple[str, str]:
     try:
-        text, pid = ai.complete(prompt, SYSTEM, profiles.choice(), purpose="Roundups")
+        text, pid = ai.complete(prompt, SYSTEM, profiles.choice(), purpose="Roundups", models=profiles.models())
     except ai.AIError as e:
         if e.provider_down:
             raise jobs.Wait(str(e)) from e

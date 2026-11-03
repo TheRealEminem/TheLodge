@@ -184,3 +184,21 @@ def test_each_ai_job_names_its_provider_and_says_whether_it_is_ready(client):
         assert client.put("/api/settings", json={"crm.utility_provider": "nope"}).status_code == 400
     finally:
         client.put("/api/settings", json={"crm.utility_provider": "gemini"})
+
+
+def test_a_job_can_use_its_own_model_but_only_from_the_provider_it_was_picked_for(client):
+    from modules.crm.server import roles
+
+    client.put("/api/settings", json={"crm.extraction_model": "anthropic:claude-sonnet-5-5"})
+    try:
+        assert roles.models("extraction") == {"anthropic": "claude-sonnet-5-5"}
+        job = {j["role"]: j for j in client.get("/api/crm/ai").json()}["extraction"]
+        assert (job["modelSetting"], job["ownModel"]) == ("crm.extraction_model", "claude-sonnet-5-5")
+        assert job["providerModel"] == "claude-opus-5-5"
+        client.put("/api/settings", json={"crm.extraction_provider": "gemini"})      # the Claude model isn't sent to Gemini
+        job = {j["role"]: j for j in client.get("/api/crm/ai").json()}["extraction"]
+        assert job["ownModel"] == "" and job["model"] != "claude-sonnet-5-5"
+        client.put("/api/settings", json={"crm.extraction_model": "ollama:qwen3:8b"})  # a tag's colon stays in the model
+        assert roles.models("extraction") == {"ollama": "qwen3:8b"}
+    finally:
+        client.put("/api/settings", json={"crm.extraction_provider": "anthropic", "crm.extraction_model": ""})

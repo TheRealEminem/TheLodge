@@ -111,7 +111,7 @@ def test_a_job_that_stops_part_way_keeps_the_lines_it_wrote(client, book, ready,
     rup = client.post("/api/crm/roundups", json={"people": [book["ana"]["id"], book["cy"]["id"]]}).json()
     calls = []
 
-    def flaky(prompt, system=None, choice="auto", purpose=None):
+    def flaky(prompt, system=None, choice="auto", purpose=None, models=None):
         calls.append(prompt)
         if len(calls) == 2:
             raise ai.AIError("The model stopped")

@@ -238,7 +238,8 @@ export const api = {
   providers: () => request<ProviderInfo[]>("/ai/providers"),
   providerModels: (id: ProviderId) => request<{ models: string[] }>(`/ai/providers/${id}/models`),
   usage: () => request<UsageSummary>("/ai/usage"),
-  providerTest: (id: ProviderId) => request<{ message: string }>(`/ai/providers/${id}/test`, json("POST")),
+  providerTest: (id: ProviderId, model = "") =>
+    request<{ message: string }>(`/ai/providers/${id}/test${model ? `?model=${encodeURIComponent(model)}` : ""}`, json("POST")),
 
   setup: () => request<SetupState>("/setup"),
   setupPath: (path: AiPath, cloud = "") => request<SetupState>("/setup/path", json("PUT", { path, cloud })),

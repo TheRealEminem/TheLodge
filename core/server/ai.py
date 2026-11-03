@@ -3,7 +3,8 @@
 Modules call complete(prompt, system) and get (text, provider used), or structured(prompt, system, Schema) and
 get (a validated Schema object, provider used). Which provider answers, with which model, and the fallback
 when it fails are app-wide settings ("ai.*"), chosen once in Settings → AI. A module can name a provider for
-one of its jobs (choice="anthropic"); "auto" means the app-wide one.
+one of its jobs (choice="anthropic"), and a model per provider for it (models={"anthropic": "claude-sonnet-5-5"});
+"auto" and a provider not named in models mean the app-wide ones.
 Local models are unloaded right after use (keep_alive 0) so they don't sit in memory.
 
 Failures come in two kinds (AIError.provider_down). A *provider* failure says nothing about the text: no credit,
@@ -81,22 +82,25 @@ class AIError(Exception):
 
 # ── For modules ────────────────────────────────────────────────────────
 
-def complete(prompt: str, system: str | None = None, choice: str = "auto", purpose: str | None = None) -> tuple[str, str]:
+def complete(prompt: str, system: str | None = None, choice: str = "auto", purpose: str | None = None,
+             models: dict[str, str] | None = None) -> tuple[str, str]:
     """(text, provider id). Tries your provider, then your fallback. Raises AIError with every reason.
-    purpose: what this is for in a few words, so Settings → AI → Usage can say where the spending went."""
-    cfg = settings.section("ai")
+    purpose: what this is for in a few words, so Settings → AI → Usage can say where the spending went.
+    models: a model to use instead of the app-wide one, by provider id (see with_models)."""
+    cfg = with_models(settings.section("ai"), models)
     with usage.purpose(purpose):
         return run_chain(choice, cfg, lambda pid: generate(pid, cfg, prompt, system))
 
 
 def structured(prompt: str, system: str | None, schema: type[BaseModel], choice: str = "auto",
-               max_tokens: int | None = None, purpose: str | None = None) -> tuple[BaseModel, str]:
+               max_tokens: int | None = None, purpose: str | None = None,
+               models: dict[str, str] | None = None) -> tuple[BaseModel, str]:
     """(an instance of schema, provider id). The reply is constrained to the schema where the provider can do
     that, and checked either way. Optional fields may come back as None. max_tokens: the output budget
-    (default 32000 for Claude, 16000 elsewhere). purpose: as for complete(). Raises AIError; check .provider_down."""
+    (default 32000 for Claude, 16000 elsewhere). purpose, models: as for complete(). Raises AIError; check .provider_down."""
     from . import ai_adapters
 
-    cfg = settings.section("ai")
+    cfg = with_models(settings.section("ai"), models)
     with usage.purpose(purpose):
         return run_chain(choice, cfg, lambda pid: ai_adapters.generate_structured(pid, cfg, prompt, system, schema, max_tokens))
 
@@ -131,9 +135,16 @@ def apply_path(path: str, cloud: str = "") -> None:
     settings.update(changes)
 
 
-def describe(choice: str = "auto") -> dict:
+def with_models(cfg: dict, models: dict[str, str] | None) -> dict:
+    """The AI settings with a job's own models laid over the app-wide ones. A blank model or an unknown provider
+    changes nothing, so a job's model only ever goes to the provider it was chosen for."""
+    picked = {f"{pid}_model": m.strip() for pid, m in (models or {}).items() if pid in PROVIDERS and (m or "").strip()}
+    return {**cfg, **picked} if picked else cfg
+
+
+def describe(choice: str = "auto", models: dict[str, str] | None = None) -> dict:
     """Which provider and model a job would use right now, and whether it's ready. For Settings screens."""
-    cfg = settings.section("ai")
+    cfg = with_models(settings.section("ai"), models)
     pid = chain(choice, cfg)[0]
     ready, reason = configured(pid, cfg)
     return {"provider": pid, "label": label(pid, cfg), "model": model_for(pid, cfg) if ready else "",
@@ -486,11 +497,12 @@ class _Probe(BaseModel):
     number: int
 
 
-def test(pid: str) -> str:
-    """A real structured round trip with a tiny schema: proves the key, the model and the way jobs will call it."""
+def test(pid: str, model: str = "") -> str:
+    """A real structured round trip with a tiny schema: proves the key, the model and the way jobs will call it.
+    model: one a job uses instead of the provider's own."""
     from . import ai_adapters
 
-    cfg = settings.section("ai")
+    cfg = with_models(settings.section("ai"), {pid: model})
     started = time.perf_counter()
     got = ai_adapters.generate_structured(pid, cfg, "Set answer to the word OK and number to 7.",
                                           "You answer in the JSON format you are given.", _Probe, None)

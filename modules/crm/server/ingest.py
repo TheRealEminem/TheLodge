@@ -446,12 +446,12 @@ def run_extraction(row: dict, *, brief: bool, warnings: list[str]) -> tuple[Extr
                 extraction.summary = notes.summary or extraction.summary
                 extraction.key_points = notes.key_points or extraction.key_points
                 extraction.action_items = notes.action_items or extraction.action_items
-                model = f"{pid}:{ai.describe(pid)['model']}"
+                model = f"{pid}:{ai.describe(pid, roles.models('extraction'))['model']}"
                 warnings.append(f"{BASIC_WARNING_PREFIX}: the people were found by rules and the notes by {model}. "
                                 "A bigger model or a cloud AI also finds how people are connected.")
                 return extraction, f"{model} (basic)"
             extraction, pid = roles.structured("extraction", extraction_prompt(ctx), EXTRACTION_SYSTEM, Extraction)
-            return extraction, f"{pid}:{ai.describe(pid)['model']}"  # type: ignore[return-value]
+            return extraction, f"{pid}:{ai.describe(pid, roles.models('extraction'))['model']}"  # type: ignore[return-value]
         except ai.AIError as e:
             if e.provider_down:
                 # Don't quietly degrade every document: stop, and let the batch wait.

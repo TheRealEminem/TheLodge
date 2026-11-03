@@ -141,7 +141,7 @@ def map_sheet(filename: str, sheet: ParsedSheet, owner: str | None, team: list[s
                                             SheetMapping, 8000)
             headers = set(sheet.rows[mapping.header_row - 1]) if 0 < mapping.header_row <= len(sheet.rows) else set()  # type: ignore[attr-defined]
             if mapping.row_kind == "skip" or any(c.column in headers for c in mapping.columns):  # type: ignore[attr-defined]
-                return mapping, f"{pid}:{ai.describe(pid)['model']}"  # type: ignore[return-value]
+                return mapping, f"{pid}:{ai.describe(pid, roles.models('utility'))['model']}"  # type: ignore[return-value]
             log.warning("AI mapping for %s/%s named headers that aren't there; using rules", filename, sheet.name)
         except ai.AIError as e:
             if e.provider_down:

@@ -81,9 +81,13 @@ def choice() -> str:
     return roles.choice("profiles")
 
 
+def models() -> dict[str, str]:
+    return roles.models("profiles")
+
+
 def provider() -> dict:
     """The AI that writes overviews and answers, and whether it's ready."""
-    return ai.describe(choice())
+    return ai.describe(choice(), models())
 
 
 def _scale(local: bool) -> str:
@@ -302,7 +306,7 @@ def write_overview(job: jobs.Job) -> None:
         "Nothing else: no title, no preamble, no sign-off."
     )
     try:
-        body, pid = ai.complete(prompt, OVERVIEW_SYSTEM, choice(), purpose="People overviews")
+        body, pid = ai.complete(prompt, OVERVIEW_SYSTEM, choice(), purpose="People overviews", models=models())
     except ai.AIError as e:
         if e.provider_down:
             raise jobs.Wait(str(e)) from e
@@ -433,7 +437,7 @@ def answer(job: jobs.Job) -> None:
     )
     job.stage("Thinking")
     try:
-        reply, pid = ai.complete(prompt, ANSWER_SYSTEM, choice(), purpose="Questions about people")
+        reply, pid = ai.complete(prompt, ANSWER_SYSTEM, choice(), purpose="Questions about people", models=models())
     except ai.AIError as e:
         return fail(str(e))
     db.execute("UPDATE crm_questions SET status = 'done', answer = ?, error = NULL, written_by = ?, answered_at = ? WHERE id = ?",
