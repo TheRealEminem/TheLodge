@@ -81,8 +81,10 @@ to do if something's wrong.
 - **Research.** Flag people you'd like to know better; The Lodge researches them and files the report on their
   profile. It can go through Claude Code, Codex or Gemini CLI if one is signed in on your Mac, on a Claude, ChatGPT
   or Google plan you already pay for, so nothing is charged per person; or with Gemini and Google Search through
-  your own key (as a half-price batch by default). Or copy a research brief into Gemini Deep Research and bring the
-  reports back in bulk.
+  your own key (as a half-price batch by default). The Research page does it in batches: a cheap first pass with
+  Gemini on everyone, then deep research on your plan for the ones who matter, starting from what the first pass
+  found. Reports that are sure of the person are added by themselves. Or copy a research brief into Gemini Deep
+  Research and bring the reports back in bulk.
 
 **Tasks**
 - My tasks, projects and a board. Action items found in notes and meetings become tasks, linked back to where

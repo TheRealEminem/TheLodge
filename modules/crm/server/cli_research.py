@@ -23,7 +23,7 @@ import tempfile
 import threading
 from pathlib import Path
 
-from core.server import db, events, jobs, lockdown
+from core.server import db, events, jobs, lockdown, settings
 from core.server import usage as tally
 
 from . import ingest, research
@@ -313,7 +313,8 @@ def _run(job: jobs.Job, r: dict) -> None:
     if got["text"]:
         report = trim(got["text"], sub.title)
         footer = f"\n\n---\nResearched by The Lodge with {label}, on {TOOLS[via]['plan']}, on {sub.today}."
-        row = ingest.create_note_job(report + footer, sub.title, None, r["entity_id"])
+        row = ingest.create_note_job(report + footer, sub.title, None, r["entity_id"],
+                                     auto_apply=settings.section("crm")["research_auto_add"])
         _update(r["id"], status="done", stage="done", inbox_id=row["id"], finished_at=_now())
     elif got["limited"]:
         _update(r["id"], status="waiting", error=f"Waiting for {TOOLS[via]['plan']}'s limit: {got['error'][:200]}. "

@@ -260,14 +260,38 @@ def subject(person_id: str) -> Subject:
                    mine=mine, about_me=about_me, today=datetime.now(UTC).strftime("%-d %B %Y"))
 
 
+EARLIER_CHARS = 12_000
+
+
+def earlier(person_id: str) -> tuple[str, str] | None:
+    """The newest research report on someone that's still around (waiting in the Inbox or added), and when it came:
+    what a first pass found, for deeper research to start from. Records merged into them count as them."""
+    ids = [person_id, *(r["source_id"] for r in db.query(
+        "SELECT source_id FROM crm_merges WHERE target_id = ? AND undone_at IS NULL", (person_id,)))]
+    marks = ",".join("?" * len(ids))
+    row = db.one(
+        "SELECT raw_text, created_at FROM crm_inbox WHERE status NOT IN ('discarded', 'skipped') AND raw_text IS NOT NULL "
+        f"AND (json_extract(payload, '$.subject_id') IN ({marks}) OR json_extract(result, '$.subject_id') IN ({marks})) "
+        "ORDER BY created_at DESC LIMIT 1", (*ids, *ids))
+    if not row or not row["raw_text"].strip():
+        return None
+    text = row["raw_text"].strip()
+    if len(text) > EARLIER_CHARS:
+        text = text[:EARLIER_CHARS].rsplit("\n", 1)[0] + "\n[…the rest is left out]"
+    at = parse_dt(row["created_at"])
+    return text, at.strftime("%-d %B %Y") if at else "undated"
+
+
 def brief(person_id: str) -> str:
     """A prompt for a deep-research tool, shaped for Gemini Deep Research (it works in ChatGPT, Claude and Perplexity
     too): who this is as far as you know, why you care, and a report layout the importer reads best. The report is
     asked to keep a ref and say how sure it is of the person, so it comes back to the right profile by itself and a
     doubtful one waits for you. It holds no email address (only the domain) and no meeting notes (only titles and
-    dates), and nothing is sent anywhere."""
+    dates), and nothing is sent anywhere. When there's an earlier report on them (a first pass), it's included as leads
+    to check and go beyond."""
     sub = subject(person_id)
     p, title, ref, known, mine, about_me, today = sub.person, sub.title, sub.ref, sub.known, sub.mine, sub.about_me, sub.today
+    before = earlier(person_id)
 
     lines = [
         title,
@@ -279,6 +303,10 @@ def brief(person_id: str) -> str:
         *known,
         "",
         *(["How I know them:", *mine, ""] if mine else []),
+        *([f"What an earlier search found ({before[1]}), between the lines of ===. Use it as leads, not as "
+           "facts: check what matters, correct anything wrong, and go well beyond it, especially where it found "
+           "nothing. Don't copy it into your report, and don't trust it on who the person is.",
+           "===", before[0], "===", ""] if before else []),
         "First make sure you have the right person. Use the details above to tell them apart from anyone else with "
         "the same name. If you can't be sure, say so, and never blend two people into one profile.",
         "",

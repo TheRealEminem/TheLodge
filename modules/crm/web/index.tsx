@@ -1,6 +1,6 @@
 // The People module's web half: what it adds to the sidebar, its pages and its block on Home.
 import { Suspense, lazy } from "react";
-import { BackpackIcon, InboxIcon, NetworkIcon, PlusIcon, UsersIcon } from "@core/components/icons";
+import { BackpackIcon, InboxIcon, NetworkIcon, PlusIcon, SearchIcon, UsersIcon } from "@core/components/icons";
 import { Skeleton } from "@core/components/ui";
 import { useLive } from "@core/live";
 import { navigate } from "@core/router";
@@ -17,6 +17,7 @@ import Network from "./Network";
 import Organizations from "./Organizations";
 import People from "./People";
 import Profile from "./Profile";
+import ResearchDesk from "./ResearchDesk";
 import Roundups, { RoundupPage } from "./Roundups";
 import SetupStep from "./Setup";
 
@@ -39,6 +40,7 @@ const crm: ModuleWeb = {
     { label: "Network", icon: <NetworkIcon size={16} />, path: "crm/network" },
     { label: "Groups", icon: <GroupGlyph kind="organization" size={16} />, path: "crm/groups" },
     { label: "Roundups", icon: <BackpackIcon size={16} />, path: "crm/roundups" },
+    { label: "Research", icon: <SearchIcon size={16} />, path: "crm/research" },
     { label: "Inbox", icon: <InboxIcon size={16} />, path: "crm/inbox", badge: InboxCount },
   ],
   // The sidebar's big button: the Inbox is where notes and files go in. (Without this, the tasks module's "New task" takes it.)
@@ -48,6 +50,7 @@ const crm: ModuleWeb = {
     { path: "crm/groups", view: Groups },
     { path: "crm/roundups", view: Roundups },
     { path: "crm/roundups/:id", view: RoundupPage },
+    { path: "crm/research", view: ResearchDesk },
     { path: "crm/inbox", view: () => later(<Inbox />) },
     { path: "crm/inbox/:id", view: (p) => later(<InboxItem {...p} />) },
     { path: "crm/organizations", view: Organizations },

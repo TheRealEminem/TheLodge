@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field
 
 from core.server import settings
 
-from . import cli_research, gemini_research, research
+from . import cli_research, gemini_research, research, research_desk
 
 router = APIRouter()
 
@@ -55,6 +55,7 @@ class RunIn(BaseModel):
     level: Literal["quick", "better", "best"] | None = None   # None: the usual level from Settings
     batch: bool | None = None                                 # None: as Settings says
     via: Literal["api", "claude", "codex", "gemini_cli"] | None = None   # None: the usual way from Settings; api is Gemini
+    then: Literal["claude", "codex", "gemini_cli"] | None = None   # with Gemini: deep research through this tool after
 
 
 def _run_guard(fn, *args):
@@ -81,7 +82,14 @@ def gemini_start(body: RunIn):
         return _run_guard(cli_research.start, body.person_ids, via)
     level = body.level or cfg["research_level"]
     batch = cfg["research_batch"] if body.batch is None else body.batch
-    return _run_guard(gemini_research.start, body.person_ids, level, batch)
+    return _run_guard(gemini_research.start, body.person_ids, level, batch, body.then)
+
+
+@router.get("/research/desk")
+def research_desk_list(show: Literal["new", "first", "deep", "running", "skipped"] = "new", q: str = "",
+                       limit: int = Query(50, ge=1, le=500), offset: int = Query(0, ge=0)):
+    """The Research page: people by how far their research has got, the ones who matter most first."""
+    return research_desk.desk(show, q, limit, offset)
 
 
 @router.get("/people/{person_id}/research/gemini")

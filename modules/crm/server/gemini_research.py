@@ -46,6 +46,7 @@ PRICES = {
     "gemini-3.1-pro-preview": (2.00, 12.00, 0.20),
 }
 SEARCH_PRICE = 14 / 1000
+FREE_SEARCHES = 5000      # a month, before SEARCH_PRICE applies (not subtracted from costs here)
 BATCH_DISCOUNT = 0.5
 
 LEVELS = {
@@ -234,10 +235,18 @@ def _thinks(model: str) -> bool:
     return "lite" not in model
 
 
-def estimate(level: str, batch: bool) -> float:
-    """What one person costs at this level, typically (searches past the free 5,000 a month counted)."""
+def searches_each(level: str) -> int:
+    """How many Google searches one person typically takes at this level."""
+    per = TYPICAL["ask_thinking" if _thinks(models_for(level)["ask"]) else "ask"][2]
+    return per * (len(ANGLES) + (2 if models_for(level)["check"] else 0))
+
+
+def estimate(level: str, batch: bool, searches: bool = True) -> float:
+    """What one person costs at this level, typically (searches past the free 5,000 a month counted). Without
+    searches: Gemini's own fee only, what it costs while the month's free searches last."""
     lv = models_for(level)
     ask_in, ask_out, per = TYPICAL["ask_thinking" if _thinks(lv["ask"]) else "ask"]
+    per = per if searches else 0
     total = cost(lv["ask"], {"in": ask_in * len(ANGLES), "out": ask_out * len(ANGLES)}, per * len(ANGLES), batch)
     if lv["check"]:
         c_in, c_out, _ = TYPICAL["check"]
@@ -274,7 +283,10 @@ def overview() -> dict:
         "budget": budget(), "spent": spent_this_month(), "prices_as_of": PRICES_AS_OF, "warn_over": tally.warn_over(),
         "levels": [{"id": k, "label": v["label"], "hint": v["hint"],
                     "models": sorted({MODEL_NAMES.get(m, m) for m in models_for(k).values() if m}),
-                    "estimate": estimate(k, False), "estimate_batch": estimate(k, True)} for k, v in LEVELS.items()],
+                    "estimate": estimate(k, False), "estimate_batch": estimate(k, True),
+                    "free_estimate": estimate(k, False, False), "free_estimate_batch": estimate(k, True, False),
+                    "searches_each": searches_each(k)} for k, v in LEVELS.items()],
+        "free_searches": FREE_SEARCHES,
         "level_models": {"ask": usual["ask"], "write": usual["write"]},   # what the usual level uses unless Settings says
         "runs": [_out(r) for r in db.query("SELECT * FROM crm_research_runs ORDER BY created_at DESC LIMIT 20")],
     }
@@ -286,7 +298,7 @@ def _out(r: dict) -> dict:
     name = db.one("SELECT name FROM crm_entities WHERE id = ?", (r["entity_id"],))
     return {"id": r["id"], "person_id": r["entity_id"], "person": name["name"] if name else None, "level": r["level"], "via": r["via"],
             "batch": bool(r["batch"]), "status": r["status"], "stage": r["stage"], "error": r["error"],
-            "searches": r["searches"], "cost": round(r["cost"], 4), "inbox_id": r["inbox_id"],
+            "searches": r["searches"], "cost": round(r["cost"], 4), "inbox_id": r["inbox_id"], "then_via": r["then_via"],
             "created_at": r["created_at"], "finished_at": r["finished_at"]}
 
 
@@ -301,11 +313,14 @@ def run_of(person_id: str) -> dict | None:
     return _out(r) if r else None
 
 
-def start(person_ids: list[str], level: str, batch: bool) -> dict:
+def start(person_ids: list[str], level: str, batch: bool, then_via: str | None = None) -> dict:
     """Start research on these people, as many as fit in what's left of the month's budget. Someone already being
-    researched, or who can't be (no surname), is skipped and said why."""
+    researched, or who can't be (no surname), is skipped and said why. With then_via, each run is a first pass that
+    hands over to deep research through that AI tool when it ends."""
     if level not in LEVELS:
         raise ResearchRunError("Unknown level")
+    if then_via and (why := cli_research.problem(then_via)):
+        raise ResearchRunError(why)
     if (why := locked()):
         raise ResearchRunError(why)
     if not api_key():
@@ -327,8 +342,9 @@ def start(person_ids: list[str], level: str, batch: bool) -> dict:
             continue
         room -= each
         now = _now()
-        db.execute("INSERT INTO crm_research_runs (id, entity_id, level, batch, status, stage, findings, usage, created_at, updated_at) "
-                   "VALUES (?, ?, ?, ?, 'queued', 'ask', '[]', '{}', ?, ?)", (db.new_id(), pid, level, int(batch), now, now))
+        db.execute("INSERT INTO crm_research_runs (id, entity_id, level, batch, status, stage, findings, usage, then_via, "
+                   "created_at, updated_at) VALUES (?, ?, ?, ?, 'queued', 'ask', '[]', '{}', ?, ?, ?)",
+                   (db.new_id(), pid, level, int(batch), then_via, now, now))
         started.append(pid)
     if started:
         jobs.enqueue("crm", "research_advance", "scheduled")
@@ -380,6 +396,24 @@ def _update(run_id: str, **fields) -> None:
             fields[k] = json.dumps(fields[k])
     fields["updated_at"] = _now()
     db.execute(f"UPDATE crm_research_runs SET {', '.join(f'{k} = ?' for k in fields)} WHERE id = ?", (*fields.values(), run_id))
+    if fields.get("status") in ("done", "failed"):
+        _hand_over(run_id)
+
+
+def _hand_over(run_id: str) -> None:
+    """A first pass that ends, found something or not, starts the deep research it was asked to hand over to. Deep
+    research begins from the first pass's report (research.brief includes it)."""
+    r = db.one("SELECT entity_id, then_via FROM crm_research_runs WHERE id = ?", (run_id,))
+    if not r or not r["then_via"]:
+        return
+    db.execute("UPDATE crm_research_runs SET then_via = NULL WHERE id = ?", (run_id,))
+    try:
+        got = cli_research.start([r["entity_id"]], r["then_via"])
+    except cli_research.CliResearchError as e:
+        log.warning("deep research after %s didn't start: %s", run_id, e)
+        return
+    if got["skipped"]:
+        log.warning("deep research after %s didn't start: %s", run_id, got["skipped"][0]["reason"])
 
 
 def models_for(level: str) -> dict:
@@ -509,7 +543,8 @@ def _file(r: dict, report: str, searches: int, spent: float) -> dict:
     models = " and ".join(dict.fromkeys(MODEL_NAMES.get(m, m) for m in (lv["ask"], lv["check"], lv["write"]) if m))
     footer = (f"\n\n---\nResearched by The Lodge with {models}{' through Google Batch' if r['batch'] else ''} on {sub.today}: "
               f"{searches} Google search{'' if searches == 1 else 'es'}, about ${spent:.2f}.")
-    row = ingest.create_note_job(report.strip() + footer, sub.title, None, r["entity_id"])
+    row = ingest.create_note_job(report.strip() + footer, sub.title, None, r["entity_id"],
+                                 auto_apply=settings.section("crm")["research_auto_add"])
     return {"stage": "done", "status": "done", "inbox_id": row["id"], "finished_at": _now()}
 
 
