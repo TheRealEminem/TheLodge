@@ -28,7 +28,7 @@ turn on **Beta updates** there to get new versions a few days early, and **Go ba
 **Where things are kept:** `~/Library/Application Support/The Lodge` holds your people, notes, settings and keys
 (readable only by you), plus `logs/server.log`. A backup is made there every hour something changes, and a few are
 kept: the newest, and one from about an hour, a day and a week ago. Deleting the app leaves them alone; updating is
-just replacing the app. [INSTALL.md](INSTALL.md) has the rest: Granola and calendars, backups and restore, and what
+just replacing the app. [INSTALL.md](INSTALL.md) has the rest: Trailmix, Granola and calendars, backups and restore, and what
 to do if something's wrong.
 
 ## Features
@@ -56,9 +56,11 @@ to do if something's wrong.
   it isn't sure of waits in the **Inbox** for you to check.
 - **Spreadsheets**, with the AI matching their columns to your fields for you to check, and **LinkedIn**'s own
   Connections export.
-- **Meetings come to you.** Connect [Granola](https://granola.ai) and new meetings arrive every 15 minutes with
-  their summary and transcript, matched to your people by email. Connect a calendar's private iCal address and
-  meetings with people you know go on your book too. Everything either one adds can be taken back in one step.
+- **Meetings come to you.** Turn on [Trailmix](https://github.com/TheRealEminem/trailmix) and the meetings you record
+  on this Mac come in every 15 minutes with their notes and transcript, leaving out the workspaces you choose.
+  Connect [Granola](https://granola.ai) and its meetings arrive the same way, matched to your people by email; a
+  meeting Trailmix took from Granola comes in once. Connect a calendar's private iCal address and meetings with
+  people you know go on your book too. Everything any of them adds can be taken back in one step.
 - **A sheet others can add to.** Share a Google Sheet so people without the app can read, correct and add to your
   people; it's kept in step both ways.
 

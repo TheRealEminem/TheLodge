@@ -1,12 +1,12 @@
-// Settings for the two automatic ways in: Granola meetings and calendar events.
-import { useState } from "react";
+// Settings for the automatic ways in: Trailmix and Granola meetings, and calendar events.
+import { useEffect, useState } from "react";
 import { Section, SecretSetting } from "@core/components/blocks";
-import { AlertIcon, CalendarIcon, CheckIcon, NoteIcon, RefreshIcon, TrashIcon } from "@core/components/icons";
-import { ControlRow, Spinner, SwitchRow, useConfirm } from "@core/components/ui";
+import { AlertIcon, CalendarIcon, CheckIcon, MicIcon, NoteIcon, RefreshIcon, TrashIcon } from "@core/components/icons";
+import { ControlRow, Select, Spinner, SwitchRow, useConfirm } from "@core/components/ui";
 import { useLive } from "@core/live";
 import { useSettings, useShell } from "@core/shell";
 import { crmApi } from "./api";
-import type { CaptureSource, CaptureStatus } from "./api";
+import type { CaptureSource, CaptureStatus, TrailmixFound } from "./api";
 import { LockedNote } from "./bits";
 import { relativeTime } from "./format";
 
@@ -27,7 +27,7 @@ function StatusLine({ status, what }: { status: CaptureStatus | undefined; what:
   const counts = status.last_counts;
   const detail = counts
     ? what === "meetings"
-      ? `${plural(counts.imported ?? 0, "new meeting")} found`
+      ? `${plural(counts.imported ?? 0, "new meeting")} found${counts.later ? `, ${counts.later} more over the next checks` : ""}${counts.total ? ` · ${counts.total} brought in so far` : ""}`
       : `${plural(counts.meetings ?? 0, "meeting")} from ${plural(counts.events ?? 0, "event")}`
     : "";
   return (
@@ -76,7 +76,7 @@ function RemoveRow({ source, confirm, onDone }: { source: CaptureSource | undefi
   );
 }
 
-function Actions({ which, ready }: { which: "granola" | "calendar"; ready: boolean }) {
+function Actions({ which, ready }: { which: "trailmix" | "granola" | "calendar"; ready: boolean }) {
   const { toast } = useShell();
   const [busy, setBusy] = useState<"test" | "sync" | null>(null);
   const [result, setResult] = useState<{ ok: boolean; text: string } | null>(null);
@@ -89,7 +89,9 @@ function Actions({ which, ready }: { which: "granola" | "calendar"; ready: boole
         toast("Checking now. New meetings appear in the Inbox or your people.");
       } else {
         const r = await crmApi.captureTest(which);
-        if (which === "granola") {
+        if (which === "trailmix") {
+          setResult({ ok: true, text: `Trailmix is answering, with ${plural(r.done as number, "finished meeting")}.` });
+        } else if (which === "granola") {
           setResult({
             ok: true,
             text: `Granola accepted the key${r.has_notes ? "" : " (no notes yet)"}.${r.needs_my_email ? " Add your email to your own profile so The Lodge can tell which attendee is you." : ""}`,
@@ -125,6 +127,39 @@ function Actions({ which, ready }: { which: "granola" | "calendar"; ready: boole
   );
 }
 
+const BACK = [{ value: "30", label: "30 days" }, { value: "90", label: "90 days" }, { value: "365", label: "A year" }, { value: "0", label: "Everything" }];
+
+/** Trailmix on this Mac: whether it's there, how many meetings it has, and which of its workspaces come in. */
+function TrailmixChoices() {
+  const { get, save } = useSettings();
+  const [found, setFound] = useState<TrailmixFound | null>(null);
+  const [missing, setMissing] = useState<string | null>(null);
+  useEffect(() => {
+    crmApi.trailmixFind().then(setFound, (e: Error) => setMissing(e.message));
+  }, []);
+  const skip = get<string[]>("crm.trailmix_skip_workspaces") ?? [];
+  if (missing) return <p className="flex items-start gap-1.5 py-3.5 text-hint leading-snug text-ink-soft"><AlertIcon size={16} className="mt-px shrink-0" />{missing}</p>;
+  if (!found) return null;
+  return (
+    <>
+      <p className="py-3.5 text-hint text-ink-soft">Trailmix is on this Mac, with {plural(found.done, "finished meeting")}.</p>
+      {found.workspaces.length > 0 && (
+        <ControlRow label="Workspaces to bring in" hint="Leave out any that aren't about people you want in your book, such as personal ones. Meetings in no workspace always come in." wrap>
+          <div className="flex flex-wrap gap-x-4 gap-y-2">
+            {found.workspaces.map((w) => (
+              <label key={w.id} className="flex items-center gap-2 text-ui">
+                <input type="checkbox" className="accent-forest" checked={!skip.includes(String(w.id))}
+                  onChange={(e) => void save({ "crm.trailmix_skip_workspaces": e.target.checked ? skip.filter((x) => x !== String(w.id)) : [...skip, String(w.id)] })} />
+                {w.name} <span className="text-ink-soft tabular-nums">{w.meetings}</span>
+              </label>
+            ))}
+          </div>
+        </ControlRow>
+      )}
+    </>
+  );
+}
+
 export default function CaptureSettings() {
   const { get, save, hints } = useSettings();
   const [confirm, confirmDialog] = useConfirm();   // outside the sections: their entrance animation would trap a fixed dialog
@@ -133,6 +168,32 @@ export default function CaptureSettings() {
   const refresh = () => void reload();
   return (
     <>
+      <Section
+        icon={<MicIcon size={16} />}
+        title="People: Trailmix"
+        blurb="Meetings you record with Trailmix on this Mac are read and added on their own: who was there, what was said, and what was agreed. Nothing leaves the Mac to fetch them."
+      >
+        <SwitchRow
+          label="Bring in Trailmix meetings"
+          hint="Checks every 15 minutes. Each meeting is read by the AI that reads your notes, so it counts toward that AI's usage."
+          checked={!!get<boolean>("crm.trailmix_sync")}
+          onChange={(v) => void save({ "crm.trailmix_sync": v })}
+        />
+        <TrailmixChoices />
+        <ControlRow label="How far back" hint="Meetings older than this aren't brought in. A big backlog comes in 40 at a time, a few minutes apart.">
+          <Select label="How far back" size="sm" className="w-full sm:w-40" value={String(get<number>("crm.trailmix_days") ?? 90)}
+            options={BACK} onChange={(v) => void save({ "crm.trailmix_days": Number(v) })} />
+        </ControlRow>
+        <SwitchRow
+          label="Add meetings to your people automatically"
+          hint="Off: each one waits in the Inbox for you to look over. On: it's added unless a name is unclear."
+          checked={get<boolean>("crm.trailmix_auto_apply") !== false}
+          onChange={(v) => void save({ "crm.trailmix_auto_apply": v })}
+        />
+        <StatusLine status={data?.trailmix} what="meetings" />
+        <Actions which="trailmix" ready={!!data?.trailmix.configured} />
+        <RemoveRow source={source("trailmix")} confirm={confirm} onDone={refresh} />
+      </Section>
       <Section
         icon={<NoteIcon size={16} />}
         title="People: Granola"

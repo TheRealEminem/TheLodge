@@ -1,10 +1,10 @@
-"""Automatic capture, mounted under /api/crm/capture: what Granola and the calendars have done, trying a key or an
+"""Automatic capture, mounted under /api/crm/capture: what Trailmix, Granola and the calendars have done, trying a key or an
 address, syncing now, and taking back everything one of them brought in."""
 from fastapi import APIRouter, HTTPException
 
 from core.server import jobs, schedule
 
-from . import calendar_sync, capture, granola
+from . import calendar_sync, capture, granola, trailmix
 
 router = APIRouter(prefix="/capture")
 
@@ -16,7 +16,8 @@ def _status(name: str, configured: bool, locked: str | None) -> dict:
 
 @router.get("")
 def status():
-    return {"granola": _status("granola", granola.configured(), granola.locked()),
+    return {"trailmix": _status("trailmix", trailmix.configured(), None),
+            "granola": _status("granola", granola.configured(), granola.locked()),
             "calendar": _status("calendar", calendar_sync.configured(), calendar_sync.locked()),
             "sources": [capture.preview(o) for o in capture.ORIGINS]}
 
@@ -26,6 +27,14 @@ def test_granola():
     try:
         return granola.test()
     except granola.GranolaError as e:
+        raise HTTPException(422, str(e)) from e
+
+
+@router.post("/trailmix/test")
+def test_trailmix():
+    try:
+        return trailmix.test()
+    except trailmix.TrailmixError as e:
         raise HTTPException(422, str(e)) from e
 
 
@@ -39,8 +48,10 @@ def test_calendar():
 
 @router.post("/sync", status_code=202)
 def sync_now():
-    """Run both now rather than at their next turn. Anything not set up does nothing."""
+    """Run them all now rather than at their next turn. Anything not set up does nothing."""
     queued = []
+    if trailmix.configured():
+        queued.append(jobs.enqueue("crm", "trailmix_sync", schedule.TARGET))
     if granola.configured():
         queued.append(jobs.enqueue("crm", "granola_sync", schedule.TARGET))
     if calendar_sync.configured():

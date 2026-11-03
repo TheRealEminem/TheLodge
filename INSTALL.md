@@ -33,9 +33,15 @@ The Lodge is a normal Mac app for Apple silicon (M1 or later), macOS 14 or newer
 Add people by hand, or drop a spreadsheet, a LinkedIn connections export, documents or notes on the Inbox. The first-run
 setup offers a fictional network if you only want to look around (Home has the same link until you add your own people).
 
-## Granola and calendars
+## Trailmix, Granola and calendars
 
-Both are optional and live in Settings, under People. Pasted keys and addresses are saved on this Mac like your AI keys.
+All three are optional and live in Settings, under People. Pasted keys and addresses are saved on this Mac like your AI keys.
+
+- **Trailmix:** if Trailmix is on this Mac, Settings shows how many meetings it has. Turn on "Bring in Trailmix
+  meetings", untick any workspace you'd rather keep out (a personal one, say), and choose how far back to go. Every
+  15 minutes its finished meetings are read, notes and transcript, by the AI that reads everything else, and added
+  (or they wait in the Inbox, if you turn automatic adding off). A big backlog comes in 40 at a time. Nothing leaves
+  the Mac to fetch them. A meeting Trailmix brought in from Granola comes in once, even with Granola connected too.
 
 - **Granola:** in the Granola app, Settings, Connectors, API keys, make a key and paste it in. It needs a Granola
   Business or Enterprise plan. New meetings are picked up every 15 minutes: Granola's summary and transcript are read,
@@ -44,9 +50,9 @@ Both are optional and live in Settings, under People. Pasted keys and addresses 
 - **Calendar:** in Google Calendar, Settings for the calendar, Integrate calendar, copy the "Secret address in iCal
   format" and paste it in. Meetings from the last week and the next two with people you already know are put on your
   book, so a Granola note taken later joins the same meeting. People you don't know on an invite aren't added.
-- **Taking it back:** everything either one adds is marked with where it came from. Under each section, "Remove what
-  came from…" deletes just that (it shows how many meetings and people first), and Granola meetings you remove are not
-  brought in again.
+- **Taking it back:** everything any of them adds is marked with where it came from. Under each section, "Remove what
+  came from…" deletes just that (it shows how many meetings and people first), and Trailmix or Granola meetings you
+  remove are not brought in again.
 
 ## Backups, restore and export
 

@@ -1,4 +1,4 @@
-"""What the automatic syncs (Granola, calendars) share: where each got to, and taking back what one brought in.
+"""What the automatic syncs (Trailmix, Granola, calendars) share: where each got to, and taking back what one brought in.
 
 Everything a sync creates is stamped with its origin in the `source` column of the entities, lines and notes it
 makes ("granola", "calendar"). That is the handle for removing it: `preview(origin)` says what would go,
@@ -13,7 +13,7 @@ from . import inbox, store
 
 log = logging.getLogger("crm.capture")
 
-ORIGINS = {"granola": "Granola", "calendar": "Calendar"}
+ORIGINS = {"trailmix": "Trailmix", "granola": "Granola", "calendar": "Calendar"}
 
 
 # ── Where each sync got to ────────────────────────────────────────────

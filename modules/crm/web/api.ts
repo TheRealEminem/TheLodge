@@ -61,7 +61,7 @@ export interface CaptureStatus {
 }
 
 export interface CaptureSource {
-  origin: "granola" | "calendar";
+  origin: "trailmix" | "granola" | "calendar";
   label: string;
   meetings: number;
   people: number;
@@ -69,7 +69,16 @@ export interface CaptureSource {
   lines: number;
 }
 
+/** What Trailmix on this Mac has, for choosing what comes in. */
+export interface TrailmixFound {
+  meetings: number;
+  done: number;
+  workspaces: { id: number; name: string; meetings: number }[];
+  unsorted: number;
+}
+
 export interface CaptureOverview {
+  trailmix: CaptureStatus;
   granola: CaptureStatus;
   calendar: CaptureStatus;
   sources: CaptureSource[];
@@ -792,8 +801,9 @@ export const crmApi = {
   people: (p: { tier?: string; org?: string; tag?: string; q?: string; sort?: string; limit?: number; needs_research?: string }) =>
     request<PeoplePage>(`/crm/people${qs(p)}`),
   capture: () => request<CaptureOverview>("/crm/capture"),
-  captureTest: (which: "granola" | "calendar") =>
+  captureTest: (which: "trailmix" | "granola" | "calendar") =>
     request<Record<string, unknown>>(`/crm/capture/${which}/test`, json("POST")),
+  trailmixFind: () => request<TrailmixFound>("/crm/capture/trailmix/test", json("POST")),
   captureSync: () => request<{ queued: number }>("/crm/capture/sync", json("POST")),
   captureRemove: (origin: string) =>
     request<{ meetings: number; people: number; lines: number; kept: number }>(`/crm/capture/${origin}/remove`, json("POST")),
