@@ -92,6 +92,21 @@ export interface SheetStatus {
 
 export type ResearchState = "needed" | "snoozed" | "dismissed" | "name_needed" | "has_context";
 
+/** One person or organization as Markdown (quick_export.py): to copy, or to save as a file. */
+export interface QuickExport {
+  id: string;
+  title: string;
+  markdown: string;
+  characters: number;
+}
+export interface SavedExport {
+  name: string;
+  path: string;
+  folder: string;
+  format: "md" | "pdf";
+  bytes: number;
+}
+
 /** A research report you brought in (a person or organization profile from the Inbox) that is about them or names them. */
 export interface ResearchReport {
   inbox_id: string;
@@ -747,6 +762,9 @@ export const crmApi = {
   cancelRun: (runId: string) => request<ResearchRun>(`/crm/research/gemini/${runId}/cancel`, json("POST")),
   retryRun: (runId: string) => request<ResearchRun>(`/crm/research/gemini/${runId}/retry`, json("POST")),
   researchBrief: (id: string) => request<{ text: string }>(`/crm/people/${id}/research/brief`),
+  quickExport: (id: string) => request<QuickExport>(`/crm/entities/${id}/export`),
+  saveExport: (id: string, format: "md" | "pdf") => request<SavedExport>(`/crm/entities/${id}/export`, json("POST", { format })),
+  exportFileUrl: (name: string) => `/api/crm/exports/${encodeURIComponent(name)}`,
   organizations: (p: { scope?: string; q?: string; tag?: string; sort?: string; limit?: number }) =>
     request<OrgPage>(`/crm/organizations${qs(p)}`),
   entity: (id: string) => request<{ entity: Entity }>(`/crm/entities/${id}`),
