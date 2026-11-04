@@ -1,6 +1,6 @@
 // Settings: the host's own sections (appearance, you, AI, the app), then one section per module.
 import { useEffect, useState } from "react";
-import { api, inApp, quitApp, sendUpdates } from "../api";
+import { api, can, inApp, quitApp, sendUpdates, words } from "../api";
 import type { FamilyStatus, ProviderId, ProviderInfo, SystemInfo, UpdateReport } from "../api";
 import { Section, SecretSetting, TextSetting } from "../components/blocks";
 import { ChooseAi } from "../components/ChooseAi";
@@ -85,7 +85,7 @@ function OnThisMac() {
   return (
     <Section
       icon={<LaptopIcon size={16} />}
-      title="On this Mac"
+      title={`On ${words.here}`}
       blurb="A model that runs here is free and private: nothing you write is sent anywhere."
       delay={30}
     >
@@ -104,7 +104,7 @@ function OnThisMac() {
 function ChooseWhereAiRuns() {
   const [open, setOpen] = useState(false);
   return (
-    <Section icon={<LaptopIcon size={16} />} title="You can now run everything on this Mac" blurb="Choose where AI runs: on this Mac, in the cloud, or a mix. Nothing changes until you choose." delay={20}>
+    <Section icon={<LaptopIcon size={16} />} title={`You can now run everything on ${words.here}`} blurb={`Choose where AI runs: on ${words.here}, in the cloud, or a mix. Nothing changes until you choose.`} delay={20}>
       {open ? <div className="py-3.5"><ChooseAi onChosen={() => setOpen(false)} skippable={() => setOpen(false)} /></div> : (
         <div className="py-3.5"><button className="btn btn-sm btn-soft" onClick={() => setOpen(true)}>Choose where AI runs</button></div>
       )}
@@ -115,12 +115,12 @@ function ChooseWhereAiRuns() {
 /** Lockdown: one switch, shared by the family apps on this Mac. */
 function Privacy({ on, onChange }: { on: boolean; onChange: (on: boolean) => void }) {
   return (
-    <Section icon={<LockIcon size={16} />} title="Privacy" blurb="Everything is kept on this Mac. Lockdown makes sure nothing is sent out either.">
+    <Section icon={<LockIcon size={16} />} title="Privacy" blurb={`Everything is kept on ${words.here}. Lockdown makes sure nothing is sent out either.`}>
       <SwitchRow
         label="Lockdown"
         hint={
           on
-            ? "On: only AI that runs on this Mac is used. No update checks of its own, no downloads, and anything that talks to another service (a research service, a note app, a calendar, a shared Sheet, picture look-ups) is switched off."
+            ? `On: only AI that runs on ${words.here} is used. No update checks of its own, no downloads, and anything that talks to another service (a research service, a note app, a calendar, a shared Sheet, picture look-ups) is switched off.`
             : "Off: you choose which services to use, and each is described where you turn it on. Turn this on to switch them all off at once."
         }
         checked={on}
@@ -139,14 +139,14 @@ function FamilyApps({ data, onSharing }: { data: FamilyStatus | null; onSharing:
     return (
       <Section icon={<NetworkIcon size={16} />} title="Your family apps" blurb="Trailmix family apps on one Mac can share keys, preferences and what they know.">
         <p className="py-3.5 text-hint text-ink-soft">
-          Off for this copy of {app.name}: it isn't running as the Mac app. Set TRAILMIX_FAMILY_DIR to a folder to join one.
+          Off for this copy of {app.name}: it isn't running as {words.app}. Set TRAILMIX_FAMILY_DIR to a folder to join one.
         </p>
       </Section>
     );
   }
   const others = data.apps.filter((a) => !a.self);
   return (
-    <Section icon={<NetworkIcon size={16} />} title="Your family apps" blurb="Trailmix family apps on this Mac share keys and preferences, and ask each other for what they know.">
+    <Section icon={<NetworkIcon size={16} />} title="Your family apps" blurb={`Trailmix family apps on ${words.here} share keys and preferences, and ask each other for what they know.`}>
       <SwitchRow
         label="Share keys and preferences"
         hint={
@@ -170,7 +170,7 @@ function FamilyApps({ data, onSharing }: { data: FamilyStatus | null; onSharing:
           ))}
         </ul>
       ) : (
-        <p className="py-3.5 text-hint text-ink-soft">No other family apps have opened on this Mac yet. When one does, it shows here.</p>
+        <p className="py-3.5 text-hint text-ink-soft">No other family apps have opened on {words.here} yet. When one does, it shows here.</p>
       )}
     </Section>
   );
@@ -194,12 +194,12 @@ function Updates() {
   const { app } = useShell();
   const { get } = useSettings();
   const u = useUpdates();
-  const blurb = "New versions install from here or from the menu bar, in about a minute. Your data stays.";
-  if (!inApp || !u || !u.enabled) {
+  const blurb = `New versions install from here or from ${words.tray}, in about a minute. Your data stays.`;
+  if (!can("updates") || !u || !u.enabled) {
     return (
       <Section icon={<DownloadIcon size={16} />} title="Updates" blurb={blurb}>
         <p className="py-3.5 text-hint text-ink-soft">
-          {!inApp ? `Open ${app.name} from Applications to check for updates.` : `This copy of ${app.name} doesn't update itself (a development build).`}
+          {!inApp ? `Open ${app.name} from ${words.apps} to check for updates.` : `This copy of ${app.name} doesn't update itself (a development build).`}
         </p>
       </Section>
     );
@@ -281,7 +281,7 @@ export default function Settings() {
   const [setup, setSetup] = useState<ProviderId | null>(null);
   const modules = modulesFor(app.modules.map((m) => m.id)).filter((m) => m.settings);
   if (!values) return null;
-  const options = (providers ?? []).map((p) => ({ value: p.id, label: p.label, hint: p.kind === "local" ? "Runs on this Mac" : "Cloud" }));
+  const options = (providers ?? []).map((p) => ({ value: p.id, label: p.label, hint: p.kind === "local" ? `Runs on ${words.here}` : "Cloud" }));
   const primary = values["ai.provider"] as ProviderId;
   const setupId = setup ?? primary;
   const setupOptions = (providers ?? []).map((p) => ({ value: p.id, label: p.label, hint: p.ready ? "Ready" : p.kind === "local" ? "Not running" : "Needs setup" }));
@@ -316,7 +316,7 @@ export default function Settings() {
       <Section
         icon={<SparkleIcon size={16} />}
         title="AI"
-        blurb={`One choice for every part of the app. Local models never leave this Mac.${family?.sharing ? " Shared with your other family apps." : ""}`}
+        blurb={`One choice for every part of the app. Local models never leave ${words.here}.${family?.sharing ? " Shared with your other family apps." : ""}`}
         delay={60}
       >
         <ControlRow label="Provider" hint={providers?.find((p) => p.id === primary)?.reason || "Used first."}>
@@ -359,7 +359,7 @@ export default function Settings() {
             Run setup again
           </button>
         </ControlRow>
-        <ControlRow label={`Quit ${app.name}`} hint={inApp ? "Closes the window and the menu bar app." : "Stops the server; open the app again to come back."}>
+        <ControlRow label={`Quit ${app.name}`} hint={inApp ? `Closes the window and the app in ${words.tray}.` : "Stops the server; open the app again to come back."}>
           <button className="btn btn-sm btn-danger-ghost" onClick={() => (inApp ? quitApp() : void api.shutdown())}>
             <PowerIcon size={16} />
             Quit

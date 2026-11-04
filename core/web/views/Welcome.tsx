@@ -2,7 +2,7 @@
 //   Hello → where AI runs → privacy → one step from each module that wants one → done.
 import { useState } from "react";
 import type { ComponentType } from "react";
-import { api } from "../api";
+import { api, words } from "../api";
 import { TextSetting } from "../components/blocks";
 import { ChooseAi } from "../components/ChooseAi";
 import { CheckIcon, LockIcon } from "../components/icons";
@@ -41,12 +41,12 @@ function Privacy({ next }: { next: () => void }) {
   const on = !!values?.["core.lockdown"];
   return (
     <>
-      <p className="mt-2 text-body leading-relaxed text-ink-soft">Everything is kept on this Mac. Lockdown makes sure nothing is sent out either.</p>
+      <p className="mt-2 text-body leading-relaxed text-ink-soft">Everything is kept on {words.here}. Lockdown makes sure nothing is sent out either.</p>
       <div className="mt-4">
         <SwitchRow
           icon={<LockIcon size={16} />}
           label="Lockdown"
-          hint="On: only AI that runs on this Mac is used, the app doesn't check for updates by itself, and anything that talks to another service is switched off. Off: you pick the services you want, one at a time."
+          hint={`On: only AI that runs on ${words.here} is used, the app doesn't check for updates by itself, and anything that talks to another service is switched off. Off: you pick the services you want, one at a time.`}
           checked={on}
           onChange={(v) => void save({ "core.lockdown": v })}
         />

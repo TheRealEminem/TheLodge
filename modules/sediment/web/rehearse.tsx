@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { api } from "@core/api";
+import { api, words } from "@core/api";
 import { AlertIcon, ArrowUpIcon, PlusIcon, RefreshIcon, SparkleIcon, TrashIcon } from "@core/components/icons";
 import { Select, Skeleton, Spinner } from "@core/components/ui";
 import { formatDate, relativeTime } from "@core/format";
@@ -207,8 +207,8 @@ export function RehearsePanel({ personRef, first }: { personRef: string; first: 
       )}
       {talk && (
         <p className="mt-3 text-meta text-ink-soft">
-          {first} is played by {talk.label}{talk.local ? " on this Mac" : ""}, from their portrait and what's on file. Nothing said here is added to their profile.
-          {talk.local && <> Small models on this Mac play people loosely; a cloud AI does it far better (Settings → Sediment).</>}
+          {first} is played by {talk.label}{talk.local ? ` on ${words.here}` : ""}, from their portrait and what's on file. Nothing said here is added to their profile.
+          {talk.local && <> Small models on {words.here} play people loosely; a cloud AI does it far better (Settings → Sediment).</>}
         </p>
       )}
     </section>

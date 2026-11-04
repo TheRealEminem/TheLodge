@@ -1,7 +1,7 @@
 // Settings → AI → Usage: a quiet running count of what AI has been asked to do, there when you look for it.
 // Nothing here limits anything; the only interruption elsewhere is a warning before a job that would cost a lot.
 import { useState } from "react";
-import { api } from "../api";
+import { api, words } from "../api";
 import { ChevronDownIcon } from "../components/icons";
 import { ControlRow } from "../components/ui";
 import { useLive } from "../live";
@@ -85,7 +85,7 @@ export function UsageRows() {
                   <li key={`${m.provider}:${m.model}`} className="flex flex-wrap items-baseline justify-between gap-x-3">
                     <span className="min-w-0 truncate">{m.model}</span>
                     <span className="text-hint tabular-nums text-ink-soft">
-                      {m.calls}× · {count(m.tokens_in + m.tokens_out)} tokens · {m.local ? "free, on this Mac" : m.priced ? dollars(m.cost) : "price unknown"}
+                      {m.calls}× · {count(m.tokens_in + m.tokens_out)} tokens · {m.local ? `free, on ${words.here}` : m.priced ? dollars(m.cost) : "price unknown"}
                     </span>
                   </li>
                 ))}

@@ -4,6 +4,7 @@
 import { useState } from "react";
 import { AlertIcon, CheckIcon, ClockIcon, SearchIcon, SparkleIcon } from "@core/components/icons";
 import { PageHeader, Segmented, Select, Skeleton, Spinner, useConfirm } from "@core/components/ui";
+import { words } from "@core/api";
 import { useLive } from "@core/live";
 import { useSettings, useShell } from "@core/shell";
 import { crmApi } from "./api";
@@ -53,7 +54,7 @@ function HowItRuns({ data, deep, setDeep }: { data: GeminiOverview; deep: Resear
         <p className="mt-1 text-hint text-ink-soft">
           {deep?.ready
             ? `On ${deep.plan}, nothing charged here. It starts from what the first pass found and goes further, one person at a time, a few minutes each. When the plan's limit is reached it waits and carries on.`
-            : <span className="text-trail-deep">{deep?.reason ?? "No AI tool is set up on this Mac."}</span>}
+            : <span className="text-trail-deep">{deep?.reason ?? `No AI tool is set up on ${words.here}.`}</span>}
         </p>
       </div>
       <label className="flex items-start gap-2.5 border-t border-line pt-3 text-ui text-ink-soft sm:col-span-2">

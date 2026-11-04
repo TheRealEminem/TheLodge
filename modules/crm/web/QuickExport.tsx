@@ -1,7 +1,7 @@
 // Quick export: what's on file about one person or organization, as Markdown to copy (into an AI chat, say) or to save
 // as a Markdown or PDF file (the server half is quick_export.py).
 import { useRef, useState } from "react";
-import { inApp, revealInFinder } from "@core/api";
+import { can, revealFile, words } from "@core/api";
 import { CheckIcon, CopyIcon, DocIcon } from "@core/components/icons";
 import { Skeleton, Spinner } from "@core/components/ui";
 import { useLive } from "@core/live";
@@ -30,8 +30,8 @@ export function QuickExportDialog({ entity, onClose }: { entity: Entity; onClose
     setSaving(format);
     try {
       const saved = await crmApi.saveExport(entity.id, format);
-      if (inApp) {
-        revealInFinder(saved.path);
+      if (can("reveal")) {
+        revealFile(saved.path);
       } else {
         const a = document.createElement("a");
         a.href = crmApi.exportFileUrl(saved.name);
@@ -76,7 +76,7 @@ export function QuickExportDialog({ entity, onClose }: { entity: Entity; onClose
           {copied ? <CheckIcon size={18} /> : <CopyIcon size={18} />} {copied ? "Copied" : "Copy"}
         </button>
       </div>
-      {inApp && <p className="mt-3 text-hint text-ink-soft">Saved files go in your data folder, under crm/exports, and open in Finder.</p>}
+      {can("reveal") && <p className="mt-3 text-hint text-ink-soft">Saved files go in your data folder, under crm/exports, and open in {words.files}.</p>}
     </Dialog>
   );
 }

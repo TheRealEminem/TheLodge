@@ -1,7 +1,7 @@
 // The host app: sign-in, the shell (sidebar, top bar on narrow windows, content column), and routing to the
 // host's own views and every enabled module's views.
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { AUTH_EVENT, api } from "./api";
+import { AUTH_EVENT, api, setSystem } from "./api";
 import type { AppInfo } from "./api";
 import { MenuIcon } from "./components/icons";
 import { Ambient, Logo } from "./components/illustrations";
@@ -75,6 +75,7 @@ export default function App() {
       api.app().then(
         (a) => {
           if (!alive) return;
+          setSystem(a.computer);
           setInfo(a);
           setDown(false);
           document.title = a.name;

@@ -16,7 +16,7 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import ai, auth, backup, config, db, events, family, jobs, links, lockdown, module, ollama_setup, people, resources, schedule, search, settings, usage
+from . import ai, auth, backup, computer, config, db, events, family, jobs, links, lockdown, module, ollama_setup, people, resources, schedule, search, settings, usage
 from . import setup as first_run
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -139,7 +139,8 @@ def app_info():
     """Who this app is and what it's made of; the web app builds its navigation from this."""
     return {"id": config.APP_ID, "name": config.NAME, "tagline": config.IDENTITY.get("tagline", ""),
             "version": config.VERSION, "modules": [{"id": m.id, "name": m.name} for m in module.all_modules()],
-            "auth_required": auth.required(), "lockdown": lockdown.on(), "setup_done": first_run.done()}
+            "auth_required": auth.required(), "lockdown": lockdown.on(), "setup_done": first_run.done(),
+            "computer": computer.info()}
 
 
 @core_router.get("/auth")

@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { words } from "@core/api";
 import { JobStatus } from "@core/components/blocks";
 import { AlertIcon, ArrowUpIcon, ChatIcon, RefreshIcon, SparkleIcon, TrashIcon } from "@core/components/icons";
 import { Skeleton, Spinner } from "@core/components/ui";
@@ -198,7 +199,7 @@ function AskCard({ person, state }: { person: Entity; state: OverviewState }) {
               {sending ? <Spinner /> : <ArrowUpIcon size={16} />}
             </button>
           </form>
-          <p className="mt-2 text-meta text-ink-soft">Answers come from what's on file about {first}, using {state.provider}{state.local ? " on this Mac" : ""}.</p>
+          <p className="mt-2 text-meta text-ink-soft">Answers come from what's on file about {first}, using {state.provider}{state.local ? ` on ${words.here}` : ""}.</p>
         </>
       )}
     </Panel>
