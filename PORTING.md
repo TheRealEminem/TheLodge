@@ -47,7 +47,8 @@ Each chunk ships on its own and is synced into the apps when they choose.
 4. **Done 4 Nov 2026.** **The desktop shell** (`desktop/src-tauri`, see `desktop/README.md`): identity from `app.json` (baked in by `build.rs`), the bundled
    server started and watched, the window with the same `webkit.messageHandlers.app` bridge the Mac offers, the tray,
    open at login, and `--version` and `--window-test` for CI.
-5. **Written 4 Nov 2026, not yet run on GitHub.** **Windows x64**: `scripts/build-windows.py`, the CI job (build, install, window test), first beta.
+5. **Done 4 Nov 2026** (The Lodge's run 41922239132 passed: a 36 MB installer, 157 MB installed; the first beta waits
+   for the updater, chunk 6). **Windows x64**: `scripts/build-windows.py`, the CI job (build, install, window test), first beta.
 6. **The Windows updater** and the update-path test: install the current release, update to the new one, go back.
 7. **Windows ARM** on GitHub's ARM runner.
 8. **Linux**: built on Ubuntu 22.04 (glibc 2.35 and later), AppImage, .deb and .rpm, the Linux updater (the AppImage
