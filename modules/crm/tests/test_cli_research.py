@@ -2,6 +2,7 @@
 Codex and Gemini CLI: these check how the tool is started (only the web, no API key), what it's given, what the Lodge
 makes of its answer and its limits, not what the tool would find."""
 import json
+import os
 import sys
 
 import pytest
@@ -182,3 +183,35 @@ def test_parse_reads_each_tools_errors():
     assert "GEMINI_API_KEY" in cr.parse("gemini_cli", json.dumps({"error": {"message": "You must specify the GEMINI_API_KEY"}}), cr.Path("."))["error"]
     got = cr.parse("codex", json.dumps({"type": "turn.failed", "error": {"message": "usage limit reached"}}), cr.Path("/nonexistent"))
     assert got["error"] == "usage limit reached" and cr.LIMIT.search(got["error"])
+
+
+def test_on_windows_the_tool_gets_what_it_needs_to_start_and_still_no_api_key(monkeypatch, tmp_path):
+    monkeypatch.setattr(cr, "WINDOWS", True)
+    monkeypatch.setenv("SYSTEMROOT", r"C:\\Windows")
+    monkeypatch.setenv("COMSPEC", r"C:\\Windows\\System32\\cmd.exe")
+    monkeypatch.setenv("APPDATA", str(tmp_path / "Roaming"))
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-should-not-pass")
+    env = cr.environment(str(tmp_path / "Roaming" / "npm" / "claude.cmd"))
+    assert {"SYSTEMROOT", "COMSPEC", "APPDATA"} <= set(env)
+    assert "ANTHROPIC_API_KEY" not in env and "HOME" not in env
+    assert env["PATH"].split(os.pathsep)[0] == str(tmp_path / "Roaming" / "npm")
+
+
+def test_stopping_a_run_ends_what_the_tool_started_too():
+    import subprocess
+    parent = subprocess.Popen([sys.executable, "-c", "import subprocess, sys, time; "
+                               "subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(60)']); time.sleep(60)"])
+    try:
+        for _ in range(50):
+            kids = cr.psutil.Process(parent.pid).children(recursive=True)
+            if kids:
+                break
+            __import__("time").sleep(0.1)
+        assert kids
+        cr._kill(parent)
+        parent.wait(5)
+        gone, alive = cr.psutil.wait_procs(kids, timeout=5)
+        assert not alive
+    finally:
+        if parent.poll() is None:
+            parent.kill()

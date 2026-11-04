@@ -2,6 +2,7 @@
 throwaway family folder (conftest.py sets TRAILMIX_FAMILY_DIR)."""
 import json
 import os
+from pathlib import Path
 
 import httpx
 import pytest
@@ -101,6 +102,21 @@ def test_the_mac_app_joins_by_default_and_a_development_copy_does_not(monkeypatc
     assert family.folder() is None
     monkeypatch.setattr(config, "DATA_DIR", family.DEFAULT_DIR.parent / config.NAME)
     assert family.folder() == family.DEFAULT_DIR
+
+
+@pytest.mark.parametrize("platform, env, expected", [
+    ("darwin", {}, "~/Library/Application Support"),
+    ("win32", {"LOCALAPPDATA": "/win/AppData/Local"}, "/win/AppData/Local"),
+    ("linux", {"XDG_DATA_HOME": "/xdg/data"}, "/xdg/data"),
+    ("linux", {}, "~/.local/share"),
+])
+def test_installed_apps_keep_their_data_where_each_system_expects(monkeypatch, platform, env, expected):
+    monkeypatch.setattr(family.sys, "platform", platform)
+    for key in ("LOCALAPPDATA", "XDG_DATA_HOME"):
+        monkeypatch.delenv(key, raising=False)
+    for key, value in env.items():
+        monkeypatch.setenv(key, value)
+    assert family.apps_data() == Path(expected).expanduser()
 
 
 # ── Who's installed ───────────────────────────────────────────────────

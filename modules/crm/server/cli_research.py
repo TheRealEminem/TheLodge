@@ -19,9 +19,12 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 import tempfile
 import threading
 from pathlib import Path
+
+import psutil
 
 from core.server import db, events, jobs, lockdown, settings
 from core.server import usage as tally
@@ -38,9 +41,18 @@ TOOLS = {
     "gemini_cli": {"label": "Gemini CLI", "plan": "your Google AI plan", "bin": "gemini",
                    "hint": "Gemini CLI searches Google and writes the report, on your Google AI plan."},
 }
-# Where these get installed. An app opened from the Finder has a short PATH, so it looks here too.
-PLACES = ["/opt/homebrew/bin", "/usr/local/bin", "~/.local/bin", "~/.claude/local", "~/.npm-global/bin", "~/.bun/bin",
-          "~/.volta/bin", "~/.local/share/pnpm"]
+# Where these get installed. An app opened from the Finder or a desktop launcher has a short PATH, so it looks here too.
+WINDOWS = sys.platform == "win32"
+if WINDOWS:   # npm's global .cmd shims, Claude Code's own installer, Bun, pnpm, Volta, Scoop
+    PLACES = ["%APPDATA%/npm", "~/.local/bin", "~/.claude/local", "~/.bun/bin", "%LOCALAPPDATA%/pnpm",
+              "%LOCALAPPDATA%/Volta/bin", "~/scoop/shims"]
+else:
+    PLACES = ["/opt/homebrew/bin", "/usr/local/bin", "~/.local/bin", "~/.claude/local", "~/.npm-global/bin", "~/.bun/bin",
+              "~/.volta/bin", "~/.local/share/pnpm", "/home/linuxbrew/.linuxbrew/bin"]
+# What Windows programs need to start at all (Node won't run without SystemRoot; npm's .cmd shims need ComSpec), and
+# where their sign-ins are. Still no API keys.
+WINDOWS_ENV = ("SYSTEMROOT", "WINDIR", "COMSPEC", "PATHEXT", "USERPROFILE", "APPDATA", "LOCALAPPDATA", "PROGRAMDATA",
+               "PROGRAMFILES", "TEMP", "TMP", "USERNAME", "HOMEDRIVE", "HOMEPATH", "CODEX_HOME")
 TIMEOUT = 30 * 60          # seconds one person may take
 RETRY_AFTER = 15 * 60      # seconds a run waits after the plan's limit is reached
 UNFINISHED = ("queued", "running", "waiting")
@@ -75,9 +87,13 @@ def locked() -> str | None:
 
 # ── The tools on this Mac ─────────────────────────────────────────────
 
+def _places() -> list[str]:
+    return [os.path.expandvars(os.path.expanduser(p)) for p in PLACES]
+
+
 def find(via: str) -> str | None:
     """Where the tool's program is, or None when it isn't installed."""
-    places = [*os.environ.get("PATH", "").split(os.pathsep), *(os.path.expanduser(p) for p in PLACES)]
+    places = [*os.environ.get("PATH", "").split(os.pathsep), *_places()]
     return shutil.which(TOOLS[via]["bin"], path=os.pathsep.join(p for p in places if p))
 
 
@@ -144,10 +160,17 @@ def command(via: str, program: str, folder: Path) -> list[str]:
 
 def environment(program: str) -> dict:
     """Just enough to find the tool and its sign-in: no API keys, so it can't bill one."""
-    path = [str(Path(program).parent), *(os.path.expanduser(p) for p in PLACES), "/usr/bin", "/bin", "/usr/sbin", "/sbin"]
-    env = {"HOME": str(Path.home()), "PATH": os.pathsep.join(dict.fromkeys(path)), "LANG": "en_US.UTF-8",
-           "TERM": "dumb", "NO_COLOR": "1"}
-    for k in ("USER", "LOGNAME", "TMPDIR", "CODEX_HOME"):
+    if WINDOWS:
+        system = os.environ.get("SYSTEMROOT", r"C:\Windows")
+        path = [str(Path(program).parent), *_places(), os.path.join(system, "System32"), system]
+        env = {"PATH": os.pathsep.join(dict.fromkeys(path)), "NO_COLOR": "1"}
+        keep = WINDOWS_ENV
+    else:
+        path = [str(Path(program).parent), *_places(), "/usr/bin", "/bin", "/usr/sbin", "/sbin"]
+        env = {"HOME": str(Path.home()), "PATH": os.pathsep.join(dict.fromkeys(path)), "LANG": "en_US.UTF-8",
+               "TERM": "dumb", "NO_COLOR": "1"}
+        keep = ("USER", "LOGNAME", "TMPDIR", "CODEX_HOME")
+    for k in keep:
         if os.environ.get(k):
             env[k] = os.environ[k]
     return env
@@ -210,8 +233,8 @@ def research_one(via: str, run_id: str, prompt: str) -> dict:
     with tempfile.TemporaryDirectory(prefix="lodge-research-") as tmp:
         folder = Path(tmp)
         try:
-            proc = subprocess.Popen(command(via, program, folder), cwd=folder, env=environment(program), text=True,
-                                    stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            proc = subprocess.Popen(command(via, program, folder), cwd=folder, env=environment(program),
+                                    encoding="utf-8", errors="replace", stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         except OSError as e:
             return {"text": "", "error": f"Couldn't start {TOOLS[via]['label']}: {e}", "limited": False}
         with _lock:
@@ -219,7 +242,7 @@ def research_one(via: str, run_id: str, prompt: str) -> dict:
         try:
             out, err = proc.communicate(prompt, timeout=TIMEOUT)
         except subprocess.TimeoutExpired:
-            proc.kill()
+            _kill(proc)
             proc.communicate()
             return {"text": "", "error": f"{TOOLS[via]['label']} took longer than {TIMEOUT // 60} minutes", "limited": False}
         finally:
@@ -238,7 +261,22 @@ def stop(run_id: str) -> None:
     with _lock:
         proc = _running.get(run_id)
     if proc and proc.poll() is None:
-        proc.kill()
+        _kill(proc)
+
+
+def _kill(proc: subprocess.Popen) -> None:
+    """Ends the tool and whatever it started. On Windows the program is often an npm .cmd shim, and killing only the
+    shim would leave Node running the research."""
+    try:
+        children = psutil.Process(proc.pid).children(recursive=True)
+    except psutil.Error:
+        children = []
+    for child in children:
+        try:
+            child.kill()
+        except psutil.Error:
+            pass
+    proc.kill()
 
 
 # ── Runs ──────────────────────────────────────────────────────────────

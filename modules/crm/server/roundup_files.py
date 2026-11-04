@@ -75,7 +75,8 @@ def plain(text: str) -> str:
 # ── What every format says ────────────────────────────────────────────
 
 def _date(iso: str) -> str:
-    return datetime.fromisoformat(iso.replace("Z", "+00:00")).strftime("%-d %B %Y")
+    at = datetime.fromisoformat(iso.replace("Z", "+00:00"))
+    return f"{at.day} {at:%B %Y}"   # not %-d: Windows has no such code
 
 
 def _byline(p: dict) -> str:
