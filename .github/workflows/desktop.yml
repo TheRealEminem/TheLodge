@@ -1,0 +1,76 @@
+# Builds the desktop app for Windows (and, later, Linux) on GitHub's runners, and tries the installed app
+# (PORTING.md). Started by hand, not by every tag: Windows and Linux get a build when a major feature lands, plus bug
+# fixes for that version.
+#   Actions tab -> "Build desktop apps" -> Run workflow
+#       -> builds <Slug>-<version>-build.<run>-windows-x64.exe, runs scripts/smoke-test-windows.py on it, and keeps
+#          the installer (+ .sha256, and a picture of its window) as this run's artifact, for testers
+# Nothing is published yet: a platform goes out as a release only once its updater and its update test pass
+# (PORTING.md, chunk 6). No Windows or Linux machine is needed.
+name: Build desktop apps
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x64
+            runner: windows-latest
+    runs-on: ${{ matrix.runner }}
+    env:
+      ARCH: ${{ matrix.arch }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            desktop/package-lock.json
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: desktop/src-tauri
+          key: windows-${{ matrix.arch }}
+      - uses: actions/cache@v4
+        with:
+          path: build/cache
+          key: python-runtime-windows-${{ matrix.arch }}-${{ hashFiles('scripts/build-windows.py') }}
+      - name: The shell's own tests
+        shell: bash
+        working-directory: desktop/src-tauri
+        # tauri-build wants the icons and frontendDist only; the staged resources come with the real build's --config.
+        run: cargo test --locked
+      - name: Build the installer
+        shell: pwsh
+        # A test build gets a pre-release version (semver, which the installer needs), newer than the release.
+        run: |
+          $env:VERSION = "$((Get-Content VERSION).Trim())-build.$env:GITHUB_RUN_NUMBER"
+          python scripts/build-windows.py
+      - name: "Smoke test: a fresh install"
+        shell: pwsh
+        run: python scripts/smoke-test-windows.py (Get-Item "dist-app/*-windows-$env:ARCH.exe").FullName
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-${{ matrix.arch }}
+          path: |
+            dist-app/*.exe
+            dist-app/*.sha256
+            dist-app/*.png
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: failed-windows-${{ matrix.arch }}
+          path: |
+            dist-app/*
+            desktop/src-tauri/target/*/release/bundle/nsis/*.exe
+          if-no-files-found: ignore

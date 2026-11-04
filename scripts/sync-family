@@ -23,13 +23,14 @@ SHARED=(
   core/ mac/ desktop/ modules/tasks/ modules/notes/ modules/__init__.py
   scripts/module-template/ scripts/dev scripts/check scripts/new-module scripts/sync-family
   scripts/build-app.sh scripts/install-app.sh scripts/check-app.py scripts/desktop-icons
+  scripts/build-windows.py scripts/smoke-test-windows.py
   ARCHITECTURE.md DESIGN.md TRAILMIX.md PORTING.md conftest.py pytest.ini Dockerfile .dockerignore
   vite.config.ts tsconfig.json tailwind.config.js postcss.config.js
-  .github/workflows/test.yml .github/workflows/release.yml .github/workflows/promote.yml
+  .github/workflows/test.yml .github/workflows/release.yml .github/workflows/promote.yml .github/workflows/desktop.yml
   scripts/promote-beta.sh scripts/smoke-test.sh
 )
 # Never shared, wherever they turn up: caches, build output, and the copy of the app's mark the Mac build makes.
-IGNORE=(--exclude=__pycache__/ --exclude=.pytest_cache/ --exclude=.DS_Store --exclude=.build/ --exclude=target/ --exclude=/src-tauri/gen/
+IGNORE=(--exclude=__pycache__/ --exclude=.pytest_cache/ --exclude=.DS_Store --exclude=.build/ --exclude=target/ --exclude=/src-tauri/gen/ --exclude=node_modules/
         --exclude=/Sources/AppHost/Mark.swift)
 
 mode=pull strict=0 ref=HEAD
