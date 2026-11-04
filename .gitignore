@@ -13,3 +13,5 @@ mac/Sources/AppHost/Mark.swift
 _reference/
 PLAN.md
 modules/crm/tests/fixtures/real_names.json
+desktop/src-tauri/target/
+desktop/src-tauri/gen/

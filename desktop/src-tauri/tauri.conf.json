@@ -1,0 +1,36 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Family App",
+  "mainBinaryName": "family-desktop",
+  "version": "0.0.0",
+  "identifier": "local.family.desktop",
+  "build": {
+    "frontendDist": "../ui"
+  },
+  "app": {
+    "withGlobalTauri": false,
+    "windows": [],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["nsis"],
+    "icon": [
+      "../../identity/desktop/32x32.png",
+      "../../identity/desktop/128x128.png",
+      "../../identity/desktop/128x128@2x.png",
+      "../../identity/mac/AppIcon.icns",
+      "../../identity/desktop/icon.ico"
+    ],
+    "windows": {
+      "allowDowngrades": true,
+      "webviewInstallMode": { "type": "downloadBootstrapper", "silent": true },
+      "nsis": {
+        "installMode": "currentUser",
+        "installerIcon": "../../identity/desktop/icon.ico"
+      }
+    }
+  }
+}

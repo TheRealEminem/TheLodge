@@ -1,0 +1,37 @@
+[package]
+name = "family-desktop"
+version = "0.0.0"  # the real version comes from VERSION, through the build's --config (scripts/build-windows.py)
+description = "The family's desktop app for Windows and Linux: the app's server, in its own window, with a tray icon"
+edition = "2021"
+rust-version = "1.77"
+
+# The program is named after the app at build time (tauri.conf.json's mainBinaryName, set by the build script).
+[[bin]]
+name = "family-desktop"
+path = "src/main.rs"
+
+[build-dependencies]
+tauri-build = { version = "2.7", features = [] }
+serde_json = "1"
+
+[dependencies]
+tauri = { version = "2.12", features = ["tray-icon", "image-png"] }
+tauri-plugin-opener = "2.7"
+tauri-plugin-single-instance = "2"
+serde_json = "1"
+minreq = "2"
+url = "2"
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
+[target.'cfg(windows)'.dependencies]
+webview2-com = "0.39"
+windows = { version = "0.62", features = [
+  "Win32_Foundation",
+  "Win32_System_Com",
+  "Win32_UI_Shell",
+] }
+
+[profile.release]
+strip = true

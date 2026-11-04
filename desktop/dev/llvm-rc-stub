@@ -1,0 +1,7 @@
+#!/bin/sh
+# Stands in for llvm-rc when type-checking the Windows shell on a Mac: nothing is linked, so an empty resource will do.
+case " $* " in *" /? "*) echo "OVERVIEW: Resource Converter (stand-in for cargo check)"; exit 0;; esac
+out=""; prev=""
+for a in "$@"; do [ "$prev" = "/fo" ] && out="$a"; prev="$a"; done
+[ -n "$out" ] && : > "$out"
+exit 0
