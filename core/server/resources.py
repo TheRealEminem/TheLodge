@@ -15,7 +15,7 @@ import sys
 
 import psutil
 
-from . import config
+from . import computer, config
 
 GB = 1024**3
 # Extra free memory kept for macOS and other apps on top of what a model needs.
@@ -102,7 +102,7 @@ def check(required_gb: float, what: str) -> str | None:
         return None
     what = what.lower()
     if required_gb > total - 2:
-        return (f"{WAIT}: {what} needs about {required_gb:.1f} GB, more than this Mac can spare. "
+        return (f"{WAIT}: {what} needs about {required_gb:.1f} GB, more than {computer.word('here')} can spare. "
                 "Pick a smaller model in Settings, or proceed anyway.")
     if _disk_free_share() < SWAP_DISK_FREE:
         return (f"{WAIT}: {available:.1f} GB is free and {what} needs about {needed:.1f} GB, and with "
@@ -138,7 +138,7 @@ def device_advice(local_min_gb: float | None = None) -> dict:
                      "like reading a long document, a cloud AI does much better.")
     else:
         verdict = "local"
-        notes.append(f"{ram:.0f} GB of memory leaves room for a larger local model, so everything can run on this Mac.")
+        notes.append(f"{ram:.0f} GB of memory leaves room for a larger local model, so everything can run on {computer.word('here')}.")
     if re.search(r"\bM1\b", name) and ram < 12:
         notes.append("An M1 with this much memory is slow with local models; a cloud AI is the better fit.")
     if free < 8:

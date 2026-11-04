@@ -1,7 +1,7 @@
 // "Where should AI run?" The Mac's line first, then three choices with the one that suits this Mac marked. Used by the
 // first-run screens and by the card an existing install sees in Settings → AI.
 import { useState } from "react";
-import { api } from "../api";
+import { api, words } from "../api";
 import type { AiPath, ProviderId, SetupState } from "../api";
 import { SecretSetting } from "./blocks";
 import { AlertIcon, CheckIcon, CloudIcon, LaptopIcon, SparkleIcon } from "./icons";
@@ -17,8 +17,9 @@ const CLOUD: { id: ProviderId; label: string }[] = [
   { id: "deepseek", label: "DeepSeek" },
 ];
 
-const CHOICES: { id: AiPath; title: string; use: string; icon: typeof CloudIcon; body: string }[] = [
-  { id: "local", title: "On this Mac", use: "Use this Mac", icon: LaptopIcon, body: "Private and free. Everything runs here and nothing you write is sent anywhere. A model that fits in memory reads long documents less carefully than a cloud AI does." },
+/** The three choices, worded for this system (`words` is only known once the app info has loaded). */
+const choices = (): { id: AiPath; title: string; use: string; icon: typeof CloudIcon; body: string }[] => [
+  { id: "local", title: `On ${words.here}`, use: `Use ${words.here}`, icon: LaptopIcon, body: "Private and free. Everything runs here and nothing you write is sent anywhere. A model that fits in memory reads long documents less carefully than a cloud AI does." },
   { id: "mixed", title: "Mixed", use: "Use a mix", icon: SparkleIcon, body: "Most jobs run here. The careful ones, like reading a long document, use a cloud AI and your key. Only that text is sent." },
   { id: "cloud", title: "A cloud AI", use: "Use a cloud AI", icon: CloudIcon, body: "The best results. Text you add is sent to the provider you pick, with your key." },
 ];
@@ -74,7 +75,7 @@ export function ChooseAi({ onChosen, skippable }: { onChosen?: (path: AiPath) =>
       <div className="text-label font-medium">{macLine(state)}</div>
       {state.advice.notes.map((n) => <p key={n} className="mt-1 text-hint text-ink-soft">{n}</p>)}
       <div role="radiogroup" aria-label="Where should AI run?" className="mt-4 grid gap-2.5">
-        {CHOICES.map((c) => {
+        {choices().map((c) => {
           const on = path === c.id;
           return (
             <button
@@ -88,7 +89,7 @@ export function ChooseAi({ onChosen, skippable }: { onChosen?: (path: AiPath) =>
               <span className="min-w-0 flex-1">
                 <span className="flex flex-wrap items-center gap-2 text-label font-semibold">
                   {c.title}
-                  {state.recommended === c.id && <span className="chip bg-forest-soft text-forest-deep">Recommended for this Mac</span>}
+                  {state.recommended === c.id && <span className="chip bg-forest-soft text-forest-deep">Recommended for {words.here}</span>}
                 </span>
                 <span className="mt-0.5 block text-hint text-ink-soft">{c.body}</span>
               </span>
@@ -103,13 +104,13 @@ export function ChooseAi({ onChosen, skippable }: { onChosen?: (path: AiPath) =>
           <Select label="Which cloud AI" size="sm" className="w-full sm:w-64" value={cloud} options={CLOUD.map((c) => ({ value: c.id, label: c.label }))} onChange={(v) => setCloud(v as ProviderId)} />
           <SecretSetting label={`${CLOUD.find((c) => c.id === cloud)?.label} API key`} hint={hints[`ai.${cloud}_api_key`]}
             onSave={(x) => void save({ [`ai.${cloud}_api_key`]: x }).then(() => reload())} />
-          <p className="text-hint text-ink-faint">Saved on this Mac, shared with your other family apps, and never shown again.</p>
+          <p className="text-hint text-ink-faint">Saved on {words.here}, shared with your other family apps, and never shown again.</p>
         </div>
       )}
 
       <div className="mt-5 flex flex-wrap items-center gap-2">
         <button className="btn btn-md btn-primary" disabled={busy || (path !== "local" && !keyed)} onClick={() => void apply()}>
-          {busy ? <Spinner /> : <CheckIcon size={16} />} {CHOICES.find((c) => c.id === path)?.use}
+          {busy ? <Spinner /> : <CheckIcon size={16} />} {choices().find((c) => c.id === path)?.use}
         </button>
         {skippable && <button className="btn btn-md btn-ghost" onClick={skippable}>Decide later</button>}
         {path !== "local" && !keyed && <span className="text-hint text-ink-soft">Add the key first.</span>}

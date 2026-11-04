@@ -1,7 +1,7 @@
 // Sediment's pages: where you choose someone (with the latest readings and your products), and one person: their
 // readings, their portrait and rehearsals (rehearse.tsx).
 import { useEffect, useMemo, useState } from "react";
-import { api } from "@core/api";
+import { api, words } from "@core/api";
 import type { PersonChoice } from "@core/api";
 import { Empty, PersonPicker } from "@core/components/blocks";
 import { BackIcon, LinesIcon, PencilIcon, PlusIcon, SearchIcon, TrashIcon } from "@core/components/icons";
@@ -357,7 +357,7 @@ function Readings({ page, first }: { page: PersonPage; first: string }) {
               {asking ? <Spinner /> : <LinesIcon size={16} />} Take a reading
             </button>
             <p className="min-w-[14rem] flex-1 text-meta text-ink-soft">
-              {subject?.key === "me" ? `How ${first} seems to feel about you` : `How ${first} seems to feel about ${subject?.name}`}, from what's on file, using {provider.label}{provider.local ? " on this Mac" : ""}.
+              {subject?.key === "me" ? `How ${first} seems to feel about you` : `How ${first} seems to feel about ${subject?.name}`}, from what's on file, using {provider.label}{provider.local ? ` on ${words.here}` : ""}.
               {page.transcripts ? " Meeting transcripts are included." : ""}
             </p>
           </div>

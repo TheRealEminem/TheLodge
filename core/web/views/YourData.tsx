@@ -1,7 +1,7 @@
 // Settings: what the app keeps for you. Back up now and a few points to go back to; under Advanced, every copy on disk,
 // the folder, and a plain JSON copy of everything (ARCHITECTURE.md §7, DESIGN.md §7).
 import { useState } from "react";
-import { api, inApp, revealInFinder } from "../api";
+import { api, can, revealFile, words } from "../api";
 import type { BackupItem, BackupSlot } from "../api";
 import { Section } from "../components/blocks";
 import { AlertIcon, CheckIcon, ChevronDownIcon, DownloadIcon, FolderIcon, RefreshIcon, TrashIcon } from "../components/icons";
@@ -119,7 +119,7 @@ export default function YourData() {
 
   return (
     <>
-      <Section icon={<FolderIcon size={16} />} title="Your data" blurb="A copy is made each hour while something changes, and before an update or a restore. Only a few are kept: the newest, and one from about an hour, a day and a week ago. They stay in this Mac's data folder, private to you, and aren't sent anywhere.">
+      <Section icon={<FolderIcon size={16} />} title="Your data" blurb={`A copy is made each hour while something changes, and before an update or a restore. Only a few are kept: the newest, and one from about an hour, a day and a week ago. They stay in the data folder on ${words.here}, private to you, and aren't sent anywhere.`}>
         <ControlRow label="Back up now" hint="Makes a copy of everything as it is right now, kept for at least a day." wrap>
           <button className="btn btn-sm btn-soft" disabled={busy !== null} onClick={() => void backUp()}>
             {busy === "backup" ? <Spinner /> : <RefreshIcon size={16} />} Back up
@@ -157,9 +157,9 @@ export default function YourData() {
               </p>
               {data && (
                 <ControlRow label="Folder" hint={<>{items.length} {items.length === 1 ? "copy" : "copies"}, {size(items.reduce((n, b) => n + b.bytes, 0))} in all, in <span className="break-all">{data.folder}</span></>} wrap>
-                  {inApp && (
-                    <button className="btn btn-sm btn-soft" onClick={() => revealInFinder(data.folder)}>
-                      <FolderIcon size={16} /> Show in Finder
+                  {can("reveal") && (
+                    <button className="btn btn-sm btn-soft" onClick={() => revealFile(data.folder)}>
+                      <FolderIcon size={16} /> Show in {words.files}
                     </button>
                   )}
                 </ControlRow>

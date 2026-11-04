@@ -39,6 +39,8 @@ export interface AppInfo {
   lockdown: boolean;
   /** False until the first-run screens have been finished (or skipped); an install that was already in use starts true. */
   setup_done: boolean;
+  /** Which system this is and what the shell can do. */
+  computer: PlatformInfo;
 }
 
 /** A thing's latest background job, as the server reports it next to the thing. */
@@ -84,12 +86,50 @@ export interface ProviderInfo {
   reason: string;
 }
 
-/** Running inside the Mac app's own window (rather than a browser): it can be asked to quit, or to show a file. */
+/** Running inside the app's own window (the Mac app, or the desktop app for Windows and Linux) rather than a
+ *  browser. Both shells offer the same bridge; `can()` says what this one can do. */
 type AppBridge = { postMessage: (message: string) => void };
 const bridge = (window as unknown as { webkit?: { messageHandlers?: { app?: AppBridge } } }).webkit?.messageHandlers?.app;
 export const inApp = !!bridge;
 export const quitApp = () => bridge?.postMessage("quit");
-export const revealInFinder = (path: string) => bridge?.postMessage(`reveal:${path}`);
+/** Shows a file or folder in Finder, File Explorer or the file manager (`words.files`). */
+export const revealFile = (path: string) => bridge?.postMessage(`reveal:${path}`);
+
+/** Which system this is, and what the app's shell can do (core/server/computer.py). */
+export type ShellCan = "quit" | "reveal" | "updates" | "login";
+export interface Words {
+  /** "this Mac", "this PC" or "this computer" */
+  here: string;
+  /** "Finder", "File Explorer" or "your file manager" */
+  files: string;
+  /** "the menu bar" or "the system tray" */
+  tray: string;
+  /** "the Mac app" or "the desktop app" */
+  app: string;
+  /** Where apps are opened from: "Applications", "the Start menu" or "your apps menu" */
+  apps: string;
+}
+export interface PlatformInfo {
+  os: "mac" | "windows" | "linux";
+  words: Words;
+  shell: "mac" | "desktop" | null;
+  can: ShellCan[];
+}
+/** The words for this system, set from the app info as it loads (the Mac's until then). Write `On ${words.here}`,
+ *  never "this Mac", in anything a person reads. */
+export const words: Words = { here: "this Mac", files: "Finder", tray: "the menu bar", app: "the Mac app", apps: "Applications" };
+export let computer: PlatformInfo = { os: "mac", words, shell: null, can: [] };
+export function setSystem(info: PlatformInfo | undefined) {
+  if (!info) return;
+  Object.assign(words, info.words);
+  computer = { ...info, words };
+}
+/** Whether the app's own window can do this here. False in a browser, and for what a platform's shell lacks. */
+export const can = (what: ShellCan) => inApp && computer.can.includes(what);
+/** A file in a folder the server named, with this system's separator (Windows wants "\\"). */
+export const joinPath = (folder: string, name: string) => `${folder}${computer.os === "windows" ? "\\" : "/"}${name}`;
+/** "this Mac" → "This Mac", for the start of a sentence. */
+export const capital = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);
 
 /** Where the Mac app's updates stand (Updater.report in mac/), sent by its window as an "app-updates" event. */
 export interface UpdateReport {

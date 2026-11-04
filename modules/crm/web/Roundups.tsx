@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { inApp, revealInFinder } from "@core/api";
+import { can, joinPath, revealFile, words } from "@core/api";
 import { JobStatus } from "@core/components/blocks";
 import { AlertIcon, BackIcon, BackpackIcon, CloseIcon, DocIcon, DownloadIcon, ExternalIcon, FolderIcon, PlusIcon, RefreshIcon, SearchIcon, SparkleIcon, TrashIcon, UsersIcon } from "@core/components/icons";
 import { PageHeader, Segmented, Select, Skeleton, Spinner, StatusChip } from "@core/components/ui";
@@ -269,7 +269,7 @@ function RoundupView({ r }: { r: Roundup }) {
         )}
         {!r.packet && !busy && r.ready && (
           <p className="text-ui text-ink-soft">
-            {r.people.length ? `Writes a few lines on each person for this event, then the opening, with ${r.provider}${r.local ? " on this Mac" : ""}. It takes about as long as ${r.people.length + 1} short answers.` : "Add some people first."}
+            {r.people.length ? `Writes a few lines on each person for this event, then the opening, with ${r.provider}${r.local ? ` on ${words.here}` : ""}. It takes about as long as ${r.people.length + 1} short answers.` : "Add some people first."}
           </p>
         )}
         {r.packet && <Exports r={r} act={act} />}
@@ -383,7 +383,7 @@ function Exports({ r, act }: { r: Roundup; act: (fn: () => Promise<unknown>) => 
     try {
       const saved = await crmApi.exportRoundup(r.id, format);
       toast(`Saved ${saved.name}`);
-      if (inApp) revealInFinder(saved.path);
+      if (can("reveal")) revealFile(saved.path);
       else download(saved.name);
     } finally {
       setMaking(null);
@@ -403,7 +403,7 @@ function Exports({ r, act }: { r: Roundup; act: (fn: () => Promise<unknown>) => 
         <div className="inset-surface px-4 py-3">
           <div className="mb-1.5 flex flex-wrap items-center justify-between gap-2">
             <span className="text-label font-medium">Saved files</span>
-            {inApp && <button className="btn btn-sm btn-ghost" onClick={() => revealInFinder(r.folder)}><FolderIcon size={16} /> Show in Finder</button>}
+            {can("reveal") && <button className="btn btn-sm btn-ghost" onClick={() => revealFile(r.folder)}><FolderIcon size={16} /> Show in {words.files}</button>}
           </div>
           <ul className="space-y-1">
             {r.files.map((f) => (
@@ -411,13 +411,13 @@ function Exports({ r, act }: { r: Roundup; act: (fn: () => Promise<unknown>) => 
                 <DocIcon size={16} className="shrink-0 text-ink-faint" />
                 <span className="min-w-0 flex-1 truncate">{f.name}</span>
                 <span className="shrink-0 text-meta text-ink-soft">{relativeTime(f.saved_at)}</span>
-                {inApp
-                  ? <button className="icon-btn" aria-label={`Show ${f.name} in Finder`} onClick={() => revealInFinder(`${r.folder}/${f.name}`)}><FolderIcon size={16} /></button>
+                {can("reveal")
+                  ? <button className="icon-btn" aria-label={`Show ${f.name} in ${words.files}`} onClick={() => revealFile(joinPath(r.folder, f.name))}><FolderIcon size={16} /></button>
                   : <button className="icon-btn" aria-label={`Download ${f.name}`} onClick={() => download(f.name)}><DownloadIcon size={16} /></button>}
               </li>
             ))}
           </ul>
-          {!inApp && <p className="mt-2 break-words text-hint text-ink-soft">Kept in {r.folder}</p>}
+          {!can("reveal") && <p className="mt-2 break-words text-hint text-ink-soft">Kept in {r.folder}</p>}
         </div>
       )}
     </div>

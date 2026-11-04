@@ -32,7 +32,7 @@ from typing import Any, Callable, Iterator
 
 import httpx
 
-from . import config
+from . import computer, config
 
 log = logging.getLogger("core.family")
 
@@ -293,7 +293,7 @@ def call(offer: str, timeout: float = 5.0, **args: Any) -> Any:
     if not running:
         if candidates:
             raise Unavailable(f"Open {candidates[0]['name']} to see this here.")
-        raise Unavailable("None of your family apps on this Mac can answer that yet.")
+        raise Unavailable(f"None of your family apps on {computer.word('here')} can answer that yet.")
     errors = []
     for app in running:
         try:

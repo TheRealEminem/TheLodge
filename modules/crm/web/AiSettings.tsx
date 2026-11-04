@@ -1,6 +1,6 @@
 // The People module's section on the Settings page: which AI does each of its jobs.
 import { useState } from "react";
-import { api } from "@core/api";
+import { api, words } from "@core/api";
 import type { ProviderId, ProviderInfo } from "@core/api";
 import { Section } from "@core/components/blocks";
 import { ModelPicker } from "@core/components/ModelPicker";
@@ -78,7 +78,7 @@ function Job({ job, providers }: { job: AiRole; providers: ProviderInfo[] }) {
 /** What works on this Mac with no keys, what needs an AI key, and what needs another service (and so Lockdown off). */
 function WhatNeedsTheCloud() {
   const rows: { title: string; body: string }[] = [
-    { title: "Works on this Mac, with nothing set up", body: "Your people, organizations, network and groups. Importing a spreadsheet or LinkedIn export. Adding notes and documents (a small model writes the summary and action items; rules find the people; you look each one over first). Overviews and questions about a person. Backups, exports and pictures you add yourself." },
+    { title: `Works on ${words.here}, with nothing set up`, body: "Your people, organizations, network and groups. Importing a spreadsheet or LinkedIn export. Adding notes and documents (a small model writes the summary and action items; rules find the people; you look each one over first). Overviews and questions about a person. Backups, exports and pictures you add yourself." },
     { title: "Needs an AI key for the best results", body: "Reading notes and documents carefully, so relationships and facts are found too (Claude, Gemini or OpenAI), and Research by Gemini." },
     { title: "Needs another service, so it's off under Lockdown", body: "Research by Gemini, Granola, calendars, the shared Google Sheet, and Gravatar pictures. “Copy research brief” still works: you take it to another tool yourself." },
   ];

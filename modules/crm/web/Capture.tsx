@@ -1,5 +1,6 @@
 // Settings for the automatic ways in: Trailmix and Granola meetings, and calendar events.
 import { useEffect, useState } from "react";
+import { words } from "@core/api";
 import { Section, SecretSetting } from "@core/components/blocks";
 import { AlertIcon, CalendarIcon, CheckIcon, MicIcon, NoteIcon, RefreshIcon, TrashIcon } from "@core/components/icons";
 import { ControlRow, Select, Spinner, SwitchRow, useConfirm } from "@core/components/ui";
@@ -142,7 +143,7 @@ function TrailmixChoices() {
   if (!found) return null;
   return (
     <>
-      <p className="py-3.5 text-hint text-ink-soft">Trailmix is on this Mac, with {plural(found.done, "finished meeting")}.</p>
+      <p className="py-3.5 text-hint text-ink-soft">Trailmix is on {words.here}, with {plural(found.done, "finished meeting")}.</p>
       {found.workspaces.length > 0 && (
         <ControlRow label="Workspaces to bring in" hint="Leave out any that aren't about people you want in your book, such as personal ones. Meetings in no workspace always come in." wrap>
           <div className="flex flex-wrap gap-x-4 gap-y-2">
@@ -171,7 +172,7 @@ export default function CaptureSettings() {
       <Section
         icon={<MicIcon size={16} />}
         title="People: Trailmix"
-        blurb="Meetings you record with Trailmix on this Mac are read and added on their own: who was there, what was said, and what was agreed. Nothing leaves the Mac to fetch them."
+        blurb={`Meetings you record with Trailmix on ${words.here} are read and added on their own: who was there, what was said, and what was agreed. Nothing leaves ${words.here} to fetch them.`}
       >
         <SwitchRow
           label="Bring in Trailmix meetings"

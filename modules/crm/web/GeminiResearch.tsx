@@ -2,6 +2,7 @@
 // Gemini CLI, on your own plan): the dialog that starts it (with what it will cost), where a run is up to on a
 // profile, and its Settings section.
 import { useState } from "react";
+import { words } from "@core/api";
 import { Section } from "@core/components/blocks";
 import { ModelPicker } from "@core/components/ModelPicker";
 import { AlertIcon, ClockIcon, SearchIcon, SparkleIcon } from "@core/components/icons";
@@ -202,7 +203,7 @@ export function GeminiSettings() {
   };
   return (
     <Section icon={<SearchIcon size={16} />} title="People: research"
-      blurb="The Lodge can research people itself: through Claude Code, Codex or Gemini CLI signed in on this Mac, on a plan you already pay for, or with Gemini and Google Search through your Gemini key from AI above. It only runs when you start it, from a profile or the Needs research list, and each report waits in the Inbox for your OK.">
+      blurb={`The Lodge can research people itself: through Claude Code, Codex or Gemini CLI signed in on ${words.here}, on a plan you already pay for, or with Gemini and Google Search through your Gemini key from AI above. It only runs when you start it, from a profile or the Needs research list, and each report waits in the Inbox for your OK.`}>
       <ControlRow label="Usual way" hint="What the research dialog starts on. It remembers the last one you used.">
         <Select label="Usual way" size="sm" className="w-full sm:w-56" value={get<string>("crm.research_via") ?? "api"}
           options={[...(data?.tools ?? []).map((t) => ({ value: t.id, label: t.label, hint: t.ready ? `On ${t.plan}` : "Not ready" })),
@@ -211,7 +212,7 @@ export function GeminiSettings() {
       </ControlRow>
       {data && (
         <div className="py-3.5">
-          <p className="mb-2 text-label font-medium">AI tools on this Mac</p>
+          <p className="mb-2 text-label font-medium">AI tools on {words.here}</p>
           <ul className="space-y-1.5 text-ui">
             {data.tools.map((t) => (
               <li key={t.id} className="flex items-start gap-2">

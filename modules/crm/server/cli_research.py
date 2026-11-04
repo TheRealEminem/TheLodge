@@ -26,7 +26,7 @@ from pathlib import Path
 
 import psutil
 
-from core.server import db, events, jobs, lockdown, settings
+from core.server import computer, db, events, jobs, lockdown, settings
 from core.server import usage as tally
 
 from . import ingest, research
@@ -97,6 +97,10 @@ def find(via: str) -> str | None:
     return shutil.which(TOOLS[via]["bin"], path=os.pathsep.join(p for p in places if p))
 
 
+def _terminal() -> str:
+    return computer.word("terminal")
+
+
 def _json_file(path: Path) -> dict:
     try:
         return json.loads(path.read_text())
@@ -111,22 +115,23 @@ def sign_in_problem(via: str) -> str | None:
     if via == "claude":
         if _json_file(home / ".claude.json").get("oauthAccount"):
             return None
-        return "Claude Code isn't signed in to a Claude account. In Terminal, run claude and type /login."
+        return f"Claude Code isn't signed in to a Claude account. In {_terminal()}, run claude and type /login."
     if via == "codex":
         mode = _json_file(Path(os.environ.get("CODEX_HOME") or home / ".codex") / "auth.json").get("auth_mode")
         if mode == "chatgpt":
             return None
         if mode:
-            return "Codex is signed in with an API key, which bills the key. In Terminal, run codex login and sign in with ChatGPT."
-        return "Codex isn't signed in. In Terminal, run codex login and sign in with ChatGPT."
+            return f"Codex is signed in with an API key, which bills the key. In {_terminal()}, run codex login and sign in with ChatGPT."
+        return f"Codex isn't signed in. In {_terminal()}, run codex login and sign in with ChatGPT."
     cfg = _json_file(home / ".gemini" / "settings.json")
     mode = ((cfg.get("security") or {}).get("auth") or {}).get("selectedType") or cfg.get("selectedType")
     if mode == "oauth-personal":
         return None
     if mode:
-        return ("Gemini CLI is set to use an API key, which bills the key instead of your Google plan. In Terminal, "
+        return ("Gemini CLI is set to use an API key, which bills the key instead of your Google plan. "
+                f"In {_terminal()}, "
                 "run gemini, type /auth and choose Sign in with Google.")
-    return "Gemini CLI isn't signed in. In Terminal, run gemini and choose Sign in with Google."
+    return f"Gemini CLI isn't signed in. In {_terminal()}, run gemini and choose Sign in with Google."
 
 
 def problem(via: str) -> str | None:
@@ -136,7 +141,7 @@ def problem(via: str) -> str | None:
     if (why := locked()):
         return why
     if not find(via):
-        return f"{TOOLS[via]['label']} isn't installed on this Mac."
+        return f"{TOOLS[via]['label']} isn't installed on {computer.word('here')}."
     return sign_in_problem(via)
 
 
@@ -229,7 +234,7 @@ def research_one(via: str, run_id: str, prompt: str) -> dict:
     """Runs the tool on one brief and waits for it. {text, error, limited, model, in, out}."""
     program = find(via)
     if not program:
-        return {"text": "", "error": f"{TOOLS[via]['label']} isn't installed on this Mac.", "limited": False}
+        return {"text": "", "error": f"{TOOLS[via]['label']} isn't installed on {computer.word('here')}.", "limited": False}
     with tempfile.TemporaryDirectory(prefix="lodge-research-") as tmp:
         folder = Path(tmp)
         try:

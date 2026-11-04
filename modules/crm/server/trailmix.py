@@ -15,7 +15,7 @@ from datetime import UTC, datetime, timedelta
 
 import httpx
 
-from core.server import db, jobs, settings
+from core.server import computer, db, jobs, settings
 
 from . import capture, ingest, store
 from .model import parse_dt
@@ -48,10 +48,10 @@ def _get(client: httpx.Client, path: str):
     try:
         r = client.get(path)
     except httpx.HTTPError as e:
-        raise TrailmixError("Trailmix isn't answering on this Mac. Open Trailmix and its meetings come in at the next check.") from e
+        raise TrailmixError(f"Trailmix isn't answering on {computer.word('here')}. Open Trailmix and its meetings come in at the next check.") from e
     if r.status_code in (401, 403):
         raise TrailmixError("Trailmix asks for a sign-in, which it only does when it's set up as a server. Point The Lodge "
-                            "at the Trailmix on this Mac.")
+                            f"at the Trailmix on {computer.word('here')}.")
     if r.status_code >= 400:
         raise TrailmixError(f"Trailmix answered {r.status_code}.")
     return r.json()

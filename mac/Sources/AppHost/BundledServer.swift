@@ -41,6 +41,9 @@ final class BundledServer {
         environment["\(prefix)_DATA_DIR"] = Bundled.dataDirectory.path
         environment["\(prefix)_UI_DIR"] = resources.appendingPathComponent("ui").path
         environment["\(prefix)_PARENT_PID"] = String(ProcessInfo.processInfo.processIdentifier)
+        // Who started the server and what it can do, so the web app hides what it can't (core/server/computer.py).
+        environment["\(prefix)_SHELL"] = "mac"
+        environment["\(prefix)_SHELL_CAN"] = "quit,reveal,updates,login"
 
         let server = Process()
         server.executableURL = python
