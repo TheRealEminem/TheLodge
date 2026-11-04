@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+# Makes the desktop app's icons (Windows and Linux) from the Mac app's: identity/mac/AppIcon.icns ->
+# identity/desktop/{32x32,128x128,128x128@2x,icon}.png and icon.ico. Run it on a Mac (it uses sips) whenever the
+# icon changes, and commit identity/desktop: the Windows and Linux builds take the icons from there.
+set -euo pipefail
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+SOURCE="$ROOT/identity/mac/AppIcon.icns"
+OUT="$ROOT/identity/desktop"
+[ -f "$SOURCE" ] || { echo "No $SOURCE to make the icons from." >&2; exit 1; }
+mkdir -p "$OUT"
+png() { sips -s format png -z "$1" "$1" "$SOURCE" --out "$OUT/$2" >/dev/null; }
+png 32 32x32.png
+png 128 128x128.png
+png 256 128x128@2x.png
+png 512 icon.png
+png 16 .ico-16.png
+png 48 .ico-48.png
+png 256 .ico-256.png
+# An .ico is a small directory of images; since Windows Vista each one can simply be a PNG.
+python3 - "$OUT" <<'PY'
+import struct, sys
+from pathlib import Path
+out = Path(sys.argv[1])
+images = [(16, out / ".ico-16.png"), (32, out / "32x32.png"), (48, out / ".ico-48.png"), (256, out / ".ico-256.png")]
+blobs = [p.read_bytes() for _, p in images]
+header = struct.pack("<HHH", 0, 1, len(images))
+offset = len(header) + 16 * len(images)
+entries = b""
+for (size, _), blob in zip(images, blobs):
+    side = 0 if size >= 256 else size          # 0 means 256
+    entries += struct.pack("<BBBBHHII", side, side, 0, 0, 1, 32, len(blob), offset)
+    offset += len(blob)
+(out / "icon.ico").write_bytes(header + entries + b"".join(blobs))
+PY
+rm -f "$OUT"/.ico-*.png
+echo "Made the desktop icons in identity/desktop."
