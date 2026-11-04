@@ -1,9 +1,9 @@
 """Which system this is, its words, and what the shell around the app says it can do (core/server/computer.py)."""
-from core.server import computer
+from core.server import computer, config
 
 
 def test_a_browser_has_no_shell_and_can_do_nothing(monkeypatch):
-    monkeypatch.delenv("LODGE_SHELL", raising=False)
+    monkeypatch.delenv(f"{config.PREFIX}_SHELL", raising=False)
     monkeypatch.delenv("APP_SHELL", raising=False)
     monkeypatch.setenv("APP_SHELL_CAN", "quit,reveal")
     assert computer.shell() is None
