@@ -271,7 +271,7 @@ def _followups(net, v, spec: dict) -> dict:
             found.add(pid, s, 1)
         conn = v.conns.get(pid)
         if conn and conn.meetings:
-            found.add(pid, f"Last met {conn.last_met_at.strftime('%-d %b %Y')}" if conn.last_met_at else "You've met", 0)
+            found.add(pid, f"Last met {conn.last_met_at.day} {conn.last_met_at:%b %Y}" if conn.last_met_at else "You've met", 0)
         else:
             found.add(pid, "No meeting together yet", 2)
         if not (conn and conn.user_set):

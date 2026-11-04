@@ -12,8 +12,9 @@ It has two parts, because keys and data behave differently:
   `call("people.search", q="ana")`, over localhost, with the family token. A merged app answers from its own
   modules first, so the same code works either way. Nothing ever leaves the Mac.
 
-The family folder is `TRAILMIX_FAMILY_DIR` when that's set ("off" turns the link off). Otherwise an app running
-as the Mac app (its data in ~/Library/Application Support) uses ~/Library/Application Support/Trailmix Family.
+The family folder is `TRAILMIX_FAMILY_DIR` when that's set ("off" turns the link off). Otherwise an installed app (its data
+in the system's place for app data, `apps_data()`) uses "Trailmix Family" there: ~/Library/Application Support on a
+Mac, %LOCALAPPDATA% on Windows, $XDG_DATA_HOME (~/.local/share) on Linux.
 Development copies (data in ./data) and server installs join only when `TRAILMIX_FAMILY_DIR` says where.
 """
 import json
@@ -21,6 +22,7 @@ import logging
 import os
 import secrets
 import sqlite3
+import sys
 import threading
 import time
 from contextlib import contextmanager
@@ -34,7 +36,18 @@ from . import config
 
 log = logging.getLogger("core.family")
 
-DEFAULT_DIR = Path.home() / "Library" / "Application Support" / "Trailmix Family"
+def apps_data() -> Path:
+    """Where installed apps keep their data on this computer. The Mac app and the desktop app for Windows and Linux put
+    their data folder in here, and so does every family app's shell."""
+    home = Path.home()
+    if sys.platform == "darwin":
+        return home / "Library" / "Application Support"
+    if sys.platform == "win32":
+        return Path(os.environ.get("LOCALAPPDATA") or home / "AppData" / "Local")
+    return Path(os.environ.get("XDG_DATA_HOME") or home / ".local" / "share")
+
+
+DEFAULT_DIR = apps_data() / "Trailmix Family"
 SHARED_NAMESPACES = ("ai.",)                                  # every AI setting: provider, fallback, models, keys
 SHARED_KEYS = {"core.your_name", "core.appearance", "core.lockdown"}
 SHARING_KEY = "core.share_with_family"                        # this app's own choice, never shared
@@ -68,9 +81,8 @@ def folder() -> Path | None:
     raw = os.getenv("TRAILMIX_FAMILY_DIR")
     if raw:
         return None if raw.strip().lower() == "off" else Path(raw).expanduser()
-    mac_data = Path.home() / "Library" / "Application Support"
     try:
-        config.DATA_DIR.resolve().relative_to(mac_data)        # running as the Mac app
+        config.DATA_DIR.resolve().relative_to(apps_data().resolve())   # running as the installed app
     except ValueError:
         return None
     return DEFAULT_DIR

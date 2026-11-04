@@ -307,7 +307,7 @@ def _section(v: views.Views, p: Entity, in_packet: set[str], owner: str) -> dict
         if c.meetings:
             with_owner += f": {c.meetings} meeting{'s' if c.meetings != 1 else ''}"
             if c.last_met_at:
-                with_owner += f", the latest on {c.last_met_at.strftime('%-d %B %Y')}"
+                with_owner += f", the latest on {c.last_met_at.day} {c.last_met_at:%B %Y}"
         if c.context:
             with_owner += f". {c.context.strip().rstrip('.')}"
         with_owner += "."

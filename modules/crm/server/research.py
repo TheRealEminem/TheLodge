@@ -183,6 +183,11 @@ def _when(when: datetime | None) -> str:
     return when.strftime("%b %Y") if when else "undated"
 
 
+def _day(when: datetime) -> str:
+    """"4 November 2026". Not strftime's %-d, which Windows doesn't have."""
+    return f"{when.day} {when:%B %Y}"
+
+
 def ref_code(person_id: str) -> str:
     return person_id[:REF_CHARS]
 
@@ -257,7 +262,7 @@ def subject(person_id: str) -> Subject:
         my_title = (me.attributes or {}).get("title")
         about_me = f"I'm {me.name}" + (f", {my_title}" if my_title else "") + (f" at {my_org.name}" if my_org else "") + ". "
     return Subject(person=p, title=f"{p.name} — research profile", ref=f"Lodge ref: {ref_code(p.id)}", known=known,
-                   mine=mine, about_me=about_me, today=datetime.now(UTC).strftime("%-d %B %Y"))
+                   mine=mine, about_me=about_me, today=_day(datetime.now(UTC)))
 
 
 EARLIER_CHARS = 12_000
@@ -279,7 +284,7 @@ def earlier(person_id: str) -> tuple[str, str] | None:
     if len(text) > EARLIER_CHARS:
         text = text[:EARLIER_CHARS].rsplit("\n", 1)[0] + "\n[…the rest is left out]"
     at = parse_dt(row["created_at"])
-    return text, at.strftime("%-d %B %Y") if at else "undated"
+    return text, _day(at) if at else "undated"
 
 
 def brief(person_id: str) -> str:
