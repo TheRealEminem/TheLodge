@@ -185,7 +185,7 @@ def stage() -> None:
 
     say("Installing Python packages…")
     env = {**os.environ, "PIP_DISABLE_PIP_VERSION_CHECK": "1", "PIP_NO_INPUT": "1"}
-    run([str(py), "-m", "pip", "install", "-q", "--no-compile", "-r", str(ROOT / "requirements.txt")], env=env)
+    run([str(py), "-m", "pip", "install", "-q", "--no-compile", "--no-warn-script-location", "-r", str(ROOT / "requirements.txt")], env=env)
     (STAGE / "bin").mkdir()
     for extra in sorted((ROOT / "scripts").glob("bundle-*.py")):
         say(f"Adding {extra.stem.removeprefix('bundle-')}…")
@@ -198,8 +198,12 @@ def stage() -> None:
 
     # The server starts the way the installed app starts it, before anything is packed.
     say("Checking the server imports…")
-    check = subprocess.run([str(py), "-E", "-s", "-c", "import core.server.app"], cwd=STAGE / "app", capture_output=True, text=True,
-                           env={"SystemRoot": os.environ.get("SystemRoot", r"C:\Windows"), f"{IDENTITY['envPrefix']}_DATA_DIR": str(ROOT / "build" / "import-check")})
+    # (with the environment the app gives it: this one's, without another Python's settings; server.rs)
+    server_env = {k: v for k, v in os.environ.items() if not k.upper().startswith("PYTHON")}
+    server_env.update({f"{IDENTITY['envPrefix']}_DATA_DIR": str(ROOT / "build" / "import-check"), "PYTHONUTF8": "1",
+                       "TRAILMIX_FAMILY_DIR": "off"})
+    check = subprocess.run([str(py), "-E", "-s", "-c", "import core.server.app"], cwd=STAGE / "app", capture_output=True,
+                           text=True, env=server_env)
     rmtree(ROOT / "build" / "import-check")
     if check.returncode != 0:
         die(f"The staged server doesn't import:\n{check.stderr[-3000:]}")

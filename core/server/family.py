@@ -39,12 +39,14 @@ log = logging.getLogger("core.family")
 def apps_data() -> Path:
     """Where installed apps keep their data on this computer. The Mac app and the desktop app for Windows and Linux put
     their data folder in here, and so does every family app's shell."""
-    home = Path.home()
+    # The home folder only when the system's own variable isn't set (asking for it fails in a bare environment).
     if sys.platform == "darwin":
-        return home / "Library" / "Application Support"
+        return Path.home() / "Library" / "Application Support"
     if sys.platform == "win32":
-        return Path(os.environ.get("LOCALAPPDATA") or home / "AppData" / "Local")
-    return Path(os.environ.get("XDG_DATA_HOME") or home / ".local" / "share")
+        local = os.environ.get("LOCALAPPDATA")
+        return Path(local) if local else Path.home() / "AppData" / "Local"
+    xdg = os.environ.get("XDG_DATA_HOME")
+    return Path(xdg) if xdg else Path.home() / ".local" / "share"
 
 
 DEFAULT_DIR = apps_data() / "Trailmix Family"
