@@ -1,0 +1,11 @@
+{
+  "name": "family-desktop",
+  "private": true,
+  "description": "The family's desktop app for Windows and Linux: Tauri's command line, which scripts/build-windows.py runs.",
+  "scripts": {
+    "tauri": "tauri"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.12.4"
+  }
+}
