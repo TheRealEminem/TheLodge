@@ -3,14 +3,22 @@ import { CloseIcon, PlusIcon, SearchIcon, UsersIcon } from "@core/components/ico
 import { PageHeader, Segmented, Select, Skeleton } from "@core/components/ui";
 import { useLive } from "@core/live";
 import { keepFilters, navigate, useQueryLimit, useQueryParams, useQueryText } from "@core/router";
+import { useMemo } from "react";
 import { crmApi } from "./api";
 import { EntityFormDialog } from "./forms";
 import type { PersonRow, Tier } from "./api";
 import { Avatar, Empty, Tags, roleLine, useDebounced } from "./bits";
+import { FacetPicker, PutInHat } from "./hats";
 import { NEEDS_RESEARCH_CHIP } from "./Research";
 import { TIERS, TIER_META, TierBadge, TierBars, connectionLine } from "./tier";
 
 const PAGE = 100;
+
+const GROUPINGS = [
+  { value: "", label: "No grouping" },
+  { value: "org", label: "Group by organization" },
+  { value: "tag", label: "Group by tag" },
+];
 
 const SORTS = [
   { value: "strength", label: "Connection strength" },
@@ -90,14 +98,34 @@ export default function People() {
   const sort = params.get("sort") ?? "strength";
   const tag = params.get("tag") ?? undefined;
   const org = params.get("org") ?? undefined;
+  const topic = params.get("topic") ?? undefined;
+  const mtag = params.get("mtag") ?? undefined;
   const research = params.get("research") === "needed";
+  const hat = params.get("nohat") ? "none" : "active";
+  const groupBy = params.get("group") ?? "";
+  const filters = { q: dq, tier: tier === "all" ? undefined : tier, tag, org, topic, mtag, hat };
 
   const { data, error } = useLive(
-    () => crmApi.people({ q: dq, tier: tier === "all" ? undefined : tier, sort, tag, org, limit, needs_research: research ? "true" : undefined }),
-    [dq, tier, sort, tag, org, limit, research],
+    () => crmApi.people({ ...filters, sort, limit: groupBy ? 1000 : limit, needs_research: research ? "true" : undefined }),
+    [dq, tier, sort, tag, org, topic, mtag, hat, limit, research, groupBy],
   );
-  const { data: orgEntity } = useLive(() => (org ? crmApi.entity(org) : Promise.resolve(null)), [org]);
+  const { data: facets } = useLive(() => crmApi.peopleFacets({ hat, tag, org, topic, mtag }), [hat, tag, org, topic, mtag]);
+  const { data: checks } = useLive(crmApi.linkChecks);
   const c = data?.tiers;
+  const filtered = Boolean(dq || tier !== "all" || tag || org || topic || mtag || research || params.get("nohat"));
+  const set = (key: string) => (v: string | null) => { setLimit(PAGE); setParams({ [key]: v }); };
+  const sections = useMemo(() => {
+    if (!groupBy || !data) return [];
+    const by = new Map<string, PersonRow[]>();
+    const put = (name: string, row: PersonRow) => by.set(name, [...(by.get(name) ?? []), row]);
+    for (const row of data.items) {
+      if (groupBy === "org") put(row.org?.name ?? "No organization", row);
+      else if (row.tags.length) row.tags.forEach((t) => put(`#${t}`, row));
+      else put("No tag", row);
+    }
+    const last = (n: string) => n.startsWith("No ");
+    return [...by.entries()].sort((a, b) => Number(last(a[0])) - Number(last(b[0])) || b[1].length - a[1].length || a[0].localeCompare(b[0]));
+  }, [groupBy, data]);
 
   return (
     <>
@@ -114,11 +142,7 @@ export default function People() {
             <input className="field h-10 w-full pl-9" placeholder="Name, role, organization or tag" aria-label="Search people" value={q} onChange={(e) => setQ(e.target.value)} />
           </div>
           <Select label="Sort by" value={sort} onChange={(v) => setParams({ sort: v === "strength" ? null : v })} options={SORTS} />
-          {org && (
-            <button className="chip bg-forest-soft text-forest-deep" onClick={() => setParams({ org: null })} aria-label="Remove the organization filter">
-              at {orgEntity?.entity.name ?? "…"} <CloseIcon size={12} />
-            </button>
-          )}
+          <Select label="Group" value={groupBy} onChange={(v) => setParams({ group: v || null })} options={GROUPINGS} />
           {(research || (data?.needs_research ?? 0) > 0) && (
             <button
               className={research ? "chip bg-forest-soft text-forest-deep" : "chip bg-surface-subtle text-ink-soft hover:bg-forest/10"}
@@ -129,22 +153,38 @@ export default function People() {
               {research && <CloseIcon size={12} />}
             </button>
           )}
-          {tag && (
-            <button className="chip bg-forest-soft text-forest-deep" onClick={() => setParams({ tag: null })} aria-label={`Remove the ${tag} filter`}>
-              #{tag} <CloseIcon size={12} />
+          {!!checks?.total && <a className="chip bg-surface-subtle text-ink-soft hover:bg-forest/10" href="#/crm/checks">Links to check <span className="tabular-nums">{checks.total}</span></a>}
+        </div>
+        <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Filter by">
+          <FacetPicker label="Tag" value={tag} options={facets?.tags} onChange={set("tag")} />
+          <FacetPicker label="Organization" value={org} options={facets?.orgs} onChange={set("org")} />
+          <FacetPicker label="Topic" value={topic} options={facets?.topics} onChange={set("topic")} />
+          <FacetPicker label="Meeting tag" value={mtag} options={facets?.meeting_tags} onChange={set("mtag")} />
+          {params.get("nohat") && (
+            <button className="chip h-9 bg-forest-soft px-3 text-forest-deep" onClick={() => setParams({ nohat: null })} aria-label="Remove the no-hat filter">
+              In no hat yet <CloseIcon size={12} />
             </button>
           )}
+          {filtered && <span className="ml-auto"><PutInHat count={data?.total ?? 0} ids={async () => (await crmApi.people({ ...filters, limit: 1000, needs_research: research ? "true" : undefined })).items.map((r) => r.person.id)} /></span>}
         </div>
         {tier !== "all" && <p className="text-hint text-ink-soft">{TIER_META[tier].blurb}.</p>}
 
         {error && <p className="text-ui text-trail-deep">Couldn’t load people: {error}</p>}
         {!data && !error && <Skeleton className="h-64 w-full rounded-xl" />}
         {data && data.items.length === 0 && (
-          <Empty icon={<UsersIcon size={20} />} title={dq || tier !== "all" || tag || org || research ? "No one matches" : "No people yet"}>
-            {dq || tier !== "all" || tag || org || research ? "Try a different search or filter." : "People appear here as you add them or import notes."}
+          <Empty icon={<UsersIcon size={20} />} title={filtered ? "No one matches" : "No people yet"}>
+            {filtered ? "Try a different search or filter." : "People appear here as you add them or import notes."}
           </Empty>
         )}
-        {data && data.items.length > 0 && (
+        {groupBy && sections.map(([name, rows]) => (
+          <section key={name} className="space-y-1.5">
+            <h2 className="flex items-baseline gap-2 px-1 pt-2 text-ui font-semibold">{name} <span className="font-normal tabular-nums text-ink-soft">{rows.length}</span></h2>
+            <div className="panel divide-y divide-line overflow-hidden">
+              {rows.map((row) => <PersonLine key={row.person.id} row={row} showFlag={!research} />)}
+            </div>
+          </section>
+        ))}
+        {!groupBy && data && data.items.length > 0 && (
           <div className="panel divide-y divide-line overflow-hidden">
             {data.items.map((row) => (
               <PersonLine key={row.person.id} row={row} showFlag={!research} />

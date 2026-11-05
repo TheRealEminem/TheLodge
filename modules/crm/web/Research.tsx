@@ -88,7 +88,12 @@ function AddResearchDialog({ person, onClose }: { person: Entity; onClose: () =>
 
 /** The research reports about someone or naming them, newest first. Each one's full text is where it was filed (often
  *  on their organization), so "Open the report" goes to it in the Inbox. */
-export function ReportList({ reports, first }: { reports: ResearchReport[]; first: string }) {
+export function ReportList({ reports, first, personId }: { reports: ResearchReport[]; first: string; personId?: string }) {
+  const { toast, confirm } = useShell();
+  const notThem = async (r: ResearchReport) => {
+    if (!personId || !(await confirm({ title: `Not this ${first}?`, body: `${r.title} stops showing here, and the full name it used won't be matched to this record again.`, confirmLabel: "Take it off" }))) return;
+    crmApi.unlinkReport(personId, r.inbox_id).catch((e: Error) => toast(e.message, "error"));
+  };
   return (
     <ul className="divide-y divide-line">
       {reports.map((r) => (
@@ -100,6 +105,7 @@ export function ReportList({ reports, first }: { reports: ResearchReport[]; firs
               {formatDate(r.date)} · {r.about_them ? `About ${first}` : r.about ? `About ${r.about}, and names ${first}` : `Names ${first}`}
             </p>
           </div>
+          {personId && !r.about_them && <button className="btn btn-sm btn-ghost" onClick={() => void notThem(r)}>Not {first}</button>}
           <button className="btn btn-sm btn-ghost" onClick={() => navigate(`crm/inbox/${r.inbox_id}`)}>Open the report</button>
         </li>
       ))}

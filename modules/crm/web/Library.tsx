@@ -28,7 +28,7 @@ export default function Library({ params }: RouteProps & { params: { kind?: stri
   const [sort, setSort] = useQueryValue("sort", SORTS[kind][0].value);
   const [limit, setLimit] = useQueryLimit(100);
   const [creating, setCreating] = useState(false);
-  const { data } = useLive(() => crmApi.entities({ kind, q: dq || undefined, sort, limit }), [kind, dq, sort, limit]);
+  const { data } = useLive(() => crmApi.entities({ kind, q: dq || undefined, sort, limit, hat: "active" }), [kind, dq, sort, limit]);
   const label = KIND_LABEL[kind];
   return (
     <>

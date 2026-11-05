@@ -42,13 +42,16 @@ def _in_attributes(needle: str, attributes: dict) -> bool:
     return any(needle in v.lower() for v in values(attributes or {}))
 
 
-def list_entities(kind: str | None, q: str | None, tag: str | None, sort: str, limit: int, offset: int):
+def list_entities(kind: str | None, q: str | None, tag: str | None, sort: str, limit: int, offset: int, events: set[str] | None = None):
+    """`events`: if set, the only meetings and documents to show (a hat's)."""
     v = views.get()
     now = datetime.now(UTC)
     items = list(v.snap.entities.values())
     if kind:
         kinds = set(kind.split(","))
         items = [e for e in items if e.kind in kinds]
+    if events is not None:
+        items = [e for e in items if e.kind not in EVENT_KINDS or e.id in events]
     if tag:
         items = [e for e in items if tag.lower() in e.tags]
     needle = (q or "").strip().lower()
