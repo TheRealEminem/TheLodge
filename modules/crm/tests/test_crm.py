@@ -189,7 +189,7 @@ def test_each_ai_job_names_its_provider_and_says_whether_it_is_ready(client):
 def test_a_job_can_use_its_own_model_but_only_from_the_provider_it_was_picked_for(client):
     from modules.crm.server import roles
 
-    client.put("/api/settings", json={"crm.extraction_model": "anthropic:claude-sonnet-5-5"})
+    client.put("/api/settings", json={"ai.anthropic_api_key": "test-key", "crm.extraction_model": "anthropic:claude-sonnet-5-5"})
     try:
         assert roles.models("extraction") == {"anthropic": "claude-sonnet-5-5"}
         job = {j["role"]: j for j in client.get("/api/crm/ai").json()}["extraction"]
@@ -201,4 +201,4 @@ def test_a_job_can_use_its_own_model_but_only_from_the_provider_it_was_picked_fo
         client.put("/api/settings", json={"crm.extraction_model": "ollama:qwen3:8b"})  # a tag's colon stays in the model
         assert roles.models("extraction") == {"ollama": "qwen3:8b"}
     finally:
-        client.put("/api/settings", json={"crm.extraction_provider": "anthropic", "crm.extraction_model": ""})
+        client.put("/api/settings", json={"ai.anthropic_api_key": "", "crm.extraction_provider": "anthropic", "crm.extraction_model": ""})
