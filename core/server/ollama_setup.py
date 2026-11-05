@@ -285,12 +285,19 @@ def _download_and_install_windows() -> Path:
         shutil.rmtree(work, ignore_errors=True)
 
 
+def _powershell() -> str:
+    """Windows' own PowerShell, by its full path: the server's PATH is only the app's helpers and the system's top
+    folders (desktop/src-tauri/src/server.rs), and PowerShell lives further down. Nor could another program on a PATH
+    then stand in for the check of a download's signature."""
+    return str(Path(os.environ.get("SystemRoot", r"C:\Windows")) / "System32" / "WindowsPowerShell" / "v1.0" / "powershell.exe")
+
+
 def _verify_windows(setup: Path) -> None:
     """Refuses a download whose Authenticode signature isn't valid, or isn't Ollama's."""
     path = str(setup).replace("'", "''")
     script = (f"$s = Get-AuthenticodeSignature -LiteralPath '{path}'; $s.Status.ToString(); "
               "if ($s.SignerCertificate) { $s.SignerCertificate.Subject } else { '' }")
-    done = subprocess.run(["powershell", "-NoProfile", "-NonInteractive", "-Command", script],
+    done = subprocess.run([_powershell(), "-NoProfile", "-NonInteractive", "-Command", script],
                           capture_output=True, text=True, timeout=120)
     lines = [line.strip() for line in done.stdout.splitlines() if line.strip()]
     problem = signature_problem(lines[0] if lines else "", lines[1] if len(lines) > 1 else "")
