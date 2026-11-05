@@ -4,6 +4,7 @@ import type { DragEvent } from "react";
 import { CheckIcon, DocIcon, FolderIcon, InboxIcon, SparkleIcon } from "@core/components/icons";
 import { PageHeader, Skeleton, Spinner, StatusChip, useConfirm } from "@core/components/ui";
 import { useLive } from "@core/live";
+import { keepFilters, useQueryValue } from "@core/router";
 import { useShell } from "@core/shell";
 import { crmApi } from "./api";
 import type { InboxRow, InboxStatus } from "./api";
@@ -214,13 +215,13 @@ const FILTERS: { key: string; label: string; statuses?: InboxStatus[] }[] = [
 
 function Queue() {
   const { toast } = useShell();
-  const [filter, setFilter] = useState<string | null>(null);
+  const [filter, setFilter] = useQueryValue<string>("show", "");   // none chosen: what needs you, if anything does
   const [confirm, confirmDialog] = useConfirm();
   const [busy, setBusy] = useState(false);
   const { data: summary } = useLive(crmApi.inboxSummary);
   const counts = summary?.counts ?? {};
   const total = Object.values(counts).reduce((a, b) => a + (b ?? 0), 0);
-  const current = filter ?? ((counts.review ?? 0) > 0 ? "review" : "all");
+  const current = filter || ((counts.review ?? 0) > 0 ? "review" : "all");
   const statuses = FILTERS.find((f) => f.key === current)?.statuses;
   const { data: rows } = useLive(() => crmApi.inbox(statuses?.join(",")), [current]);
   const count = (f: (typeof FILTERS)[number]) => (f.statuses ? f.statuses.reduce((a, s) => a + (counts[s] ?? 0), 0) : total);
@@ -315,6 +316,8 @@ function Row({ row: r }: { row: InboxRow }) {
     </li>
   );
 }
+
+keepFilters("crm/inbox");
 
 export default function Inbox() {
   return (

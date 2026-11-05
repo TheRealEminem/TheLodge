@@ -1,5 +1,5 @@
 // Navigation is the URL hash: "#/notes/3f2a…". No router library: one hook, one function, one matcher.
-import { useCallback, useMemo, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
 
 const raw = () => decodeURI(location.hash.replace(/^#\/?/, ""));
 const current = () => raw().split("?")[0];
@@ -8,6 +8,52 @@ const subscribe = (on: () => void) => {
   window.addEventListener("hashchange", on);
   return () => window.removeEventListener("hashchange", on);
 };
+
+// Where you are in your history. Each entry carries its place (history.state.at), so a hash change can tell Back or
+// Forward from going somewhere new, and the buttons can tell whether there's anywhere to go.
+let at = typeof history.state?.at === "number" ? history.state.at : 0;
+let furthest = at;
+let returned = false;
+const stamp = () => history.replaceState({ ...history.state, at }, "");
+stamp();
+
+/** Changes the hash in place, staying on the same history entry. */
+const swap = (hash: string) => {
+  location.replace(hash);
+  stamp();
+};
+
+// The filters of pages that asked (keepFilters), so opening one again finds it as you left it. Until the app quits.
+const keeping = new Set<string>();
+const kept = new Map<string, string>();
+
+window.addEventListener("hashchange", () => {
+  const seen = history.state?.at;
+  returned = typeof seen === "number" && seen !== at;
+  if (typeof seen === "number") {
+    at = seen;
+  } else {
+    furthest = at = at + 1;
+    stamp();
+    const [path, query] = location.hash.split("?");
+    const again = kept.get(path);
+    if (!query && again) swap(`${path}?${again}`);
+  }
+  const [path, query = ""] = location.hash.split("?");
+  if (keeping.has(path)) kept.set(path, query);
+});
+
+/** Opening this page again, with no filters of its own in the link, brings back the ones it had. */
+export function keepFilters(path: string) {
+  keeping.add(`#/${path}`);
+}
+
+/** Where you are in your history, and the way back and forward through it. `returned()` says the last move was one. */
+export function useHistoryPlace() {
+  const place = useSyncExternalStore(subscribe, () => `${at}/${furthest}`);
+  const [here, end] = place.split("/").map(Number);
+  return { at: here, canBack: here > 0, canForward: here < end, returned: () => returned };
+}
 
 /** The current path without "#/", e.g. "notes/3f2a…" ("" is Home). */
 export function useRoute(): string {
@@ -29,9 +75,37 @@ export function useQueryParams(): [URLSearchParams, (changes: Record<string, str
       else next.set(k, v);
     }
     const q = next.toString();
-    location.replace(`#/${path}${q ? `?${q}` : ""}`);
+    swap(`#/${path}${q ? `?${q}` : ""}`);
   }, []);
   return [params, set];
+}
+
+/** A filter kept in the address: a value, its default (which the address leaves out), and a setter. */
+export function useQueryValue<T extends string>(key: string, fallback: T): [T, (value: T) => void] {
+  const [params, set] = useQueryParams();
+  return [(params.get(key) as T | null) ?? fallback, useCallback((value: T) => set({ [key]: value === fallback ? null : value }), [set, key, fallback])];
+}
+
+/** How many rows a "Show more" list has opened, kept in the address so coming back finds the same place. */
+export function useQueryLimit(page: number): [number, (value: number | ((was: number) => number)) => void] {
+  const [params, set] = useQueryParams();
+  const limit = Number(params.get("shown")) || page;
+  return [limit, (value) => {
+    const next = typeof value === "function" ? value(limit) : value;
+    set({ shown: next === page ? null : String(next) });
+  }];
+}
+
+/** A search box's text: answers as you type, and reaches the address a moment later. */
+export function useQueryText(key = "q", ms = 250): [string, (value: string) => void] {
+  const [params, set] = useQueryParams();
+  const [text, setText] = useState(() => params.get(key) ?? "");
+  useEffect(() => {
+    if (text === (params.get(key) ?? "")) return;
+    const t = setTimeout(() => set({ [key]: text || null }), ms);
+    return () => clearTimeout(t);
+  }, [text, params, key, ms, set]);
+  return [text, setText];
 }
 
 export function navigate(path: string) {

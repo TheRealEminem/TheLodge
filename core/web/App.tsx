@@ -1,16 +1,16 @@
 // The host app: sign-in, the shell (sidebar, top bar on narrow windows, content column), and routing to the
 // host's own views and every enabled module's views.
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { AUTH_EVENT, api, setSystem } from "./api";
 import type { AppInfo } from "./api";
-import { MenuIcon } from "./components/icons";
+import { BackIcon, ForwardIcon, MenuIcon } from "./components/icons";
 import { Ambient, Logo } from "./components/illustrations";
 import { Toast, TooltipLayer, useConfirm } from "./components/ui";
 import type { ToastState } from "./components/ui";
 import { startChangeFeed } from "./live";
 import { modulesFor } from "./registry";
 import type { ModuleWeb, RouteProps } from "./registry";
-import { match, navigate, useRoute } from "./router";
+import { match, navigate, useHistoryPlace, useRoute } from "./router";
 import { ShellProvider } from "./shell";
 import type { Shell } from "./shell";
 import Sidebar from "./Sidebar";
@@ -36,6 +36,67 @@ function useWide() {
   return wide;
 }
 
+const MAC = navigator.platform.toLowerCase().includes("mac");
+const typing = (t: EventTarget | null) => t instanceof HTMLElement && (t.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(t.tagName));
+
+/** Back and Forward through where you've been, with the keys a browser uses: ⌘[ and ⌘] on a Mac, Alt+arrows elsewhere. */
+function BackForward({ canBack, canForward }: { canBack: boolean; canForward: boolean }) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const back = MAC ? e.metaKey && e.key === "[" : e.altKey && e.key === "ArrowLeft" && !typing(e.target);
+      const forward = MAC ? e.metaKey && e.key === "]" : e.altKey && e.key === "ArrowRight" && !typing(e.target);
+      if (!back && !forward) return;
+      e.preventDefault();
+      if (back) history.back();
+      else history.forward();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+  return (
+    <div className="flex items-center gap-0.5">
+      <button className="btn btn-sm btn-ghost px-2" disabled={!canBack} aria-label="Back" data-tip={MAC ? "Back (⌘[)" : "Back (Alt+←)"} onClick={() => history.back()}>
+        <BackIcon size={16} /> <span className="hidden sm:inline">Back</span>
+      </button>
+      <button className="icon-btn h-8 w-8" disabled={!canForward} aria-label="Forward" data-tip={MAC ? "Forward (⌘])" : "Forward (Alt+→)"} onClick={() => history.forward()}>
+        <ForwardIcon size={16} />
+      </button>
+    </div>
+  );
+}
+
+/** Each place in your history keeps its scroll: going back lands where you were, once the page has loaded that far. */
+function useScrollMemory(at: number, returned: () => boolean) {
+  const main = useRef<HTMLElement>(null);
+  const tops = useRef(new Map<number, number>());
+  const restoring = useRef(false);
+  useLayoutEffect(() => {
+    const el = main.current;
+    if (!el) return;
+    const target = returned() ? tops.current.get(at) ?? 0 : 0;
+    el.scrollTop = target;
+    if (!target) return;
+    restoring.current = true;
+    const stop = () => { restoring.current = false; };
+    const give = window.setInterval(() => {
+      el.scrollTop = target;
+      if (Math.abs(el.scrollTop - target) < 2) { stop(); window.clearInterval(give); }
+    }, 60);
+    const end = window.setTimeout(() => { stop(); window.clearInterval(give); }, 2000);
+    el.addEventListener("wheel", stop, { once: true, passive: true });
+    return () => {
+      stop();
+      window.clearInterval(give);
+      window.clearTimeout(end);
+      el.removeEventListener("wheel", stop);
+    };
+  }, [at, returned]);
+  const onScroll = useCallback(() => {
+    if (!restoring.current && main.current) tops.current.set(at, main.current.scrollTop);
+  }, [at]);
+  return { main, onScroll };
+}
+
 function resolve(path: string, modules: ModuleWeb[]): { view: ComponentType<RouteProps>; params: Record<string, string>; wide?: boolean } {
   if (path === "") return { view: Home, params: {} };
   if (path === "settings") return { view: Settings as ComponentType<RouteProps>, params: {} };
@@ -58,6 +119,8 @@ export default function App() {
   const [drawer, setDrawer] = useState(false);
   const wide = useWide();
   const path = useRoute();
+  const { at, canBack, canForward, returned } = useHistoryPlace();
+  const { main, onScroll } = useScrollMemory(at, returned);
 
   useEffect(() => {
     api.auth().then((a) => setAuth(a.ok ? "ok" : "needed"), () => setAuth("ok"));
@@ -148,15 +211,18 @@ export default function App() {
         </div>
         {drawer && !wide && <div className="fixed inset-0 z-30 animate-fade-in bg-[var(--scrim)] backdrop-blur-[2px]" onClick={() => setDrawer(false)} />}
 
-        <main className="relative z-10 min-w-0 flex-1 overflow-y-auto">
-          <div className="chrome sticky top-0 z-20 flex h-14 items-center gap-2 border-b border-line px-3 lg:hidden">
-            <button className="icon-btn h-10 w-10" aria-label="Open the sidebar" onClick={() => setDrawer(true)}>
+        <main ref={main} onScroll={onScroll} className="relative z-10 min-w-0 flex-1 overflow-y-auto">
+          <div className="chrome sticky top-0 z-20 flex h-14 items-center gap-2 border-b border-line px-3 lg:h-11">
+            <button className="icon-btn h-10 w-10 lg:hidden" aria-label="Open the sidebar" onClick={() => setDrawer(true)}>
               <MenuIcon size={20} />
             </button>
-            <Logo size={26} />
-            <span className="font-display text-lead font-semibold tracking-[-0.02em]">{info!.name}</span>
+            <BackForward canBack={canBack} canForward={canForward} />
+            <span className="contents lg:hidden">
+              <Logo size={26} />
+              <span className="min-w-0 truncate font-display text-lead font-semibold tracking-[-0.02em]">{info!.name}</span>
+            </span>
           </div>
-          <div key={path} className={`relative mx-auto w-full px-5 pb-24 pt-7 sm:px-8 lg:pt-12 ${fullWidth ? "max-w-[1400px] lg:px-8" : "max-w-[872px] lg:px-10"}`}>
+          <div key={path} className={`relative mx-auto w-full px-5 pb-24 pt-7 sm:px-8 lg:pt-9 ${fullWidth ? "max-w-[1400px] lg:px-8" : "max-w-[872px] lg:px-10"}`}>
             <View params={params} />
           </div>
         </main>

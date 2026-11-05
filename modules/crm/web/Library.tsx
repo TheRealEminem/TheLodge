@@ -4,7 +4,7 @@ import { CalendarIcon, DocIcon, PlusIcon, SearchIcon, TopicIcon } from "@core/co
 import { PageHeader, Segmented, Select, Skeleton } from "@core/components/ui";
 import { useLive } from "@core/live";
 import type { RouteProps } from "@core/registry";
-import { navigate } from "@core/router";
+import { keepFilters, navigate, useQueryLimit, useQueryText, useQueryValue } from "@core/router";
 import { crmApi } from "./api";
 import type { EntityKind } from "./api";
 import { Empty, KIND_LABEL, Tags, useDebounced } from "./bits";
@@ -19,12 +19,14 @@ const SORTS: Record<string, { value: string; label: string }[]> = {
   topic: [{ value: "connections", label: "Most connected" }, { value: "name", label: "Name" }],
 };
 
+for (const k of KINDS) keepFilters(`crm/${k}s`);
+
 export default function Library({ params }: RouteProps & { params: { kind?: string } }) {
   const kind = (KINDS.find((k) => k === params.kind) ?? "meeting") as EntityKind;
-  const [q, setQ] = useState("");
+  const [q, setQ] = useQueryText();
   const dq = useDebounced(q);
-  const [sort, setSort] = useState(SORTS[kind][0].value);
-  const [limit, setLimit] = useState(100);
+  const [sort, setSort] = useQueryValue("sort", SORTS[kind][0].value);
+  const [limit, setLimit] = useQueryLimit(100);
   const [creating, setCreating] = useState(false);
   const { data } = useLive(() => crmApi.entities({ kind, q: dq || undefined, sort, limit }), [kind, dq, sort, limit]);
   const label = KIND_LABEL[kind];
@@ -37,7 +39,7 @@ export default function Library({ params }: RouteProps & { params: { kind?: stri
       />
       <div className="animate-enter space-y-3" style={{ animationDelay: "60ms" }}>
         <div className="-mx-1 overflow-x-auto px-1 pb-1">
-          <Segmented kind="tab" label="Kind" value={kind} onChange={(k) => { setSort(SORTS[k][0].value); navigate(`crm/${k}s`); }} options={KINDS.map((k) => ({ id: k, label: KIND_LABEL[k].many }))} />
+          <Segmented kind="tab" label="Kind" value={kind} onChange={(k) => navigate(`crm/${k}s`)} options={KINDS.map((k) => ({ id: k, label: KIND_LABEL[k].many }))} />
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <div className="relative min-w-52 max-w-sm flex-1">
