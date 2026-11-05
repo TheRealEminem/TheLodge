@@ -49,7 +49,8 @@ Each chunk ships on its own and is synced into the apps when they choose.
    open at login, and `--version` and `--window-test` for CI.
 5. **Done 4 Nov 2026** (The Lodge's run 41922239132 passed: a 36 MB installer, 157 MB installed; the first beta waits
    for the updater, chunk 6). **Windows x64**: `scripts/build-windows.py`, the CI job (build, install, window test), first beta.
-6. **The Windows updater** and the update-path test: install the current release, update to the new one, go back.
+6. **Done 5 Nov 2026** (The Lodge's run 41951852053: updated 0.0.1 to the new build with its own updater, then went
+   back, the data kept each time). Windows is published by running desktop.yml on a release's tag. **The Windows updater** and the update-path test: install the current release, update to the new one, go back.
 7. **Windows ARM** on GitHub's ARM runner.
 8. **Linux**: built on Ubuntu 22.04 (glibc 2.35 and later), AppImage, .deb and .rpm, the Linux updater (the AppImage
    replaces itself; .deb and .rpm show a download link), smoke tests under Xvfb on Ubuntu and Debian, GPU drawing only
