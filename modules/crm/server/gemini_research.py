@@ -279,7 +279,10 @@ def overview() -> dict:
     return {
         "ready": ready, "reason": locked() or (None if ready else "Add a Gemini API key in Settings → AI first"),
         "level": crm["research_level"], "batch": crm["research_batch"], "via": crm["research_via"],
-        "tools": cli_research.tools(),
+        "tools": cli_research.tools(), "depths": cli_research.depths(), "depth": crm["research_depth"],
+        "when": crm["research_when"], "night_hours": list(cli_research.night_hours()), "is_night": cli_research.is_night(),
+        "waiting_for_night": db.one("SELECT count(*) AS n FROM crm_research_runs WHERE night = 1 AND status = 'queued' "
+                                    "AND via != 'api'")["n"],
         "budget": budget(), "spent": spent_this_month(), "prices_as_of": PRICES_AS_OF, "warn_over": tally.warn_over(),
         "levels": [{"id": k, "label": v["label"], "hint": v["hint"],
                     "models": sorted({MODEL_NAMES.get(m, m) for m in models_for(k).values() if m}),
@@ -299,6 +302,7 @@ def _out(r: dict) -> dict:
     return {"id": r["id"], "person_id": r["entity_id"], "person": name["name"] if name else None, "level": r["level"], "via": r["via"],
             "batch": bool(r["batch"]), "status": r["status"], "stage": r["stage"], "error": r["error"],
             "searches": r["searches"], "cost": round(r["cost"], 4), "inbox_id": r["inbox_id"], "then_via": r["then_via"],
+            "depth": r["depth"], "night": bool(r["night"]),
             "created_at": r["created_at"], "finished_at": r["finished_at"]}
 
 
@@ -313,10 +317,12 @@ def run_of(person_id: str) -> dict | None:
     return _out(r) if r else None
 
 
-def start(person_ids: list[str], level: str, batch: bool, then_via: str | None = None) -> dict:
+def start(person_ids: list[str], level: str, batch: bool, then_via: str | None = None, depth: str = "standard",
+          night: bool = False) -> dict:
     """Start research on these people, as many as fit in what's left of the month's budget. Someone already being
     researched, or who can't be (no surname), is skipped and said why. With then_via, each run is a first pass that
-    hands over to deep research through that AI tool when it ends."""
+    hands over to deep research through that AI tool when it ends, at that depth and, with night, overnight. The first
+    pass itself goes now: it's charged per person, not against a plan, and the deep research starts from it."""
     if level not in LEVELS:
         raise ResearchRunError("Unknown level")
     if then_via and (why := cli_research.problem(then_via)):
@@ -343,8 +349,8 @@ def start(person_ids: list[str], level: str, batch: bool, then_via: str | None =
         room -= each
         now = _now()
         db.execute("INSERT INTO crm_research_runs (id, entity_id, level, batch, status, stage, findings, usage, then_via, "
-                   "created_at, updated_at) VALUES (?, ?, ?, ?, 'queued', 'ask', '[]', '{}', ?, ?, ?)",
-                   (db.new_id(), pid, level, int(batch), then_via, now, now))
+                   "depth, night, created_at, updated_at) VALUES (?, ?, ?, ?, 'queued', 'ask', '[]', '{}', ?, ?, ?, ?, ?)",
+                   (db.new_id(), pid, level, int(batch), then_via, depth, int(night), now, now))
         started.append(pid)
     if started:
         jobs.enqueue("crm", "research_advance", "scheduled")
@@ -403,12 +409,12 @@ def _update(run_id: str, **fields) -> None:
 def _hand_over(run_id: str) -> None:
     """A first pass that ends, found something or not, starts the deep research it was asked to hand over to. Deep
     research begins from the first pass's report (research.brief includes it)."""
-    r = db.one("SELECT entity_id, then_via FROM crm_research_runs WHERE id = ?", (run_id,))
+    r = db.one("SELECT entity_id, then_via, depth, night FROM crm_research_runs WHERE id = ?", (run_id,))
     if not r or not r["then_via"]:
         return
     db.execute("UPDATE crm_research_runs SET then_via = NULL WHERE id = ?", (run_id,))
     try:
-        got = cli_research.start([r["entity_id"]], r["then_via"])
+        got = cli_research.start([r["entity_id"]], r["then_via"], r["depth"], bool(r["night"]))
     except cli_research.CliResearchError as e:
         log.warning("deep research after %s didn't start: %s", run_id, e)
         return

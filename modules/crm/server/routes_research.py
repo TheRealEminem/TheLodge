@@ -56,6 +56,8 @@ class RunIn(BaseModel):
     batch: bool | None = None                                 # None: as Settings says
     via: Literal["api", "claude", "codex", "gemini_cli"] | None = None   # None: the usual way from Settings; api is Gemini
     then: Literal["claude", "codex", "gemini_cli"] | None = None   # with Gemini: deep research through this tool after
+    depth: Literal["light", "standard", "deep"] | None = None       # an AI tool's run; None: as Settings says
+    night: bool | None = None                                       # wait for the night hours; None: as Settings says
 
 
 def _run_guard(fn, *args):
@@ -78,11 +80,13 @@ def gemini_start(body: RunIn):
     signed in on this Mac (as many as you like, one at a time). Each report waits in the Inbox for your OK."""
     cfg = settings.section("crm")
     via = body.via or cfg["research_via"]
+    depth = body.depth or cfg["research_depth"]
+    night = cfg["research_when"] == "night" if body.night is None else body.night
     if via != "api":
-        return _run_guard(cli_research.start, body.person_ids, via)
+        return _run_guard(cli_research.start, body.person_ids, via, depth, night)
     level = body.level or cfg["research_level"]
     batch = cfg["research_batch"] if body.batch is None else body.batch
-    return _run_guard(gemini_research.start, body.person_ids, level, batch, body.then)
+    return _run_guard(gemini_research.start, body.person_ids, level, batch, body.then, depth, night)
 
 
 @router.get("/research/desk")

@@ -85,7 +85,9 @@ to do if something's wrong.
   or Google plan you already pay for, so nothing is charged per person; or with Gemini and Google Search through
   your own key (as a half-price batch by default). The Research page does it in batches: a cheap first pass with
   Gemini on everyone, then deep research on your plan for the ones who matter, starting from what the first pass
-  found. Reports that are sure of the person are added by themselves. Or copy a research brief into Gemini Deep
+  found. Choose how hard the AI tool works (light, standard or deep: the model, effort and length change) and
+  whether it runs now or overnight, so your plan's usage goes on the night. Reports that are sure of the person are
+  added by themselves. Or copy a research brief into Gemini Deep
   Research and bring the reports back in bulk.
 
 **Tasks**
