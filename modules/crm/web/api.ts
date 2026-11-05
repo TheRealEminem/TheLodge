@@ -115,6 +115,7 @@ export interface SourcePreview {
   written: string | null;
   links: { id: string; label: string; other: string }[];
   notes: { id: string; body: string }[];
+  fields: { label: string; value: string }[];
 }
 
 export interface Correction {

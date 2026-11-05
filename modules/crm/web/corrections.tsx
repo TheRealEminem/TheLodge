@@ -52,10 +52,11 @@ export function NotThisDialog({ who, evidence, onClose }: { who: Who; evidence: 
           {preview?.written && preview.written.toLowerCase() !== who.name.toLowerCase() ? <>, because it says “{preview.written}”</> : null}.
         </p>
         {!preview && <Skeleton className="h-16 w-full rounded-lg" />}
-        {preview && (preview.notes.length > 0 || preview.links.length > 0) && (
+        {preview && (preview.notes.length > 0 || preview.links.length > 0 || preview.fields.length > 0) && (
           <div className="inset-surface space-y-1.5 p-3.5 text-ui">
             <p className="text-meta font-medium text-ink-soft">This goes with it</p>
             <ul className="max-h-44 space-y-1 overflow-y-auto">
+              {preview.fields.map((f) => <li key={f.label}><span className="text-ink-soft">{f.label}:</span> {f.value}</li>)}
               {preview.links.map((l) => <li key={l.id}>{l.label} {l.other}</li>)}
               {preview.notes.map((n) => <li key={n.id}>{n.body}</li>)}
             </ul>
@@ -78,7 +79,7 @@ export function NotThisDialog({ who, evidence, onClose }: { who: Who; evidence: 
             <button className="icon-btn h-7 w-7" aria-label="Choose someone else" onClick={() => setTarget(null)}><CloseIcon size={14} /></button>
           </div>
         ) : <EntityPicker kinds={[who.kind]} exclude={[who.id]} onSelect={setTarget} placeholder={`Find the ${one}`} autoFocus />)}
-        <p className="text-hint text-ink-soft">The overview is written again from what's left. Their title and location aren't tied to a source: fix those under Edit. You can put this back.</p>
+        <p className="text-hint text-ink-soft">The overview is written again from what's left. You can put this back.</p>
         <div className="flex justify-end gap-2">
           <button className="btn btn-md btn-ghost" onClick={onClose}>Cancel</button>
           <button className="btn btn-md btn-primary" disabled={!ready} onClick={() => void go()}>{mode === "remove" ? "Take it off" : "Move it"}</button>
