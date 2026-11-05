@@ -123,11 +123,15 @@ def server_env(install: Path, data: Path) -> dict:
 
 
 def end_install(install: Path) -> None:
-    """Ends every program running from the install (the app, its server, an updater it started)."""
-    folder = str(install.resolve()).replace("'", "''")  # (the long form: Windows reports processes by it)
+    """Ends every program running from the install (the app, its server, an updater it started). Matched on the
+    test's own folder names: Windows reports a program's path in the form it was started with, which on GitHub's
+    runners is the short one (C:\\Users\\RUNNER~1\\...) as often as the long one."""
+    tail = f"\\{install.parent.name}\\{install.name}\\".replace("'", "''")
     subprocess.run(["powershell", "-NoProfile", "-Command",
-                    f"Get-Process | Where-Object {{ $_.Path -like '{folder}\\*' }} | Stop-Process -Force"], capture_output=True)
-    wait_gone(20)
+                    f"Get-Process | Where-Object {{ $_.Path -and $_.Path.ToLower().Contains('{tail.lower()}') }} | Stop-Process -Force"],
+                   capture_output=True)
+    if not wait_gone(20):
+        raise Failure(f"couldn't end the app running from {install}")
 
 
 def wait_for_version(version: str, seconds: float) -> dict:
