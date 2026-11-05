@@ -14,7 +14,8 @@ use tauri_plugin_opener::OpenerExt;
 
 use crate::config;
 use crate::login;
-use crate::server::{Bundled, Server};
+use crate::server::{self, Bundled, Server};
+use crate::update::{State as UpdateState, Updater};
 use crate::window;
 
 /// How long the server may take to answer after starting (a slow disk on the first run can take a while).
@@ -22,6 +23,7 @@ const START_TIMEOUT: Duration = Duration::from_secs(40);
 
 pub struct AppState {
     pub server: Option<Arc<Server>>,
+    pub updater: Option<Arc<Updater>>,
     ready: AtomicBool,
     tray: Mutex<Option<TrayItems>>,
 }
@@ -32,6 +34,8 @@ struct TrayItems {
     status: MenuItem<Wry>,
     status_shown: bool,
     login: Option<CheckMenuItem<Wry>>,
+    update: Option<MenuItem<Wry>>,
+    beta: Option<CheckMenuItem<Wry>>,
 }
 
 /// Sets everything up: the server (if this build has one), the hidden window and the tray; then starts the server
@@ -39,10 +43,24 @@ struct TrayItems {
 pub fn launch(app: &AppHandle, at_login: bool) -> tauri::Result<()> {
     let _ = std::fs::create_dir_all(config::data_dir());
     let resources = app.path().resource_dir().unwrap_or_default();
-    let server = Bundled::locate(&resources).map(Server::new);
-    app.manage(AppState { server, ready: AtomicBool::new(false), tray: Mutex::new(None) });
+    let exe = std::env::current_exe().unwrap_or_default();
+    let bundled = Bundled::locate(&resources);
+    let updater = (bundled.is_some() && Updater::enabled_for(&exe)).then(|| Updater::new(app.package_info().version.to_string(), exe));
+    let can = if updater.is_some() { format!("{},updates", server::CAN) } else { server::CAN.to_string() };
+    let server = bundled.map(|b| Server::new(b, can));
+    app.manage(AppState { server, updater: updater.clone(), ready: AtomicBool::new(false), tray: Mutex::new(None) });
     window::create(app)?;
     build_tray(app)?;
+    if let Some(updater) = updater {
+        let handle = app.clone();
+        updater.set_quit(move || quit(&handle));
+        let handle = app.clone();
+        updater.observe(move || {
+            refresh_updates(&handle);
+            window::send_updates(&handle);
+        });
+        updater.begin();
+    }
     let handle = app.clone();
     thread::spawn(move || begin(&handle, !at_login));
     Ok(())
@@ -171,12 +189,23 @@ fn build_tray(app: &AppHandle) -> tauri::Result<()> {
     } else {
         None
     };
+    let has_updater = app.state::<AppState>().updater.is_some();
+    let update = if has_updater { Some(MenuItem::with_id(app, "update", "Check for updates…", true, None::<&str>)?) } else { None };
+    let beta = match &app.state::<AppState>().updater {
+        Some(u) => Some(CheckMenuItem::with_id(app, "beta", "Beta updates", true, u.beta(), None::<&str>)?),
+        None => None,
+    };
     let data = MenuItem::with_id(app, "data", "Show data folder", true, None::<&str>)?;
     let log = MenuItem::with_id(app, "log", "Show server log", true, None::<&str>)?;
     let quit_item = MenuItem::with_id(app, "quit", format!("Quit {}", config::NAME), true, None::<&str>)?;
     let menu = Menu::with_items(app, &[&open_item, &settings, &status, &PredefinedMenuItem::separator(app)?])?;
+    if let (Some(update), Some(beta)) = (&update, &beta) {
+        menu.append_items(&[update, beta])?;
+    }
     if let Some(login) = &login {
         menu.append(login)?;
+    }
+    if update.is_some() || login.is_some() {
         menu.append(&PredefinedMenuItem::separator(app)?)?;
     }
     menu.append_items(&[&data, &log, &PredefinedMenuItem::separator(app)?, &quit_item])?;
@@ -195,7 +224,7 @@ fn build_tray(app: &AppHandle) -> tauri::Result<()> {
         })
         .build(app)?;
     *app.state::<AppState>().tray.lock().unwrap_or_else(|e| e.into_inner()) =
-        Some(TrayItems { menu, status, status_shown: true, login });
+        Some(TrayItems { menu, status, status_shown: true, login, update, beta });
     Ok(())
 }
 
@@ -245,7 +274,97 @@ fn on_menu(app: &AppHandle, id: &str) {
             let log = config::log_file();
             let _ = app.opener().open_path(log.to_string_lossy(), None::<&str>);
         }
+        "update" => {
+            let Some(updater) = app.state::<AppState>().updater.clone() else { return };
+            thread::spawn(move || match updater.state() {
+                UpdateState::Available(_) => updater.install(),
+                UpdateState::Failed(_) => updater.try_again(),
+                _ => updater.check(true),
+            });
+        }
+        "beta" => {
+            if let Some(updater) = app.state::<AppState>().updater.clone() {
+                let on = !updater.beta();
+                thread::spawn(move || updater.set_beta(on));
+            }
+        }
         "quit" => quit(app),
         _ => {}
+    }
+}
+
+/// The tray's update line, as the Mac menu words it: what's on offer, how it's going, or what went wrong.
+fn update_line(state: &UpdateState) -> (String, bool) {
+    match state {
+        UpdateState::Idle => ("Check for updates…".into(), true),
+        UpdateState::Checking => ("Checking for updates…".into(), false),
+        UpdateState::UpToDate => ("Up to date · Check again".into(), true),
+        UpdateState::Offline => ("Couldn't reach GitHub · Try again".into(), true),
+        UpdateState::Available(v) => (format!("Install version {v}…"), true),
+        UpdateState::Downloading(v, p) => (format!("Downloading {v}…{}", p.map(|p| format!(" {:.0}%", p * 100.0)).unwrap_or_default()), false),
+        UpdateState::Installing(v) => (format!("Installing {v}…"), false),
+        UpdateState::GoingBack(v) => (format!("Going back to {v}…"), false),
+        UpdateState::Failed(why) => (format!("{} · Try again", why.chars().take(120).collect::<String>()), true),
+    }
+}
+
+fn refresh_updates(app: &AppHandle) {
+    let state = app.state::<AppState>();
+    let Some(updater) = state.updater.clone() else { return };
+    let tray = state.tray.lock().unwrap_or_else(|e| e.into_inner());
+    let Some(items) = tray.as_ref() else { return };
+    if let Some(item) = &items.update {
+        let (text, enabled) = update_line(&updater.state());
+        let _ = item.set_text(text);
+        let _ = item.set_enabled(enabled && !updater.working());
+    }
+    if let Some(beta) = &items.beta {
+        let _ = beta.set_checked(updater.beta());
+    }
+}
+
+/// Settings → Updates in the window (window.rs passes on its "updates:<what>"), as on the Mac. Going back asks first.
+pub fn updates_command(app: &AppHandle, what: &str) {
+    let Some(updater) = app.state::<AppState>().updater.clone() else {
+        window::send_updates(app);
+        return;
+    };
+    let (handle, what) = (app.clone(), what.to_string());
+    thread::spawn(move || {
+        match what.as_str() {
+            "check" => updater.check(true),
+            "install" => updater.install(),
+            "skip" => updater.skip(),
+            "unskip" => updater.unskip(),
+            "beta-on" => updater.set_beta(true),
+            "beta-off" => updater.set_beta(false),
+            "try-again" => updater.try_again(),
+            "go-back" => {
+                if let Some(previous) = updater.previous() {
+                    if confirm_go_back(&previous.version, &updater) {
+                        updater.go_back();
+                    }
+                }
+            }
+            _ => {}
+        }
+        window::send_updates(&handle);
+    });
+}
+
+/// Going back replaces the app and restarts it, so it asks first (the Mac's alert, in Windows' own words box).
+fn confirm_go_back(previous: &str, updater: &Updater) -> bool {
+    let current = updater.report().get("current").and_then(|c| c.as_str()).unwrap_or_default().to_string();
+    let name = config::NAME;
+    let text = format!(
+        "{name} {current} is replaced with {previous}, the version it updated from, and restarts. Your data stays. \
+         {current} won't be offered again; the next version will."
+    );
+    #[cfg(windows)]
+    return crate::os::ask(&format!("Go back to {name} {previous}?"), &text);
+    #[cfg(not(windows))]
+    {
+        let _ = text;
+        true
     }
 }

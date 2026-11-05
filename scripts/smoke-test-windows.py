@@ -4,6 +4,7 @@ temporary folder, checks the installed app as it really is, and uninstalls it. Y
 app runs with a throwaway data folder and on a port of its own.
 
   python scripts/smoke-test-windows.py dist-app/TheLodge-0.8.0-windows-x64.exe
+  python scripts/smoke-test-windows.py dist-app/TheLodge-0.8.0-windows-x64.exe previous/TheLodge-0.7.1-windows-x64.exe
 
 What it checks, in order:
   1. the installer installs, silently, and the files the app needs are there, built for this arch
@@ -15,7 +16,17 @@ What it checks, in order:
   5. the real window, pointed at the installed server, shows the web app (the page names itself): a picture of it is
      kept beside the installer
   6. the uninstaller removes the app
+
+With a previous version's installer it then tries the update path, as someone on that version would meet it:
+  7. the previous version installed, a mark left in its data, and its own updater pointed at a stand-in for GitHub's
+     releases that has the new version: it downloads it, checks it, quits, installs it over itself and opens it
+  8. Go back, from the new version's own updater: the previous version is back, the new one is skipped, and the mark
+     is still there each time
+Quit the app before running this on your own PC: going back ends whatever runs from the test's install folder only,
+but the update test takes the app's port while it runs.
 """
+import functools
+import http.server
 import json
 import os
 import re
@@ -23,6 +34,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 import urllib.request
 from pathlib import Path
@@ -34,6 +46,8 @@ SLUG = NAME.replace(" ", "")
 PREFIX = IDENTITY["envPrefix"]
 PORT = int(os.environ.get("SMOKE_PORT", "8796"))
 URL = f"http://127.0.0.1:{PORT}"
+FEED_PORT = PORT + 1
+MARK = "Smoke Test"
 MACHINES = {"x64": 0x8664, "arm64": 0xAA64}
 
 
@@ -108,14 +122,126 @@ def server_env(install: Path, data: Path) -> dict:
     return env
 
 
+def end_install(install: Path) -> None:
+    """Ends every program running from the install (the app, its server, an updater it started)."""
+    folder = str(install.resolve()).replace("'", "''")  # (the long form: Windows reports processes by it)
+    subprocess.run(["powershell", "-NoProfile", "-Command",
+                    f"Get-Process | Where-Object {{ $_.Path -like '{folder}\\*' }} | Stop-Process -Force"], capture_output=True)
+    wait_gone(20)
+
+
+def wait_for_version(version: str, seconds: float) -> dict:
+    deadline = time.time() + seconds
+    info = None
+    while time.time() < deadline:
+        info = app_info()
+        if info and info.get("id") == IDENTITY["id"] and info.get("version") == version:
+            return info
+        time.sleep(1)
+    raise Failure(f"{NAME} {version} didn't come up at {URL} (last answer: {info and info.get('version')})")
+
+
+def your_name() -> str | None:
+    with urllib.request.urlopen(f"{URL}/api/settings", timeout=5) as r:
+        return json.loads(r.read())["values"].get("core.your_name")
+
+
+def set_your_name(value: str) -> None:
+    request = urllib.request.Request(f"{URL}/api/settings", data=json.dumps({"core.your_name": value}).encode(),
+                                     headers={"Content-Type": "application/json"}, method="PUT")
+    urllib.request.urlopen(request, timeout=10).read()
+
+
+def serve_feed(folder: Path) -> http.server.ThreadingHTTPServer:
+    """A stand-in for GitHub's releases: the list as JSON and the files, from `folder`."""
+    handler = functools.partial(http.server.SimpleHTTPRequestHandler, directory=str(folder))
+    handler.log_message = lambda *args: None
+    server = http.server.ThreadingHTTPServer(("127.0.0.1", FEED_PORT), handler)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    return server
+
+
+def publish(feed: Path, installer: Path, version: str, arch: str) -> dict:
+    """Puts an installer in the stand-in feed as a release names it (build-windows.py), with its checksum."""
+    import hashlib
+    name = f"{SLUG}-{version}-windows-{arch}.exe"
+    shutil.copy2(installer, feed / name)
+    digest = hashlib.sha256((feed / name).read_bytes()).hexdigest()
+    (feed / f"{name}.sha256").write_text(f"{digest}  {name}\n")
+    base = f"http://127.0.0.1:{FEED_PORT}"
+    return {"tag_name": f"v{version}", "prerelease": False, "draft": False, "html_url": f"{base}/",
+            "assets": [{"name": n, "browser_download_url": f"{base}/{n}"} for n in (name, f"{name}.sha256")]}
+
+
+def update_test(new: Path, new_version: str, old: Path, arch: str, work: Path) -> None:
+    old_version = re.match(rf"{re.escape(SLUG)}-(.+)-windows-[a-z0-9]+\.exe$", old.name)
+    old_version = old_version.group(1) if old_version else None
+    install, data, feed = work / "u-app", work / "u-data", work / "feed"
+    exe = install / f"{SLUG}.exe"
+    feed.mkdir()
+    log(f"7. Updating {old.name} to {new_version} with its own updater")
+    subprocess.run([str(old), "/S", f"/D={install}"], check=True, timeout=900)
+    old_version = subprocess.run([str(exe), "--version"], capture_output=True, text=True, timeout=60).stdout.strip() or old_version
+    if not old_version:
+        raise Failure(f"couldn't tell which version {old.name} is")
+    releases = [publish(feed, new, new_version, arch), publish(feed, old, old_version, arch)]
+    (feed / "releases.json").write_text(json.dumps(releases))
+    server = serve_feed(feed)
+    base_env = {**os.environ, f"{PREFIX}_DATA_DIR": str(data), f"{PREFIX}_PORT": str(PORT), f"{PREFIX}_NO_OPEN": "1",
+                f"{PREFIX}_UPDATE_URL": f"http://127.0.0.1:{FEED_PORT}/releases.json", f"{PREFIX}_UPDATE_DELAY": "3",
+                "TRAILMIX_FAMILY_DIR": "off"}
+    try:
+        app = subprocess.Popen([str(exe)], env={**base_env, f"{PREFIX}_UPDATE_TEST": "install"},
+                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        wait_for_version(old_version, 120)
+        set_your_name(MARK)
+        print(f"{old_version} is up, with a mark in its data; its updater is looking")
+        try:
+            wait_for_version(new_version, 300)
+        except Failure:
+            print(f"-- update.log --\n{tail(data / 'logs' / 'update.log')}", file=sys.stderr)
+            raise
+        said = subprocess.run([str(exe), "--version"], capture_output=True, text=True, timeout=60).stdout.strip()
+        saved = json.loads((data / "updates.json").read_text())
+        print(f"updated: {said}; updates.json {saved}")
+        if said != new_version:
+            raise Failure(f"the installed program says {said}, not {new_version}")
+        if saved.get("previous") != old_version:
+            raise Failure(f"the update didn't remember {old_version} to go back to")
+        if your_name() != MARK:
+            raise Failure("the data didn't survive the update")
+        app.wait(timeout=30)  # the old copy quit for the install
+
+        log(f"8. Going back to {old_version} with the new version's own updater")
+        end_install(install)
+        subprocess.Popen([str(exe)], env={**base_env, f"{PREFIX}_UPDATE_TEST": "go-back"},
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        try:
+            wait_for_version(old_version, 300)
+        except Failure:
+            print(f"-- update.log --\n{tail(data / 'logs' / 'update.log')}", file=sys.stderr)
+            raise
+        saved = json.loads((data / "updates.json").read_text())
+        print(f"went back; updates.json {saved}")
+        if saved.get("skipped") != new_version or saved.get("previous"):
+            raise Failure(f"going back should skip {new_version} and forget what to go back to: {saved}")
+        if your_name() != MARK:
+            raise Failure("the data didn't survive going back")
+    finally:
+        end_install(install)
+        server.shutdown()
+    subprocess.run([str(install / "uninstall.exe"), "/S", f"_?={install}"], timeout=600)
+
+
 def main(argv: list[str]) -> int:
     if sys.platform != "win32":
         print("The Windows smoke test runs on Windows.", file=sys.stderr)
         return 2
-    if len(argv) != 2:
+    if len(argv) not in (2, 3):
         print(__doc__)
         return 2
     installer = Path(argv[1]).resolve()
+    previous = Path(argv[2]).resolve() if len(argv) == 3 else None
     found = re.match(rf"{re.escape(SLUG)}-(.+)-windows-([a-z0-9]+)\.exe$", installer.name)
     if not found:
         print(f"{installer.name} isn't named {SLUG}-<version>-windows-<arch>.exe", file=sys.stderr)
@@ -218,7 +344,9 @@ def main(argv: list[str]) -> int:
         if exe.exists():
             raise Failure("the uninstaller left the app behind")
         print("uninstalled")
-        print(f"\nPASSED: {installer.name}")
+        if previous:
+            update_test(installer, version, previous, arch, work)
+        print(f"\nPASSED: {installer.name}{f' (and the update from {previous.name})' if previous else ''}")
         return 0
     except Failure as e:
         print(f"\nFAILED: {e}", file=sys.stderr)

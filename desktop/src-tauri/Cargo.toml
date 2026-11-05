@@ -26,6 +26,9 @@ url = "2"
 libc = "0.2"
 
 [target.'cfg(windows)'.dependencies]
+# https-native: Windows' own TLS (SChannel) and certificate store, for the updater's GitHub downloads
+minreq = { version = "2", features = ["https-native"] }
+sha2 = "0.10"
 webview2-com = "0.39"
 windows = { version = "0.62", features = [
   "Win32_Foundation",
