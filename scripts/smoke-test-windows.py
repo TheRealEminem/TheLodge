@@ -268,11 +268,13 @@ def main(argv: list[str]) -> int:
                      install / "app" / "core" / "server" / "app.py", install / "ui" / "index.html", install / "uninstall.exe"):
             if not part.exists():
                 raise Failure(f"the install has no {part.relative_to(install)}")
-        wrong = [p.name for p in (exe, install / "python" / "python.exe") if pe_machine(p) != MACHINES[arch]]
+        # Everything that runs: Windows on ARM emulates x64, so an x64 part would pass every other check, only slowly.
+        parts = [exe, install / "python" / "python.exe", *(install / "python").rglob("*.pyd"), *(install / "python").rglob("*.dll")]
+        wrong = [str(p.relative_to(install)) for p in parts if pe_machine(p) != MACHINES[arch]]
         if wrong:
-            raise Failure(f"not built for {arch}: {', '.join(wrong)}")
+            raise Failure(f"not built for {arch}: {', '.join(wrong[:20])}")
         size = sum(p.stat().st_size for p in install.rglob("*") if p.is_file()) / 1e6
-        print(f"installed: {size:.0f} MB, built for {arch}")
+        print(f"installed: {size:.0f} MB; {len(parts)} compiled files, all built for {arch}")
 
         log("2. --version and --about")
         said = subprocess.run([str(exe), "--version"], capture_output=True, text=True, timeout=60).stdout.strip()

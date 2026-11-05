@@ -183,9 +183,11 @@ def stage() -> None:
     if not py.is_file():
         die(f"No python.exe in {python}")
 
+    # Wheels only: a package without one for this arch stops the build, rather than being compiled here unnoticed
+    # (or an x64 copy being found later). PORTING.md's check of each native dependency is this, every build.
     say("Installing Python packages…")
     env = {**os.environ, "PIP_DISABLE_PIP_VERSION_CHECK": "1", "PIP_NO_INPUT": "1"}
-    run([str(py), "-m", "pip", "install", "-q", "--no-compile", "--no-warn-script-location", "-r", str(ROOT / "requirements.txt")], env=env)
+    run([str(py), "-m", "pip", "install", "-q", "--no-compile", "--no-warn-script-location", "--only-binary=:all:", "-r", str(ROOT / "requirements.txt")], env=env)
     (STAGE / "bin").mkdir()
     for extra in sorted((ROOT / "scripts").glob("bundle-*.py")):
         say(f"Adding {extra.stem.removeprefix('bundle-')}…")
@@ -207,8 +209,12 @@ def stage() -> None:
     rmtree(ROOT / "build" / "import-check")
     if check.returncode != 0:
         die(f"The staged server doesn't import:\n{check.stderr[-3000:]}")
-    if pe_machine(py) != MACHINE:
-        die(f"The Python runtime isn't built for {ARCH}")
+    # Windows on ARM emulates x64, so an x64 part in the ARM installer would pass everything else, only slowly.
+    binaries = [py, *python.rglob("*.pyd"), *python.rglob("*.dll")]
+    wrong = [str(p.relative_to(python)) for p in binaries if pe_machine(p) != MACHINE]
+    if wrong:
+        die(f"Not built for {ARCH}: {', '.join(wrong[:20])}")
+    say(f"{len(binaries)} compiled files, all built for {ARCH}")
 
     # Compile ahead of time, never re-checked against the source: the app folder isn't written to while it runs,
     # and it starts faster.
