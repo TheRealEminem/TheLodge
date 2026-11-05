@@ -323,6 +323,12 @@ def ollama_pull(body: PullBody):
     return {"started": started}
 
 
+@core_router.post("/ollama/dismiss-suggestion")
+def ollama_dismiss_suggestion(body: PullBody):
+    ollama_setup.dismiss_suggestion(body.model.strip())
+    return {"ok": True}
+
+
 @core_router.get("/system")
 async def system():
     """What this Mac can do, for setup and Settings: its memory, disk and chip, and the advice drawn from them."""

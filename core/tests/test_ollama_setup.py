@@ -89,3 +89,53 @@ def test_only_a_download_signed_by_ollama_is_installed(tmp_path, monkeypatch):
         ollama_setup._verify(app)
     monkeypatch.setattr(ollama_setup.subprocess, "run", lambda cmd, **kw: Done(0, f"TeamIdentifier={ollama_setup.OLLAMA_TEAM}"))
     ollama_setup._verify(app)
+
+
+# ── Offering a newer model ──────────────────────────────────────────────
+
+def tag(name, size="7B"):
+    return {"name": name, "details": {"parameter_size": size}}
+
+
+@pytest.fixture
+def big_mac(monkeypatch):
+    monkeypatch.setattr(resources, "snapshot", lambda: {"ram_total_gb": 16})
+    monkeypatch.setattr(hardware, "profile", lambda: {"ai_runs_on": "unified", "ai_memory_gb": 11})
+
+
+def cfg(**over):
+    return {"ollama_model": "", "model_suggestion_dismissed": "", **over}
+
+
+def test_a_legacy_model_is_offered_the_recommended_one(big_mac):
+    assert ollama_setup.suggestion(cfg(), [tag("qwen2.5:7b")]) == {"model": "qwen3.5:9b", "replaces": "qwen2.5:7b"}
+    assert ollama_setup.suggestion(cfg(), [tag("qwen3:8b", "8B")]) == {"model": "qwen3.5:9b", "replaces": "qwen3:8b"}
+
+
+@pytest.mark.parametrize("tags, settings_", [
+    ([tag("qwen3.5:9b", "9B")], {}),                                                 # already the best
+    ([tag("qwen3.5:9b", "9B"), tag("qwen2.5:7b")], {}),                              # has it as well
+    ([tag("my-own-finetune:7b")], {}),                                               # brought their own: never nagged
+    ([tag("qwen2.5:7b")], {"ollama_model": "qwen2.5:7b"}),                           # chose it themselves
+    ([tag("qwen2.5:7b")], {"model_suggestion_dismissed": "qwen3.5:9b"}),             # said not now
+    ([tag("nomic-embed-text:latest", "137M")], {}),                                  # only an embedding model
+    ([], {}),
+])
+def test_when_nothing_is_offered(big_mac, tags, settings_):
+    assert ollama_setup.suggestion(cfg(**settings_), tags) is None
+
+
+def test_a_different_recommendation_is_offered_again_after_not_now(big_mac, monkeypatch):
+    dismissed = cfg(model_suggestion_dismissed="qwen3.5:9b")
+    assert ollama_setup.suggestion(dismissed, [tag("qwen2.5:7b")]) is None
+    monkeypatch.setattr(ollama_setup, "recommended", lambda: "qwen4:9b")
+    monkeypatch.setitem(ollama_setup.model_catalog.__dict__, "FAMILIES", [{"family": "qwen4", "status": "recommended", "thinking": False}, *ollama_setup.model_catalog.FAMILIES])
+    assert ollama_setup.suggestion(dismissed, [tag("qwen2.5:7b")]) == {"model": "qwen4:9b", "replaces": "qwen2.5:7b"}
+
+
+def test_the_status_carries_the_offer_and_not_now_is_remembered(client, monkeypatch, big_mac):
+    monkeypatch.setattr(ollama_setup, "app_path", lambda: "/Applications/Ollama.app")
+    monkeypatch.setattr(ai, "_ollama_tags", lambda c: [tag("qwen2.5:7b")])
+    assert client.get("/api/ollama").json()["suggestion"] == {"model": "qwen3.5:9b", "replaces": "qwen2.5:7b"}
+    assert client.post("/api/ollama/dismiss-suggestion", json={"model": "qwen3.5:9b"}).json() == {"ok": True}
+    assert client.get("/api/ollama").json()["suggestion"] is None
