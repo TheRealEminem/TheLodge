@@ -881,6 +881,8 @@ export const crmApi = {
   sourcePreview: (entityId: string, evidenceId: string) => request<SourcePreview>(`/crm/entities/${entityId}/sources/${evidenceId}`),
   detachSource: (entityId: string, evidenceId: string, b: { to_id?: string; new_name?: string }) =>
     request<{ id: string; to: { id: string; name: string } | null; links: number; notes: number }>(`/crm/entities/${entityId}/sources/${evidenceId}/detach`, json("POST", b)),
+  moveReport: (entityId: string, inboxId: string, b: { to_id?: string; new_name?: string }) =>
+    request<{ id: string; to: { id: string; name: string } | null; links: number; notes: number }>(`/crm/entities/${entityId}/reports/${inboxId}/move`, json("POST", b)),
   unlinkReport: (entityId: string, inboxId: string) => request<void>(`/crm/entities/${entityId}/reports/${inboxId}/unlink`, json("POST")),
   corrections: (entityId: string) => request<Correction[]>(`/crm/entities/${entityId}/corrections`),
   undoCorrection: (id: string) => request<{ id: string }>(`/crm/corrections/${id}/undo`, json("POST")),

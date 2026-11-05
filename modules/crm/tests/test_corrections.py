@@ -186,6 +186,39 @@ def test_a_title_goes_only_on_the_one_job_it_could_belong_to(client, fake_struct
     assert titles == {"Acme": None, "Birch": None, "Cedar": "Engineer"}
 
 
+def test_a_report_about_someone_else_moves_with_everything_it_gave_and_comes_back(client, fake_structured, me):
+    sam = make(client, "person", "Sam Reed", attributes={"title": "Mentor"})
+    client.post(f"/api/crm/entities/{sam['id']}/notes", json={"body": "Sam's own note."})
+    acme = make(client, "organization", "Acme Menus")
+    fake_structured.reply = extraction(
+        [entity("p1", "Jo Reed", role="subject", title="Founder, Acme Menus", summary="Runs Acme Menus.", facts=["Sold a company in 1999."]), entity("o1", "Acme Menus", kind="organization")],
+        doc_type="person_profile", subject_ref="p1",
+        relationships=[{"source": "p1", "target": "o1", "kind": "works_at", "context": "Founder"}])
+    r = client.post("/api/crm/ingest/notes", json={"text": "A full report about Jo Reed and Acme Menus."})
+    jobs.drain()
+    row = client.get(f"/api/crm/ingest/jobs/{r.json()['id']}").json()
+    assert row["status"] == "review"
+    proposal = row["proposal"]
+    for e in proposal["entities"]:
+        if e["ref"] == "p1":   # as the old matching did: filed it on the wrong person
+            e.update(action="link", match_id=sam["id"], ambiguous=False)
+    assert client.post(f"/api/crm/ingest/jobs/{row['id']}/apply", json={"proposal": proposal}).status_code == 200
+    assert {e.kind for e in store.edges_of(sam["id"])} == {"works_at"} and any(n.body == "Sold a company in 1999." for n in store.notes_of(sam["id"]))
+
+    done = client.post(f"/api/crm/entities/{sam['id']}/reports/{row['id']}/move", json={"new_name": "Jo Reed"}).json()
+    jo = done["to"]["id"]
+    assert [n.body for n in store.notes_of(sam["id"])] == ["Sam's own note."]
+    assert store.edges_of(sam["id"]) == [] and {store.get_entity(e.target_id).name for e in store.edges_of(jo)} == {"Acme Menus"}
+    assert sorted(n.body for n in store.notes_of(jo))[0].startswith("A full report") or any("full report" in n.body for n in store.notes_of(jo))
+    assert store.get_entity(sam["id"]).attributes["title"] == "Mentor" and store.get_entity(jo).summary == "Runs Acme Menus."
+    assert client.get(f"/api/crm/people/{sam['id']}/research").json()["reports"] == []
+    assert client.get(f"/api/crm/people/{jo}/research").json()["reports"][0]["about_them"]
+
+    assert client.post(f"/api/crm/corrections/{done['id']}/undo").status_code == 200
+    assert any(n.body == "Sold a company in 1999." for n in store.notes_of(sam["id"])) and store.get_entity(jo) is None
+    assert client.get(f"/api/crm/people/{sam['id']}/research").json()["reports"][0]["about_them"]
+
+
 def test_guessed_links_come_up_for_a_look_until_you_settle_them(client, fake_structured, me):
     whitfield = make(client, "person", "Dana Whitfield")
     row = proposal_row(client, fake_structured, [entity("p1", "Dana Whitfield", role="attendee")])

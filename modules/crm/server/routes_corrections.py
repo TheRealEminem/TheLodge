@@ -118,6 +118,12 @@ def unlink_report(entity_id: str, inbox_id: str):
     _guard(corrections.unlink_report, entity_id, inbox_id)
 
 
+@router.post("/entities/{entity_id}/reports/{inbox_id}/move")
+def move_report(entity_id: str, inbox_id: str, body: DetachIn):
+    """A report filed on them is about someone else: everything it gave them goes to that person."""
+    return _guard(corrections.move_report, entity_id, inbox_id, to_id=body.to_id, new_name=body.new_name)
+
+
 @router.get("/entities/{entity_id}/corrections")
 def corrections_of(entity_id: str):
     return corrections.of(entity_id)

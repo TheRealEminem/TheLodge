@@ -89,6 +89,47 @@ export function NotThisDialog({ who, evidence, onClose }: { who: Who; evidence: 
   );
 }
 
+/** A research report filed on someone is really about someone else: its links, facts and text go to that person. */
+export function ReportNotThemDialog({ who, report, onClose }: { who: { id: string; name: string }; report: { inbox_id: string; title: string }; onClose: () => void }) {
+  const { toast } = useShell();
+  const [mode, setMode] = useState<"new" | "existing">("new");
+  const [name, setName] = useState("");
+  const [target, setTarget] = useState<EntitySummary | null>(null);
+  const [busy, setBusy] = useState(false);
+  const go = async () => {
+    setBusy(true);
+    try {
+      const done = await crmApi.moveReport(who.id, report.inbox_id, mode === "new" ? { new_name: name.trim() } : { to_id: target?.id });
+      toast(`${report.title} is on ${done.to?.name} now.`);
+      onClose();
+    } catch (e) {
+      toast((e as Error).message, "error");
+      setBusy(false);
+    }
+  };
+  return (
+    <Dialog title={`Not ${who.name}?`} onClose={onClose}>
+      <div className="space-y-4">
+        <p className="text-ui text-ink-soft"><span className="font-medium text-ink">{report.title}</span> is filed on {who.name}. Its links, facts and full text go to whoever it's really about. You can put this back.</p>
+        <Segmented label="Who it's really about" value={mode} onChange={setMode}
+          options={[{ id: "new" as const, label: "A new person" }, { id: "existing" as const, label: "Someone on file" }]} />
+        {mode === "new" ? (
+          <Field label="Their name"><input className="field h-10 w-full" value={name} onChange={(e) => setName(e.target.value)} autoFocus /></Field>
+        ) : target ? (
+          <div className="inset-surface flex items-center justify-between gap-3 px-3.5 py-2.5 text-ui">
+            <span className="truncate font-medium">{target.name}</span>
+            <button className="icon-btn h-7 w-7" aria-label="Choose someone else" onClick={() => setTarget(null)}><CloseIcon size={14} /></button>
+          </div>
+        ) : <EntityPicker kinds={["person"]} exclude={[who.id]} onSelect={setTarget} placeholder="Find the person" autoFocus />}
+        <div className="flex justify-end gap-2">
+          <button className="btn btn-md btn-ghost" onClick={onClose}>Cancel</button>
+          <button className="btn btn-md btn-primary" disabled={busy || (mode === "new" ? !name.trim() : !target)} onClick={() => void go()}>Move it</button>
+        </div>
+      </div>
+    </Dialog>
+  );
+}
+
 /** A small button beside a meeting or document on someone's page. */
 export function NotThisButton({ who, evidence, className = "" }: { who: Who; evidence: { id: string; name: string }; className?: string }) {
   const [open, setOpen] = useState(false);
