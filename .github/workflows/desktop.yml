@@ -3,12 +3,12 @@
 # version. No Windows or Linux machine is needed.
 #
 #   Actions -> "Build desktop apps" -> Run workflow, on main (a test build)
-#       -> <Slug>-<VERSION>-build.<run>-windows-x64.exe, smoke-tested as a fresh install, kept 7 days as the run's
-#          artifact for testers. Tick "update test" when the updater, versions or install paths changed: it also
+#       -> <Slug>-<VERSION>-build.<run>-windows-<x64|arm64>.exe, each smoke-tested as a fresh install on its own kind of
+#          machine, kept 7 days as the run's artifact for testers. Tick "update test" when the updater, versions or install paths changed: it also
 #          installs the previous version and has its own updater update to this one, then go back.
 #   Actions -> "Build desktop apps" -> Run workflow, on a release tag (v0.8.0, made by release.yml for the Mac)
-#       -> the same build at that version, always with the update test, then its installer is added to that release
-#          in app.json's updateRepo (+ .sha256, and <Slug>-windows-x64.exe for a download page). Windows apps on
+#       -> the same builds at that version, always with the update test, then the installers are added to that release
+#          in app.json's updateRepo (+ .sha256, and <Slug>-windows-<arch>.exe for a download page). Windows apps on
 #          Beta updates get it while it's a pre-release; everyone once promote.yml promotes it.
 # A test build's version is newer than the release it's built on, and older than the next one.
 name: Build desktop apps
@@ -19,7 +19,7 @@ on:
       platforms:
         description: Which platforms to build (a release tag always builds all)
         type: choice
-        options: [all, windows]
+        options: [all, windows, windows-x64, windows-arm64]
         default: all
       update_test:
         description: Also test updating from the previous version and going back (always on a release tag)
@@ -39,6 +39,7 @@ jobs:
     timeout-minutes: 5
     outputs:
       windows: ${{ steps.p.outputs.windows }}
+      windows_matrix: ${{ steps.p.outputs.windows_matrix }}
       full: ${{ steps.p.outputs.full }}
       release: ${{ steps.p.outputs.release }}
       version: ${{ steps.p.outputs.version }}
@@ -65,8 +66,12 @@ jobs:
             version="$version-build.$RUN"  # semver, which the Windows installer needs
           fi
           name="$(jq -r .name app.json)"
+          # Runner labels: https://github.com/actions/runner-images
+          all='[{"arch":"x64","runner":"windows-latest"},{"arch":"arm64","runner":"windows-11-arm"}]'
+          matrix="$(jq -c --arg s "$SEL" 'map(select($s=="all" or $s=="windows" or $s==("windows-"+.arch)))' <<<"$all")"
           {
-            echo "windows=$([ "$SEL" = all ] || [ "$SEL" = windows ] && echo true || echo false)"
+            echo "windows=$([ "$matrix" != "[]" ] && echo true || echo false)"
+            echo "windows_matrix=$matrix"
             echo "full=$([ "$IS_TAG" = true ] || [ "$UPDATE_TEST" = true ] && echo true || echo false)"
             echo "release=$IS_TAG"
             echo "version=$version"
@@ -95,10 +100,14 @@ jobs:
   windows:
     needs: plan
     if: needs.plan.outputs.windows == 'true'
-    runs-on: windows-latest
-    timeout-minutes: 30
+    strategy:
+      fail-fast: false   # one arch failing shouldn't hide the other's result
+      matrix:
+        include: ${{ fromJSON(needs.plan.outputs.windows_matrix) }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
     env:
-      ARCH: x64
+      ARCH: ${{ matrix.arch }}
       VERSION: ${{ needs.plan.outputs.version }}
     steps:
       - uses: actions/checkout@v4
@@ -115,12 +124,12 @@ jobs:
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           workspaces: desktop/src-tauri
-          key: windows-x64
+          key: windows-${{ matrix.arch }}
           save-if: ${{ github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/') }}
       - uses: actions/cache@v4
         with:
           path: build/cache
-          key: python-runtime-windows-x64-${{ hashFiles('scripts/build-windows.py') }}
+          key: python-runtime-windows-${{ matrix.arch }}-${{ hashFiles('scripts/build-windows.py') }}
       - name: Build the installer
         run: python scripts/build-windows.py
       - name: "Smoke test: a fresh install"
@@ -128,7 +137,7 @@ jobs:
         run: python scripts/smoke-test-windows.py (Get-Item "dist-app/*-windows-$env:ARCH.exe").FullName
       - uses: actions/upload-artifact@v4
         with:
-          name: windows-x64
+          name: windows-${{ matrix.arch }}
           retention-days: 7
           path: |
             dist-app/*.exe
@@ -137,7 +146,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: failure()
         with:
-          name: failed-windows-x64
+          name: failed-windows-${{ matrix.arch }}
           retention-days: 7
           if-no-files-found: ignore
           path: dist-app/*
@@ -147,10 +156,14 @@ jobs:
   windows-previous:
     needs: plan
     if: needs.plan.outputs.windows == 'true' && needs.plan.outputs.full == 'true'
-    runs-on: windows-latest
-    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.plan.outputs.windows_matrix) }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
     env:
-      ARCH: x64
+      ARCH: ${{ matrix.arch }}
       SLUG: ${{ needs.plan.outputs.slug }}
       REPO: ${{ needs.plan.outputs.repo }}
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -184,13 +197,13 @@ jobs:
         if: steps.current.outputs.found == 'false'
         with:
           workspaces: desktop/src-tauri
-          key: windows-x64
+          key: windows-${{ matrix.arch }}
           save-if: false
       - uses: actions/cache@v4
         if: steps.current.outputs.found == 'false'
         with:
           path: build/cache
-          key: python-runtime-windows-x64-${{ hashFiles('scripts/build-windows.py') }}
+          key: python-runtime-windows-${{ matrix.arch }}-${{ hashFiles('scripts/build-windows.py') }}
       - name: Build it again as 0.0.1
         if: steps.current.outputs.found == 'false'
         env:
@@ -199,17 +212,21 @@ jobs:
         run: python scripts/build-windows.py
       - uses: actions/upload-artifact@v4
         with:
-          name: windows-x64-previous
+          name: windows-${{ matrix.arch }}-previous
           retention-days: 3
           path: previous/*.exe
 
   windows-update:
     needs: [plan, windows, windows-previous]
     if: needs.plan.outputs.full == 'true'
-    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.plan.outputs.windows_matrix) }}
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 25
     env:
-      ARCH: x64
+      ARCH: ${{ matrix.arch }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -217,17 +234,18 @@ jobs:
           python-version: "3.12"
       - uses: actions/download-artifact@v4
         with:
-          name: windows-x64
+          name: windows-${{ matrix.arch }}
           path: dist-app
       - uses: actions/download-artifact@v4
         with:
-          name: windows-x64-previous
+          name: windows-${{ matrix.arch }}-previous
           path: previous
       - name: "Smoke test: updating from the previous version, and going back"
         shell: pwsh
         run: python scripts/smoke-test-windows.py (Get-Item "dist-app/*-windows-$env:ARCH.exe").FullName (Get-Item "previous/*.exe" | Select-Object -First 1).FullName
 
-  # Adds the Windows installer to the release this tag made (release.yml publishes the Mac app first).
+  # Adds the Windows installers to the release this tag made (release.yml publishes the Mac app first). A release is
+  # all or nothing: this waits for every arch's build and update test.
   publish:
     needs: [plan, shell-tests, windows, windows-update]
     if: needs.plan.outputs.release == 'true' && needs.plan.outputs.repo != ''
@@ -246,12 +264,18 @@ jobs:
         with:
           name: windows-x64
           path: dist-app
-      - name: Add the installer to the release
+      - uses: actions/download-artifact@v4
+        with:
+          name: windows-arm64
+          path: dist-app
+      - name: Add the installers to the release
         run: |
           if ! gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1; then
             echo "::error::$REPO has no release $TAG yet. Release the Mac app first (push the tag), then run this on the tag."
             exit 1
           fi
-          name="$SLUG-$VERSION-windows-x64.exe"
-          cp "dist-app/$name" "dist-app/$SLUG-windows-x64.exe"
-          gh release upload "$TAG" "dist-app/$name" "dist-app/$name.sha256" "dist-app/$SLUG-windows-x64.exe" --repo "$REPO" --clobber
+          for arch in x64 arm64; do
+            name="$SLUG-$VERSION-windows-$arch.exe"
+            cp "dist-app/$name" "dist-app/$SLUG-windows-$arch.exe"
+            gh release upload "$TAG" "dist-app/$name" "dist-app/$name.sha256" "dist-app/$SLUG-windows-$arch.exe" --repo "$REPO" --clobber
+          done
