@@ -224,7 +224,7 @@ function PersonTabs({ entity, relationships, ctx }: { entity: Entity; relationsh
         : tab === "documents" ? (
           <Stack>
             {flush("Documents", <EventList events={ctx.documents} subject={entity} empty="No documents by or about them yet." />)}
-            {!!research?.reports.length && flush("Research reports", <div className="px-5 sm:px-6"><ReportList reports={research.reports} first={entity.name.split(" ")[0]} personId={entity.id} /></div>)}
+            {!!research?.reports.length && flush("Research reports", <div className="px-5 sm:px-6"><ReportList reports={research.reports} first={entity.name.split(" ")[0]} personId={entity.id} personName={entity.name} /></div>)}
           </Stack>
         )
         : tab === "people" ? (

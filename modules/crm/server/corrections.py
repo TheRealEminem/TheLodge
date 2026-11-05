@@ -61,26 +61,27 @@ def _source_text(evidence_id: str) -> str:
     return " ".join(parts)
 
 
-def _sources(entity_id: str) -> list[tuple[str, dict]]:
-    """Every import that named this record: (the meeting or document it made, what it said about them)."""
+def _sources(entity_id: str) -> list[tuple[str, dict, str]]:
+    """Every import that named this record: (the meeting or document it made, what it said about them, the import)."""
     out = []
-    for row in db.query("SELECT proposal, result FROM crm_inbox WHERE status = 'applied' AND proposal IS NOT NULL "
+    for row in db.query("SELECT id, proposal, result FROM crm_inbox WHERE status = 'applied' AND proposal IS NOT NULL "
                         "AND EXISTS (SELECT 1 FROM json_each(result, '$.entity_ids') WHERE value = ?)", (entity_id,)):
         result, proposal = json.loads(row["result"] or "{}"), json.loads(row["proposal"] or "{}")
         for ent in proposal.get("entities") or []:
             if (result.get("entity_ids") or {}).get(ent.get("ref")) == entity_id:
-                out.append((result.get("record_id"), ent))
+                out.append((result.get("record_id"), ent, row["id"]))
     return out
 
 
-def _planted(entity, evidence_id: str) -> dict:
+def _planted(entity, evidence_id: str | None, inbox_id: str | None = None) -> dict:
     """What this source alone put on the record and is still there as it wrote it: its title, website, summary, tags.
     A value another source still linked here also gave, or that you've changed since, stays."""
     snap = snapshot.load()
     sources = _sources(entity.id)
-    mine = [ent for rid, ent in sources if rid == evidence_id]
+    is_mine = lambda rid, row_id: row_id == inbox_id if inbox_id else rid == evidence_id  # noqa: E731
+    mine = [ent for rid, ent, row_id in sources if is_mine(rid, row_id)]
     linked = {(e.target_id if e.source_id == entity.id else e.source_id) for e in snap.by_entity.get(entity.id, ())}
-    others = [ent for rid, ent in sources if rid != evidence_id and (rid is None or rid in linked)]
+    others = [ent for rid, ent, row_id in sources if not is_mine(rid, row_id) and (rid is None or rid in linked)]
     attrs, out = entity.attributes or {}, {"fields": {}, "tags": [], "summary": None}
     for ent in mine:
         for key in FIELDS:
@@ -126,6 +127,70 @@ def unlink_report(entity_id: str, inbox_id: str) -> None:
                 c.execute("INSERT OR IGNORE INTO crm_name_blocks (entity_id, name, created_at) VALUES (?, ?, ?)", (entity_id, name.strip().lower(), db.now()))
         c.execute("UPDATE crm_inbox SET result = ? WHERE id = ?", (json.dumps({**result, "entity_ids": held}), inbox_id))
     store._touch()
+
+
+def move_report(entity_id: str, inbox_id: str, *, to_id: str | None = None, new_name: str | None = None) -> dict:
+    """A research report about someone else was filed on this person. Everything it gave them goes to whoever it's really
+    about: its links, facts and full text, and the title, summary and tags only it gave. Can be undone."""
+    row = db.one("SELECT title, raw_text, proposal, result FROM crm_inbox WHERE id = ? AND status = 'applied'", (inbox_id,))
+    entity = store.get_entity(entity_id)
+    if row is None or entity is None:
+        raise store.NotFound("That report isn't on record")
+    result, proposal = json.loads(row["result"] or "{}"), json.loads(row["proposal"] or "{}")
+    held = result.get("entity_ids") or {}
+    refs = [ref for ref, eid in held.items() if eid == entity_id]
+    if not refs:
+        raise CorrectionError("That report isn't linked to them")
+    new_name = (new_name or "").strip() or None
+    target = store.get_entity(to_id) if to_id else None
+    if to_id and (target is None or target.kind != entity.kind or to_id == entity_id):
+        raise CorrectionError("That record can't take this over")
+    if not target and not new_name:
+        raise CorrectionError("Say who it's really about")
+    ents = [e for e in proposal.get("entities") or [] if e.get("ref") in refs]
+    planted = _planted(entity, None, inbox_id)
+    if not target:
+        target = store.create_entity(entity.kind, new_name, source="manual")
+    facts = {f.strip() for e in ents for f in e.get("facts") or [] if f and f.strip()}
+    raw = (row["raw_text"] or "").strip()
+    with db.connect() as c:
+        kept: list[dict] = []
+        for rel in proposal.get("relationships") or []:
+            if not rel.get("include", True) or (rel.get("source") not in refs and rel.get("target") not in refs):
+                continue
+            s, t = held.get(rel.get("source")), held.get(rel.get("target"))
+            found = c.execute("SELECT * FROM crm_relationships WHERE source_id = ? AND target_id = ? AND kind = ? AND evidence_id IS NULL AND source != 'manual'", (s, t, rel["kind"])).fetchone()
+            if found is None or json.loads(found["properties"] or "{}").get("user_set"):
+                continue
+            e = dict(found)
+            ns, nt = (target.id if s == entity_id else s), (target.id if t == entity_id else t)
+            if ns == nt or c.execute("SELECT 1 FROM crm_relationships WHERE source_id = ? AND target_id = ? AND kind = ?", (ns, nt, e["kind"])).fetchone():
+                c.execute("DELETE FROM crm_relationships WHERE id = ?", (e["id"],))
+                kept.append({"row": e, "fate": "removed"})
+            else:
+                c.execute("UPDATE crm_relationships SET source_id = ?, target_id = ? WHERE id = ?", (ns, nt, e["id"]))
+                kept.append({"row": e, "fate": "moved"})
+        notes = [dict(n) for n in c.execute("SELECT * FROM crm_notes WHERE entity_id = ? AND evidence_id IS NULL", (entity_id,))
+                 if n["body"].strip() in facts or (raw and n["body"].strip().endswith(raw))]
+        for n in notes:
+            c.execute("UPDATE crm_notes SET entity_id = ? WHERE id = ?", (target.id, n["id"]))
+        names = {e["name"].strip().lower() for e in ents if len((e.get("name") or "").split()) > 1 and e["name"].strip().lower() != target.name.strip().lower()}
+        block = None
+        for name in names:
+            if c.execute("INSERT OR IGNORE INTO crm_name_blocks (entity_id, name, created_at) VALUES (?, ?, ?)", (entity_id, name, db.now())).rowcount:
+                block = name
+        given = _take_planted(entity, target, planted, c)
+        new_result = {**result, "entity_ids": {ref: (target.id if eid == entity_id else eid) for ref, eid in held.items()}}
+        if result.get("subject_id") == entity_id:
+            new_result["subject_id"] = target.id
+        c.execute("UPDATE crm_inbox SET result = ? WHERE id = ?", (json.dumps(new_result), inbox_id))
+        snap = {"edges": kept, "notes": notes, "block": block, "created": bool(new_name and not to_id), "planted": planted, "given": given,
+                "report": {"inbox_id": inbox_id, "result": result}}
+        cid = db.new_id()
+        c.execute("INSERT INTO crm_corrections (id, entity_id, evidence_id, to_id, name, snapshot, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                  (cid, entity_id, inbox_id, target.id, row["title"] or "Research report", json.dumps(snap), db.now()))
+    store._touch()
+    return {"id": cid, "to": {"id": target.id, "name": target.name}, "links": len(kept), "notes": len(notes)}
 
 
 def preview(entity_id: str, evidence_id: str) -> dict:
@@ -292,6 +357,8 @@ def undo(correction_id: str) -> dict:
         if snap.get("block"):
             c.execute("DELETE FROM crm_name_blocks WHERE entity_id = ? AND name = ?", (row["entity_id"], snap["block"]))
         _put_planted_back(row, snap, c)
+        if snap.get("report"):
+            c.execute("UPDATE crm_inbox SET result = ? WHERE id = ?", (json.dumps(snap["report"]["result"]), snap["report"]["inbox_id"]))
         if snap.get("created") and row["to_id"]:
             # The record made for it goes again, if nothing else has come to it since.
             busy = (c.execute("SELECT 1 FROM crm_relationships WHERE source_id = ? OR target_id = ?", (row["to_id"], row["to_id"])).fetchone()
