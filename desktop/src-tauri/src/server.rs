@@ -26,7 +26,7 @@ const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 const PYTHON: &str = "python/python.exe";
 #[cfg(not(windows))]
 const PYTHON: &str = "python/bin/python3";
-/// What the shell tells the web app it can do (core/server/computer.py). "updates" joins when the updater does.
+/// What the shell tells the web app it can do (core/server/computer.py); "updates" too when the updater is on.
 pub const CAN: &str = "quit,reveal,login";
 const LOG_LIMIT: u64 = 5_000_000;
 
@@ -62,12 +62,14 @@ pub struct Server {
     bundled: Bundled,
     inner: Mutex<Inner>,
     job: Option<Job>,
+    can: String,
 }
 
 impl Server {
-    pub fn new(bundled: Bundled) -> Arc<Server> {
+    pub fn new(bundled: Bundled, can: String) -> Arc<Server> {
         Arc::new(Server {
             bundled,
+            can,
             inner: Mutex::new(Inner { child: None, stopping: false, crashes: Vec::new(), failure: None }),
             job: Job::new(),
         })
@@ -138,7 +140,7 @@ impl Server {
             .env(format!("{prefix}_UI_DIR"), &b.ui)
             .env(format!("{prefix}_PARENT_PID"), std::process::id().to_string())
             .env(format!("{prefix}_SHELL"), "desktop")
-            .env(format!("{prefix}_SHELL_CAN"), CAN)
+            .env(format!("{prefix}_SHELL_CAN"), &self.can)
             .stdin(Stdio::null())
             .stdout(Stdio::from(log))
             .stderr(Stdio::from(err_log));

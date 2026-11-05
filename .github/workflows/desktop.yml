@@ -1,30 +1,105 @@
-# Builds the desktop app for Windows (and, later, Linux) on GitHub's runners, and tries the installed app
-# (PORTING.md). Started by hand, not by every tag: Windows and Linux get a build when a major feature lands, plus bug
-# fixes for that version.
-#   Actions tab -> "Build desktop apps" -> Run workflow
-#       -> builds <Slug>-<version>-build.<run>-windows-x64.exe, runs scripts/smoke-test-windows.py on it, and keeps
-#          the installer (+ .sha256, and a picture of its window) as this run's artifact, for testers
-# Nothing is published yet: a platform goes out as a release only once its updater and its update test pass
-# (PORTING.md, chunk 6). No Windows or Linux machine is needed.
+# Builds the desktop app for Windows (and, later, Linux) on GitHub's runners and tries the installed app (PORTING.md).
+# Started by hand, not by every tag: Windows and Linux get a build when a major feature lands, plus bug fixes for that
+# version. No Windows or Linux machine is needed.
+#
+#   Actions -> "Build desktop apps" -> Run workflow, on main (a test build)
+#       -> <Slug>-<VERSION>-build.<run>-windows-x64.exe, smoke-tested as a fresh install, kept 7 days as the run's
+#          artifact for testers. Tick "update test" when the updater, versions or install paths changed: it also
+#          installs the previous version and has its own updater update to this one, then go back.
+#   Actions -> "Build desktop apps" -> Run workflow, on a release tag (v0.8.0, made by release.yml for the Mac)
+#       -> the same build at that version, always with the update test, then its installer is added to that release
+#          in app.json's updateRepo (+ .sha256, and <Slug>-windows-x64.exe for a download page). Windows apps on
+#          Beta updates get it while it's a pre-release; everyone once promote.yml promotes it.
+# A test build's version is newer than the release it's built on, and older than the next one.
 name: Build desktop apps
 
 on:
   workflow_dispatch:
+    inputs:
+      platforms:
+        description: Which platforms to build (a release tag always builds all)
+        type: choice
+        options: [all, windows]
+        default: all
+      update_test:
+        description: Also test updating from the previous version and going back (always on a release tag)
+        type: boolean
+        default: false
 
 permissions:
   contents: read
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
+
 jobs:
+  plan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      windows: ${{ steps.p.outputs.windows }}
+      full: ${{ steps.p.outputs.full }}
+      release: ${{ steps.p.outputs.release }}
+      version: ${{ steps.p.outputs.version }}
+      slug: ${{ steps.p.outputs.slug }}
+      repo: ${{ steps.p.outputs.repo }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: p
+        env:
+          SEL: ${{ inputs.platforms || 'all' }}
+          UPDATE_TEST: ${{ inputs.update_test || false }}
+          IS_TAG: ${{ startsWith(github.ref, 'refs/tags/v') }}
+          TAG: ${{ github.ref_name }}
+          RUN: ${{ github.run_number }}
+        run: |
+          version="$(tr -d '[:space:]' <VERSION)"
+          if [ "$IS_TAG" = true ]; then
+            SEL=all  # a release is never trimmed
+            if [ "${TAG#v}" != "$version" ]; then
+              echo "::error::The tag is $TAG but VERSION says $version."
+              exit 1
+            fi
+          else
+            version="$version-build.$RUN"  # semver, which the Windows installer needs
+          fi
+          name="$(jq -r .name app.json)"
+          {
+            echo "windows=$([ "$SEL" = all ] || [ "$SEL" = windows ] && echo true || echo false)"
+            echo "full=$([ "$IS_TAG" = true ] || [ "$UPDATE_TEST" = true ] && echo true || echo false)"
+            echo "release=$IS_TAG"
+            echo "version=$version"
+            echo "slug=${name// /}"
+            echo "repo=$(jq -r '.updateRepo // ""' app.json)"
+          } >>"$GITHUB_OUTPUT"
+          echo "Building $version (platforms: $SEL)"
+
+  # The shell's own Rust tests, beside the build rather than before it.
+  shell-tests:
+    needs: plan
+    if: needs.plan.outputs.windows == 'true'
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          workspaces: desktop/src-tauri
+          key: windows-x64-test
+          save-if: ${{ github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/') }}
+      - name: The shell's own tests
+        working-directory: desktop/src-tauri
+        run: cargo test --locked
+
   windows:
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - arch: x64
-            runner: windows-latest
-    runs-on: ${{ matrix.runner }}
+    needs: plan
+    if: needs.plan.outputs.windows == 'true'
+    runs-on: windows-latest
+    timeout-minutes: 30
     env:
-      ARCH: ${{ matrix.arch }}
+      ARCH: x64
+      VERSION: ${{ needs.plan.outputs.version }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -37,31 +112,24 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           workspaces: desktop/src-tauri
-          key: windows-${{ matrix.arch }}
+          key: windows-x64
+          save-if: ${{ github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/') }}
       - uses: actions/cache@v4
         with:
           path: build/cache
-          key: python-runtime-windows-${{ matrix.arch }}-${{ hashFiles('scripts/build-windows.py') }}
-      - name: The shell's own tests
-        shell: bash
-        working-directory: desktop/src-tauri
-        # tauri-build wants the icons and frontendDist only; the staged resources come with the real build's --config.
-        run: cargo test --locked
+          key: python-runtime-windows-x64-${{ hashFiles('scripts/build-windows.py') }}
       - name: Build the installer
-        shell: pwsh
-        # A test build gets a pre-release version (semver, which the installer needs), newer than the release.
-        run: |
-          $env:VERSION = "$((Get-Content VERSION).Trim())-build.$env:GITHUB_RUN_NUMBER"
-          python scripts/build-windows.py
+        run: python scripts/build-windows.py
       - name: "Smoke test: a fresh install"
         shell: pwsh
         run: python scripts/smoke-test-windows.py (Get-Item "dist-app/*-windows-$env:ARCH.exe").FullName
       - uses: actions/upload-artifact@v4
         with:
-          name: windows-${{ matrix.arch }}
+          name: windows-x64
+          retention-days: 7
           path: |
             dist-app/*.exe
             dist-app/*.sha256
@@ -69,8 +137,121 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: failure()
         with:
-          name: failed-windows-${{ matrix.arch }}
-          path: |
-            dist-app/*
-            desktop/src-tauri/target/*/release/bundle/nsis/*.exe
+          name: failed-windows-x64
+          retention-days: 7
           if-no-files-found: ignore
+          path: dist-app/*
+
+  # The version to update from: the current release's installer, or until a release has one, this same code built
+  # again as 0.0.1. Beside the new build, not after it.
+  windows-previous:
+    needs: plan
+    if: needs.plan.outputs.windows == 'true' && needs.plan.outputs.full == 'true'
+    runs-on: windows-latest
+    timeout-minutes: 30
+    env:
+      ARCH: x64
+      SLUG: ${{ needs.plan.outputs.slug }}
+      REPO: ${{ needs.plan.outputs.repo }}
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: The current release's installer
+        id: current
+        shell: bash
+        run: |
+          mkdir -p previous
+          if [ -n "$REPO" ] && gh release download --repo "$REPO" --pattern "$SLUG-windows-$ARCH.exe" --dir previous 2>/dev/null; then
+            echo "found=true" >>"$GITHUB_OUTPUT"
+            echo "Updating from the current release's installer"
+          else
+            echo "found=false" >>"$GITHUB_OUTPUT"
+            echo "No release has a Windows installer yet: building this code again as 0.0.1 to update from"
+          fi
+      - uses: actions/setup-node@v4
+        if: steps.current.outputs.found == 'false'
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            desktop/package-lock.json
+      - uses: actions/setup-python@v5
+        if: steps.current.outputs.found == 'false'
+        with:
+          python-version: "3.12"
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        if: steps.current.outputs.found == 'false'
+        with:
+          workspaces: desktop/src-tauri
+          key: windows-x64
+          save-if: false
+      - uses: actions/cache@v4
+        if: steps.current.outputs.found == 'false'
+        with:
+          path: build/cache
+          key: python-runtime-windows-x64-${{ hashFiles('scripts/build-windows.py') }}
+      - name: Build it again as 0.0.1
+        if: steps.current.outputs.found == 'false'
+        env:
+          VERSION: 0.0.1
+          OUT: previous
+        run: python scripts/build-windows.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-x64-previous
+          retention-days: 3
+          path: previous/*.exe
+
+  windows-update:
+    needs: [plan, windows, windows-previous]
+    if: needs.plan.outputs.full == 'true'
+    runs-on: windows-latest
+    timeout-minutes: 25
+    env:
+      ARCH: x64
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/download-artifact@v4
+        with:
+          name: windows-x64
+          path: dist-app
+      - uses: actions/download-artifact@v4
+        with:
+          name: windows-x64-previous
+          path: previous
+      - name: "Smoke test: updating from the previous version, and going back"
+        shell: pwsh
+        run: python scripts/smoke-test-windows.py (Get-Item "dist-app/*-windows-$env:ARCH.exe").FullName (Get-Item "previous/*.exe" | Select-Object -First 1).FullName
+
+  # Adds the Windows installer to the release this tag made (release.yml publishes the Mac app first).
+  publish:
+    needs: [plan, shell-tests, windows, windows-update]
+    if: needs.plan.outputs.release == 'true' && needs.plan.outputs.repo != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ secrets.RELEASE_TOKEN || secrets.GITHUB_TOKEN }}
+      REPO: ${{ needs.plan.outputs.repo }}
+      SLUG: ${{ needs.plan.outputs.slug }}
+      VERSION: ${{ needs.plan.outputs.version }}
+      TAG: ${{ github.ref_name }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: windows-x64
+          path: dist-app
+      - name: Add the installer to the release
+        run: |
+          if ! gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1; then
+            echo "::error::$REPO has no release $TAG yet. Release the Mac app first (push the tag), then run this on the tag."
+            exit 1
+          fi
+          name="$SLUG-$VERSION-windows-x64.exe"
+          cp "dist-app/$name" "dist-app/$SLUG-windows-x64.exe"
+          gh release upload "$TAG" "dist-app/$name" "dist-app/$name.sha256" "dist-app/$SLUG-windows-x64.exe" --repo "$REPO" --clobber

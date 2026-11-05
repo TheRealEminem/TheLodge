@@ -6,8 +6,9 @@
 //! makes that object, and it sends each message to the shell:// protocol:
 //!   "quit"            quit the app
 //!   "reveal:<path>"   show a file or folder in File Explorer or the file manager
-//!   "updates:<what>"  Settings → Updates (the updater isn't here yet: the shell doesn't say it can do "updates",
-//!                     so the web app doesn't offer it)
+//!   "updates:<what>"  Settings → Updates: get, check, install, skip, unskip, beta-on, beta-off, go-back, try-again.
+//!                     The window answers each, every change after, and every page load, with an "app-updates" event
+//!                     on the page whose detail is the updater's report (update.rs), as the Mac app does.
 
 use std::borrow::Cow;
 use std::sync::{Mutex, OnceLock};
@@ -15,7 +16,7 @@ use std::sync::{Mutex, OnceLock};
 use std::sync::mpsc;
 use std::time::Duration;
 
-use tauri::webview::NewWindowResponse;
+use tauri::webview::{NewWindowResponse, PageLoadEvent};
 use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindow, WebviewWindowBuilder, WindowEvent};
 use tauri_plugin_opener::OpenerExt;
 use url::Url;
@@ -106,6 +107,11 @@ pub fn create(app: &AppHandle) -> tauri::Result<WebviewWindow> {
         })
         // The page's Copy buttons: page access to the clipboard is off by default on Windows and Linux.
         .enable_clipboard_access()
+        .on_page_load(move |window, payload| {
+            if payload.event() == PageLoadEvent::Finished {
+                send_updates(window.app_handle());
+            }
+        })
         .build()?;
     let hide = window.clone();
     window.on_window_event(move |event| {
@@ -191,11 +197,21 @@ pub fn bridge(app: &AppHandle, request: tauri::http::Request<Vec<u8>>) -> tauri:
 fn handle_message(app: &AppHandle, message: &str) {
     if message == "quit" {
         crate::app::quit(app);
+    } else if let Some(what) = message.strip_prefix("updates:") {
+        crate::app::updates_command(app, what);
     } else if let Some(path) = message.strip_prefix("reveal:") {
         if std::path::Path::new(path).exists() {
             let _ = app.opener().reveal_item_in_dir(path);
         }
     }
+}
+
+/// Tells the page where updates stand (Settings → Updates listens for "app-updates"). Nothing without an updater.
+pub fn send_updates(app: &AppHandle) {
+    let Some(updater) = app.try_state::<crate::app::AppState>().and_then(|s| s.updater.clone()) else { return };
+    let Some(window) = window(app) else { return };
+    let detail = updater.report().to_string();
+    let _ = window.eval(format!("window.dispatchEvent(new CustomEvent('app-updates', {{ detail: {detail} }}))"));
 }
 
 /// The script `evaluate` runs: the expression's value as JSON text, "null" if it threw.

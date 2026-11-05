@@ -12,6 +12,7 @@ mod login;
 mod os;
 mod selftest;
 mod server;
+mod update;
 mod window;
 
 use tauri::{Manager, RunEvent};
@@ -24,6 +25,10 @@ enum Mode {
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
+    // A copy of this program installing an update over the app (update.rs): no window, no tray.
+    if args.iter().any(|a| a == update::APPLY_FLAG) {
+        std::process::exit(update::apply(&args));
+    }
     #[cfg(target_os = "linux")]
     os::before_window();
     let context: tauri::Context<tauri::Wry> = tauri::generate_context!();
