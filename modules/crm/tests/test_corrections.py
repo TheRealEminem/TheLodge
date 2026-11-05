@@ -118,6 +118,20 @@ def test_a_surname_the_ai_filled_in_is_not_remembered_as_a_name_they_are_not(cli
     assert jack["id"] in {c.entity.id for c in resolve.find_candidates("person", "Jack Marlow")}
 
 
+def test_an_organization_the_ai_swapped_in_can_still_match_its_own_name(client, fake_structured, me):
+    hub = make(client, "organization", "Alder Innovation Hub")
+    fake_structured.reply = extraction([entity("o1", "Alder Innovation Hub", kind="organization")])
+    r = client.post("/api/crm/ingest/notes", json={"text": "Sam is with the Cedar Valley Innovation Hub."})
+    jobs.drain()
+    row = client.get(f"/api/crm/ingest/jobs/{r.json()['id']}").json()
+    if row["status"] == "review":
+        client.post(f"/api/crm/ingest/jobs/{row['id']}/apply", json={"proposal": row["proposal"]})
+        row = client.get(f"/api/crm/ingest/jobs/{row['id']}").json()
+    doc = row["result"]["record_id"]
+    assert client.post(f"/api/crm/entities/{hub['id']}/sources/{doc}/detach", json={"new_name": "Cedar Valley Innovation Hub"}).status_code == 200
+    assert hub["id"] in {c.entity.id for c in resolve.find_candidates("organization", "Alder Innovation Hub")}
+
+
 def test_a_source_can_just_be_taken_off(client, fake_structured, me):
     dana, _, doc = wrong_link(client, fake_structured)
     done = client.post(f"/api/crm/entities/{dana['id']}/sources/{doc}/detach", json={}).json()

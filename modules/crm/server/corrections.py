@@ -21,6 +21,7 @@ from core.server import db
 from core.server.tags import normalize_tags
 
 from . import resolve, snapshot, store, views
+from .duplicates import _plain
 from .kinds import EVENT_KINDS, RELATIONSHIP_KINDS
 
 
@@ -50,6 +51,12 @@ def _written(entity_id: str, evidence_id: str) -> str | None:
             if (result.get("entity_ids") or {}).get(ent.get("ref")) == entity_id:
                 return ent.get("name")
     return None
+
+
+def _says(text: str, name: str) -> bool:
+    """Whether every word of a name is in the text."""
+    found = set(re.findall(r"[a-z0-9]+", _plain(text)))
+    return all(w in found for w in re.findall(r"[a-z0-9]+", _plain(name)))
 
 
 def _source_text(evidence_id: str) -> str:
@@ -229,8 +236,8 @@ def detach(entity_id: str, evidence_id: str, *, to_id: str | None = None, new_na
     if to_id and (target is None or target.kind != entity.kind):
         raise CorrectionError("That record can't take this over")
     written = _written(entity_id, evidence_id)
-    # Only a full name the source really used: a surname the AI filled in from your book says nothing about this record.
-    blocked = written.strip().lower() if written and len(written.split()) > 1 and resolve.as_written(written, _source_text(evidence_id)) == written else None
+    # Only a full name the source really used: one the AI filled in from your book says nothing about this record.
+    blocked = written.strip().lower() if written and len(written.split()) > 1 and _says(_source_text(evidence_id), written) else None
     planted = _planted(entity, evidence_id)
     if new_name and not target:
         target = store.create_entity(entity.kind, new_name, source="manual")
