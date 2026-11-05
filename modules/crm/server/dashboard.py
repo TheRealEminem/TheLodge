@@ -5,7 +5,7 @@ from core.server import db
 
 from .schemas import EntitySummary, OrgRow, PersonRow
 from .connections import sort_key
-from . import research, views
+from . import hats, research, views
 
 RECONNECT_AFTER_DAYS = 60
 ACTIVITY_WEEKS = 26
@@ -42,7 +42,8 @@ class Dashboard(BaseModel):
     weekly_activity: list[WeekActivity]
 
 
-def build_dashboard(me_id: str | None = None) -> Dashboard:
+def build_dashboard(me_id: str | None = None, hat: str | None = None) -> Dashboard:
+    """`hat`: only what's in that hat ("active" for the one you're wearing)."""
     now = datetime.now(UTC)
     counts = {r["kind"]: r["n"] for r in db.query("SELECT kind, count(*) AS n FROM crm_entities GROUP BY kind")}
     rel_count = db.one("SELECT count(*) AS n FROM crm_relationships")["n"]
@@ -50,6 +51,9 @@ def build_dashboard(me_id: str | None = None) -> Dashboard:
 
     v = views.get(me_id)
     ents, conns = v.snap.entities, v.conns
+    people_lens, org_lens, event_lens = hats.lens_people(hat), hats.lens_orgs(hat), hats.lens_events(hat)
+    if people_lens is not None:
+        conns = {pid: c for pid, c in conns.items() if pid in people_lens}
     ranked = sorted(conns, key=lambda pid: sort_key(conns[pid], ents[pid].name))
     tiers: dict[str, int] = {}
     for c in conns.values():
@@ -67,21 +71,22 @@ def build_dashboard(me_id: str | None = None) -> Dashboard:
     lit = [pid for pid in conns if conns[pid].tier in ("light", "indirect") and conns[pid].last_signal_at]
     lit.sort(key=lambda pid: (conns[pid].last_signal_at, conns[pid].score), reverse=True)
 
-    org_rows = [v.org_row(oid) for oid in v.orgs]
+    org_rows = [v.org_row(oid) for oid in v.orgs if org_lens is None or oid in org_lens]
     key_orgs = sorted(
         (r for r in org_rows if r.known and not r.mine),
         key=lambda r: (-r.known, r.org.name.lower()),
     )[:6]
 
     meetings = sorted(
-        (m for m in v.snap.of_kind("meeting") if m.occurred_at and m.occurred_at <= now + timedelta(days=1)),
+        (m for m in v.snap.of_kind("meeting") if m.occurred_at and m.occurred_at <= now + timedelta(days=1)
+         and (event_lens is None or m.id in event_lens)),
         key=lambda m: m.occurred_at,  # type: ignore[arg-type,return-value]
         reverse=True,
     )[:6]
 
     def people_in(ids) -> list[EntitySummary]:
         people = [i for i in ids if ents[i].kind == "person" and not ents[i].is_self]
-        return [v.summary(i) for i in sorted(people, key=lambda i: sort_key(conns[i], ents[i].name))]
+        return [v.summary(i) for i in sorted(people, key=lambda i: sort_key(v.conns[i], ents[i].name))]
 
     cards = [
         MeetingCard(
@@ -98,7 +103,7 @@ def build_dashboard(me_id: str | None = None) -> Dashboard:
     start = start - timedelta(days=start.weekday())  # Monday
     per_week: dict[date, int] = {}
     for m in v.snap.of_kind("meeting"):
-        if m.occurred_at and start <= m.occurred_at.date() and m.occurred_at <= now:
+        if (event_lens is None or m.id in event_lens) and m.occurred_at and start <= m.occurred_at.date() and m.occurred_at <= now:
             d = m.occurred_at.date()
             wk = d - timedelta(days=d.weekday())
             per_week[wk] = per_week.get(wk, 0) + 1

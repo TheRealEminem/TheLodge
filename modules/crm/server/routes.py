@@ -7,8 +7,9 @@ from fastapi import APIRouter, HTTPException, Query, Response
 from pydantic import BaseModel, Field, field_validator
 
 from . import dashboard as dash
+from . import hats
 from . import graph as graph_svc
-from . import listing, roles, routes_capture, routes_duplicates, routes_export, routes_ingest, routes_network, routes_people, routes_pictures, routes_profiles, routes_research, routes_roundups, routes_sheet, store, timeline as timeline_svc, views
+from . import listing, roles, routes_capture, routes_corrections, routes_duplicates, routes_export, routes_ingest, routes_network, routes_people, routes_pictures, routes_profiles, routes_research, routes_roundups, routes_sheet, store, timeline as timeline_svc, views
 from .kinds import ENTITY_KINDS, RELATIONSHIP_KINDS, validate_relationship
 from .model import Entity, Note, Relationship, iso
 
@@ -24,6 +25,7 @@ router.include_router(routes_duplicates.router)
 router.include_router(routes_pictures.router)
 router.include_router(routes_roundups.router)
 router.include_router(routes_export.router)
+router.include_router(routes_corrections.router)
 
 
 @router.get("/ai")
@@ -133,8 +135,8 @@ def meta():
 @router.get("/entities")
 def list_entities(kind: str | None = None, q: str | None = None, tag: str | None = None,
                   sort: Literal["name", "recent", "updated", "last_interaction", "connections", "occurred"] = "name",
-                  limit: int = 50, offset: int = 0):
-    items, total = listing.list_entities(kind, q, tag, sort, max(1, min(limit, 500)), max(0, offset))
+                  limit: int = 50, offset: int = 0, hat: str | None = None):
+    items, total = listing.list_entities(kind, q, tag, sort, max(1, min(limit, 500)), max(0, offset), hats.lens_events(hat))
     return {"items": items, "total": total}
 
 
@@ -142,6 +144,9 @@ def list_entities(kind: str | None = None, q: str | None = None, tag: str | None
 def create_entity(body: EntityIn):
     e = store.create_entity(body.kind, body.name, summary=body.summary, attributes=body.attributes,
                             tags=body.tags, occurred_at=body.occurred_at)
+    # Someone you add while wearing a hat belongs to it.
+    if e.kind in ("person", "organization") and (wearing := hats.active()):
+        hats.place(wearing, [e.id], "you")
     return entity_out(e)
 
 
@@ -247,6 +252,18 @@ def add_note(entity_id: str, body: NoteIn):
     return note_out(store.add_note(entity_id, body.body, occurred_at=body.occurred_at))
 
 
+class NotePatch(BaseModel):
+    body: str = Field(min_length=1)
+
+
+@router.patch("/notes/{note_id}")
+def update_note(note_id: str, body: NotePatch):
+    try:
+        return note_out(store.update_note(note_id, body.body))
+    except store.NotFound as e:
+        raise _missing(e) from e
+
+
 @router.delete("/notes/{note_id}", status_code=204)
 def delete_note(note_id: str):
     try:
@@ -310,8 +327,8 @@ def find_paths(target: str, source: str | None = None, max_hops: int = Query(4, 
 
 
 @router.get("/dashboard")
-def dashboard():
-    return dash.build_dashboard()
+def dashboard(hat: str | None = None):
+    return dash.build_dashboard(hat=hat)
 
 
 @router.post("/admin/demo")

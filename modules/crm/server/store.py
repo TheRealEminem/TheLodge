@@ -250,6 +250,54 @@ MIGRATIONS = [
     ALTER TABLE crm_research_runs ADD COLUMN depth TEXT NOT NULL DEFAULT 'standard';   -- light | standard | deep
     ALTER TABLE crm_research_runs ADD COLUMN night INTEGER NOT NULL DEFAULT 0;
     """,
+    # Putting things right (corrections.py): a source taken off a record, names a record isn't, and a checked link.
+    # An overview you wrote yourself is yours (mine = 1): the AI leaves it alone.
+    """
+    CREATE TABLE crm_corrections (
+        id          TEXT PRIMARY KEY,
+        entity_id   TEXT NOT NULL,      -- the record it was taken off (no foreign key: the record of what happened stays)
+        evidence_id TEXT NOT NULL,      -- the meeting or document
+        to_id       TEXT,               -- who it belongs to instead, if anyone
+        name        TEXT NOT NULL,      -- the meeting or document's name, for the page
+        snapshot    TEXT NOT NULL,      -- JSON: what moved, to put it back
+        created_at  TEXT NOT NULL,
+        undone_at   TEXT
+    );
+    CREATE INDEX crm_corrections_entity ON crm_corrections(entity_id);
+    CREATE TABLE crm_name_blocks (
+        entity_id  TEXT NOT NULL REFERENCES crm_entities(id) ON DELETE CASCADE,
+        name       TEXT NOT NULL,       -- lower case
+        created_at TEXT NOT NULL,
+        PRIMARY KEY (entity_id, name)
+    );
+    CREATE TABLE crm_link_checks (
+        entity_id   TEXT NOT NULL,
+        evidence_id TEXT NOT NULL,
+        created_at  TEXT NOT NULL,
+        PRIMARY KEY (entity_id, evidence_id)
+    );
+    ALTER TABLE crm_overviews ADD COLUMN mine INTEGER NOT NULL DEFAULT 0;
+    """,
+    # Hats (hats.py): the parts of your life, and what belongs to each.
+    """
+    CREATE TABLE crm_hats (
+        id         TEXT PRIMARY KEY,
+        name       TEXT NOT NULL,
+        title      TEXT,                -- what you are in this hat ("Chair")
+        org_id     TEXT REFERENCES crm_entities(id) ON DELETE SET NULL,   -- where
+        workspace  INTEGER,             -- the Trailmix workspace it follows
+        position   INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL
+    );
+    CREATE TABLE crm_hat_links (
+        hat_id     TEXT NOT NULL REFERENCES crm_hats(id) ON DELETE CASCADE,
+        entity_id  TEXT NOT NULL REFERENCES crm_entities(id) ON DELETE CASCADE,
+        how        TEXT NOT NULL,       -- source (a meeting or document's hat) | you (you put it there) | no (you took it out)
+        created_at TEXT NOT NULL,
+        PRIMARY KEY (hat_id, entity_id)
+    );
+    CREATE INDEX crm_hat_links_entity ON crm_hat_links(entity_id);
+    """,
 ]
 
 _version = 0
@@ -610,6 +658,15 @@ def all_notes(conn: sqlite3.Connection | None = None) -> list[Note]:
         return [_note(r) for r in c.execute("SELECT * FROM crm_notes").fetchall()]
 
 
+def update_note(note_id: str, body: str) -> Note:
+    with db.connect() as c:
+        if not c.execute("UPDATE crm_notes SET body = ? WHERE id = ?", (body, note_id)).rowcount:
+            raise NotFound("Note not found")
+        note = _note(c.execute("SELECT * FROM crm_notes WHERE id = ?", (note_id,)).fetchone())
+    _touch()
+    return note
+
+
 def delete_note(note_id: str) -> None:
     if not db.execute("DELETE FROM crm_notes WHERE id = ?", (note_id,)):
         raise NotFound("Note not found")
@@ -794,6 +851,12 @@ def unmerge(merge_id: str) -> Entity:
         restored = get_entity(sid, c)
     _touch()
     return restored  # type: ignore[return-value]
+
+
+def blocked_for(name: str, conn: sqlite3.Connection | None = None) -> set[str]:
+    """Records you've said this name isn't."""
+    with _use(conn) as c:
+        return {r["entity_id"] for r in c.execute("SELECT entity_id FROM crm_name_blocks WHERE name = ?", ((name or "").strip().lower(),))}
 
 
 # ── For the host: search and links ────────────────────────────────────

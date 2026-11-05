@@ -15,6 +15,7 @@ Rules that cost a debugging round in DynaCRM and are pinned by tests:
 """
 import logging
 import os
+import json
 import re
 import threading
 import time
@@ -26,7 +27,7 @@ from dateutil import parser as dateparser
 
 from core.server import ai, contracts, db, events, jobs, resources
 
-from . import inbox, research, resolve, roles, snapshot, spreadsheets, store, views
+from . import hats, inbox, research, resolve, roles, snapshot, spreadsheets, store, views
 from .documents import ParsedSheet, UnsupportedFile, expand_archives, kind_of, parse_document, parse_spreadsheet, text_hash
 from .extraction import (BASIC_SYSTEM, EXTRACTION_SYSTEM, TRIAGE_SYSTEM, BasicNotes, DocContext, ExtractedEntity, Extraction, Triage, extract_heuristic,
                          extraction_prompt, triage_prompt)
@@ -137,26 +138,30 @@ def _tags(tags: list[str]) -> list[str]:
     return store.normalize_tags(tags or [])
 
 
-def owner_context() -> tuple[object | None, object | None, str | None, list]:
-    """(owner, owner's organization, owner's title, teammates)."""
+def owner_context(hat_id: str | None = None) -> tuple[object | None, object | None, str | None, list]:
+    """(owner, owner's organization, owner's title, teammates), as they are in this hat if it says."""
     owner = store.get_me()
     if owner is None:
         return None, None, None, []
-    edge = db.one("SELECT target_id, properties FROM crm_relationships WHERE source_id = ? AND kind = 'works_at' "
-                  "AND ended_at IS NULL LIMIT 1", (owner.id,))
+    hat_title, hat_org = hats.owner_in(hat_id)
+    if hat_org and store.get_entity(hat_org):
+        edge = {"target_id": hat_org, "properties": json.dumps({"title": hat_title} if hat_title else {})}
+    else:
+        edge = db.one("SELECT target_id, properties FROM crm_relationships WHERE source_id = ? AND kind = 'works_at' "
+                      "AND ended_at IS NULL LIMIT 1", (owner.id,))
     if edge is None:
-        return owner, None, owner.attributes.get("title"), []
+        return owner, None, hat_title or owner.attributes.get("title"), []
     org = store.get_entity(edge["target_id"])
     team = [store._entity(r) for r in db.query(
         "SELECT e.* FROM crm_entities e JOIN crm_relationships r ON r.source_id = e.id WHERE r.target_id = ? "
         "AND r.kind = 'works_at' AND r.ended_at IS NULL AND e.id != ? LIMIT 12", (edge["target_id"], owner.id))]
-    import json
-    title = (json.loads(edge["properties"] or "{}")).get("title") or owner.attributes.get("title")
+    title = hat_title or (json.loads(edge["properties"] or "{}")).get("title") or owner.attributes.get("title")
     return owner, org, title, team
 
 
 def relevant_known_entities(text_: str, cap: int = 150) -> list[tuple[str, str]]:
-    """Existing names that plausibly appear in the text (full name or a name part)."""
+    """Existing names that plausibly appear in the text: the full name, or a part of it. For a person that part is the
+    surname, never a first name: shown "Dana Whitfield" because the text says "Dana", a model writes "Dana Whitfield"."""
     lowered = text_.lower()
     words = set(re.findall(r"[\w'-]{4,}", lowered))
     hits: list[tuple[str, str]] = []
@@ -164,7 +169,10 @@ def relevant_known_entities(text_: str, cap: int = 150) -> list[tuple[str, str]]
         if e.kind not in ("person", "organization", "topic"):
             continue
         n = e.name.lower()
-        if n in lowered or any(part in words for part in re.findall(r"[\w'-]{4,}", n)):
+        parts = re.findall(r"[\w'-]{4,}", n)
+        if e.kind == "person" and len(n.split()) > 1:
+            parts = parts[-1:]
+        if n in lowered or any(part in words for part in parts):
             hits.append((e.name, e.kind))
             if len(hits) >= cap:
                 break
@@ -301,7 +309,8 @@ def _attendee_line(a: dict) -> str:
 def create_meeting_job(*, origin: str = "granola", external_id: str | None = None, title: str | None = None,
                        started_at: str | None = None, attendees: list[dict] | None = None, notes: str | None = None,
                        transcript: str | None = None, auto_apply: bool = True,
-                       also: dict[str, str] | None = None) -> tuple[dict, bool]:
+                       also: dict[str, str] | None = None, hat_id: str | None = None,
+                       tags: list[str] | None = None) -> tuple[dict, bool]:
     """Queue a recorded meeting. Returns (row, already_imported).
 
     A meeting seen before (same origin and external id, or identical text) returns the earlier row instead of
@@ -336,7 +345,9 @@ def create_meeting_job(*, origin: str = "granola", external_id: str | None = Non
     row = inbox.create("meeting", title=(title or "Untitled meeting")[:300], occurred_at=started_at, raw_text=raw,
                        content_hash=digest, payload={"origin": origin, "external_id": external_id, "attendees": people,
                                                      "auto_apply": auto_apply, "words": len(raw.split()),
-                                                     **({"also": also} if also else {})})
+                                                     **({"also": also} if also else {}),
+                                                     **({"hat_id": hat_id} if hat_id else {}),
+                                                     **({"tags": tags} if tags else {})})
     queue([row["id"]])
     return row, False
 
@@ -394,7 +405,7 @@ def _force_subject(row: dict, extraction: Extraction) -> str | None:
 
 
 def build_context(row: dict, local: bool, brief: bool, warnings: list[str]) -> DocContext:
-    owner, org, title, team = owner_context()
+    owner, org, title, team = owner_context(row["payload"].get("hat_id"))
     body = row["raw_text"] or ""
     if brief and len(body) > BRIEF_MAX_CHARS:
         body = body[:BRIEF_MAX_CHARS]
@@ -481,6 +492,16 @@ def _candidates(candidates: list[resolve.Candidate]) -> list[dict]:
     return [c.as_dict(subtitle(c.entity)) for c in candidates]
 
 
+def _settled_by_hat(candidates: list[resolve.Candidate], hat_id: str | None) -> tuple[resolve.Candidate | None, bool]:
+    """A first name alone is settled when exactly one of the people it could be is someone you know in this hat: "Theo"
+    in a Parks Board meeting is the Theo from Parks Board. Otherwise it waits for you."""
+    if not hat_id:
+        return None, True
+    members = hats.people_in(hat_id)
+    near = [c for c in candidates if c.fit == "partial" and c.entity.id in members]
+    return (near[0], False) if len(near) == 1 else (None, True)
+
+
 def build_proposal(row: dict, extraction: Extraction, warnings: list[str], *, brief: bool = False) -> dict:
     owner = store.get_me()
     if row["source"] == "meeting":
@@ -494,13 +515,25 @@ def build_proposal(row: dict, extraction: Extraction, warnings: list[str], *, br
 
     entities: list[dict] = []
     kinds_by_ref: dict[str, str] = {RECORD_REF: record_kind}
+    written_as: dict[str, str] = {}
+    source_text = " ".join([row["title"] or "", row["raw_text"] or "", *((a.get("name") or "") for a in row["payload"].get("attendees") or [])])
+    hat_id = row["payload"].get("hat_id")
     for ent in extraction.entities:
         if ent.ref in kinds_by_ref:
             continue
         kinds_by_ref[ent.ref] = ent.kind
         is_owner = bool(owner and ent.kind == "person" and ent.name.strip().lower() == owner.name.lower())
+        if ent.kind == "person" and not is_owner and not (forced_id and ent.ref == subject):
+            original, ent.name = ent.name, resolve.as_written(ent.name, source_text)
+            if original != ent.name:
+                written_as[re.sub(r"[\s_]+", " ", original).strip().lower()] = ent.ref
+        # You, by your first name alone, in your own meeting.
+        is_owner = is_owner or bool(owner and ent.kind == "person" and record_kind == "meeting"
+                                    and (ent.name.strip().lower() == owner.name.split()[0].lower() or "(the crm owner)" in ent.name.lower()))
         candidates = resolve.find_candidates(ent.kind, ent.name, ent.email)
         match, ambiguous = resolve.pick_match(candidates, MATCH_THRESHOLD)
+        if ambiguous:
+            match, ambiguous = _settled_by_hat(candidates, hat_id)
         if is_owner:
             match_id, ambiguous = owner.id, False
         elif forced_id and ent.ref == subject:
@@ -540,7 +573,7 @@ def build_proposal(row: dict, extraction: Extraction, warnings: list[str], *, br
                 kind = "related_to"
             add(ent["ref"], RECORD_REF, kind)
     # Smaller models sometimes reference entities by name ("Alex_Rivera") instead of ref.
-    by_name = {re.sub(r"[\s_]+", " ", e["name"]).strip().lower(): e["ref"] for e in entities}
+    by_name = {**written_as, **{re.sub(r"[\s_]+", " ", e["name"]).strip().lower(): e["ref"] for e in entities}}
 
     def ref_of(value: str) -> str | None:
         if value in kinds_by_ref:
@@ -635,15 +668,19 @@ def _merge_invitees(row: dict, entities: list[dict], kinds_by_ref: dict[str, str
             ent["role"] = "attendee"
         if email and not ent.get("email"):
             ent["email"] = email
-        if a.get("is_self") and owner:
+        if owner and (a.get("is_self") or ent["name"].strip().lower() == owner.name.split()[0].lower()):
             ent.update(match_id=owner.id, action="link", ambiguous=False, is_self=True, candidates=[])
             continue
         if not ent["is_self"] and (ent["action"] == "create" or ent["ambiguous"]):
             # An email is the most reliable key there is: re-match with it.
             candidates = resolve.find_candidates("person", ent["name"], ent.get("email"))
             match, ambiguous = resolve.pick_match(candidates, MATCH_THRESHOLD)
+            if ambiguous:
+                match, ambiguous = _settled_by_hat(candidates, row["payload"].get("hat_id"))
             if match:
                 ent.update(match_id=match.entity.id, action="link", ambiguous=ambiguous)
+            elif ambiguous:
+                ent["ambiguous"] = True
             ent["candidates"] = _candidates(candidates)
 
 
@@ -707,12 +744,14 @@ def _existing_exact(c, kind: str, name: str, email: str | None):
                         (kind, email.lower())).fetchone()
         if row:
             return store._entity(row)
-    rows = c.execute("SELECT * FROM crm_entities WHERE kind = ? AND lower(name) = ?", (kind, name.lower())).fetchall()
+    blocked = store.blocked_for(name, c)
+    rows = [r for r in c.execute("SELECT * FROM crm_entities WHERE kind = ? AND lower(name) = ?", (kind, name.lower())).fetchall()
+            if r["id"] not in blocked]
     if len(rows) == 1:
         return store._entity(rows[0])
     row = c.execute("SELECT e.* FROM crm_entities e, json_each(COALESCE(json_extract(e.attributes, '$.aliases'), '[]')) a "
                     "WHERE e.kind = ? AND lower(a.value) = ? LIMIT 1", (kind, name.lower())).fetchone()
-    return store._entity(row) if row else None
+    return store._entity(row) if row and row["id"] not in blocked else None
 
 
 def apply_proposal(row_id: str, proposal: dict) -> dict:
@@ -758,7 +797,9 @@ def _apply(row_id: str, proposal: dict) -> tuple[dict, list[str], str | None]:
             new_actions = attrs["action_items"] if attrs["action_items"] != before else []
             if external:
                 attrs["external_ids"] = {**(attrs.get("external_ids") or {}), **external}
-            fields: dict = {"attributes": attrs, "tags": _tags([*(existing.tags or []), *(spec.get("tags") or [])])[:20]}
+            if payload.get("tags"):
+                attrs["trailmix_tags"] = payload["tags"]
+            fields: dict = {"attributes": attrs, "tags": _tags([*(existing.tags or []), *(payload.get("tags") or []), *(spec.get("tags") or [])])[:20]}
             if not existing.summary and spec.get("summary"):
                 fields["summary"] = spec["summary"]
             if existing.occurred_at is None:
@@ -773,10 +814,12 @@ def _apply(row_id: str, proposal: dict) -> tuple[dict, list[str], str | None]:
                 attrs["source_file"] = payload["filename"]
             if external:
                 attrs["external_ids"] = external
+            if payload.get("tags"):
+                attrs["trailmix_tags"] = payload["tags"]
             if spec["kind"] == "document" and proposal.get("doc_type"):
                 attrs["doc_type"] = proposal["doc_type"].replace("_", " ")
             record = store.create_entity(spec["kind"], (spec.get("title") or row["title"] or "Untitled").strip(),
-                                         summary=spec.get("summary"), attributes=attrs, tags=_tags(spec.get("tags") or []),
+                                         summary=spec.get("summary"), attributes=attrs, tags=_tags([*(payload.get("tags") or []), *(spec.get("tags") or [])])[:20],
                                          occurred_at=occurred, source=source_label, conn=c)
             ids[RECORD_REF], kinds[RECORD_REF] = record.id, record.kind
             counts["created"] += 1
@@ -823,6 +866,12 @@ def _apply(row_id: str, proposal: dict) -> tuple[dict, list[str], str | None]:
                     store.add_note(entity.id, fact.strip(), occurred_at=occurred, source=source_label,
                                    evidence_id=record.id if record else None, conn=c)
                     counts["notes"] += 1
+
+        if payload.get("hat_id") and db.one("SELECT 1 AS x FROM crm_hats WHERE id = ?", (payload["hat_id"],)):
+            if record:
+                hats.stamp(record.id, payload["hat_id"], c)
+            elif ids.get(proposal.get("subject_ref") or ""):
+                hats.place(payload["hat_id"], [ids[proposal["subject_ref"]]], "you", c)
 
         if proposal.get("doc_type") == "person_profile" and ids.get(proposal.get("subject_ref") or ""):
             research.mark_done(ids[proposal["subject_ref"]], c)

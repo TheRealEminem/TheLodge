@@ -23,6 +23,8 @@ export interface ModuleWeb {
   routes: { path: string; view: ComponentType<RouteProps>; /** Use the full window width instead of the reading column (a canvas, a wide table). */ wide?: boolean }[];
   /** The sidebar's big button. The first enabled module that has one gets it. */
   primary?: { label: string; icon: ReactNode; run: () => void | Promise<void> };
+  /** Something of the module's at the top of the sidebar's navigation, such as a switcher. */
+  sidebarTop?: ComponentType;
   /** A card on Home, where every module shows what's new. */
   home?: ComponentType;
   /** Show the Home block across the full width, without the card around it (for a module that lays out its own sections). */

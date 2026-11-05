@@ -47,11 +47,17 @@ def create(source: str, *, title: str | None = None, status: str = "pending", ra
            payload: dict | None = None, content_hash: str | None = None, occurred_at: str | None = None,
            error: str | None = None) -> dict:
     row_id, stamp = db.new_id(), db.now()
+    payload = dict(payload or {})
+    # What you add yourself comes in under the hat you're wearing. (A sync says for itself; a report on someone is theirs.)
+    if source in ("manual_note", "document") and "hat_id" not in payload and not payload.get("subject_id"):
+        from . import hats
+        if wearing := hats.active():
+            payload["hat_id"] = wearing
     with db.connect() as c:
         c.execute(
             "INSERT INTO crm_inbox (id, source, status, content_hash, title, occurred_at, raw_text, payload, error, "
             "created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            (row_id, source, status, content_hash, title, occurred_at, raw_text, json.dumps(payload or {}), error, stamp, stamp),
+            (row_id, source, status, content_hash, title, occurred_at, raw_text, json.dumps(payload), error, stamp, stamp),
         )
     events.publish("crm.inbox.changed", {})
     return get(row_id)  # type: ignore[return-value]

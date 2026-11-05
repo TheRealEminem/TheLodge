@@ -109,6 +109,8 @@ export default function Sidebar({ modules, path, opaque }: { modules: ModuleWeb[
         </div>
       </div>
 
+      {!results && modules.map((m) => m.sidebarTop && <m.sidebarTop key={m.id} />)}
+
       {results ? (
         <nav className="fade-edges-y mt-3 flex-1 overflow-y-auto px-3 pb-4 pt-1" aria-label="Search results">
           {results.length === 0 && <p className="px-3 pt-3 text-hint text-ink-soft">Nothing matches “{query.trim()}”.</p>}
