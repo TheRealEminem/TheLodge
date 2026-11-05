@@ -20,7 +20,7 @@ from urllib.parse import urlparse
 import httpx
 from pydantic import BaseModel
 
-from . import lockdown, resources, settings, usage
+from . import lockdown, model_catalog, resources, settings, usage
 
 OLLAMA_KEEP_ALIVE = os.getenv("OLLAMA_KEEP_ALIVE", "0")  # "0" = unload right after the last call
 TIMEOUT = httpx.Timeout(600, connect=8)
@@ -207,21 +207,17 @@ def model_for(pid: str, cfg: dict) -> str:
     return (cfg.get(f"{pid}_model") or "").strip() or DEFAULTS.get(f"{pid}_model", "")
 
 
-_PREFERRED_FAMILIES = ("qwen3", "qwen2.5", "gemma3", "llama3.1", "llama3.2", "mistral", "phi4", "llama3")
-
-
 def preferred_ollama_model(tags: list[dict]) -> str:
-    """The installed model most likely to follow instructions well: a known family, the biggest up to ~14B."""
+    """The installed model most likely to follow instructions well: the best family in the model catalog, then the
+    biggest up to ~14B. A model the catalog doesn't list is still used, after the listed ones."""
     def params(m: dict) -> float:
         text = (m.get("details") or {}).get("parameter_size", "")
         found = re.match(r"([\d.]+)\s*([BM])", text, re.I)
         return float(found.group(1)) / (1000 if found.group(2).upper() == "M" else 1) if found else 0.0
 
     def rank(m: dict) -> tuple:
-        name = m["name"].lower()
-        family = next((i for i, f in enumerate(_PREFERRED_FAMILIES) if name.startswith(f)), len(_PREFERRED_FAMILIES))
         size = params(m)
-        return (family, size > 15, -size)
+        return (model_catalog.rank(m["name"]), size > 15, -size)
 
     usable = [m for m in tags if "embed" not in m["name"].lower()]
     return min(usable, key=rank)["name"] if usable else ""
@@ -330,6 +326,8 @@ def _ollama(cfg: dict, prompt: str, system: str | None, keep_alive: str) -> str:
         raise AIError(f"Ollama isn't reachable at {cfg['ollama_url']} (or has no models installed)", provider_down=True)
     body = {"model": model, "prompt": prompt, "stream": False, "keep_alive": keep_alive,
             "options": {"num_ctx": OLLAMA_NUM_CTX, "num_predict": OLLAMA_NUM_PREDICT, "temperature": 0.2}}
+    if model_catalog.can_think(model):
+        body["think"] = False    # a thinking model would spend the answer budget on hidden reasoning
     if system:
         body["system"] = system
     data = _post(f"{cfg['ollama_url']}/api/generate", json=body, timeout=OLLAMA_TIMEOUT).json()

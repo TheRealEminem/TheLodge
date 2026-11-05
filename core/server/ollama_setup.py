@@ -17,16 +17,17 @@ from pathlib import Path
 
 import httpx
 
-from . import ai, computer, hardware, lockdown, resources, settings
+from . import ai, computer, hardware, lockdown, model_catalog, resources, settings
 
 log = logging.getLogger("core.ollama")
 
-# Good at following instructions and structure. 16 GB Macs and up get the 7B; smaller ones the 3B. (The Lodge's own
-# measurements, 2026-10-23: neither reads a long note as well as a cloud model; the 7B is the one that can do the lighter jobs.)
-RECOMMENDED_BIG = "qwen2.5:7b"
-RECOMMENDED_SMALL = "qwen2.5:3b"
+# Which models to offer is the model catalog's call (model_catalog.py), so a newer release is a table change, not a code
+# change. 16 GB Macs and up get the big one; smaller ones the small one. (The Lodge's own measurements, 2026-10-23, of
+# the 7B and 3B then on offer: neither reads a long note as well as a cloud model; the 7B could do the lighter jobs.)
+RECOMMENDED_BIG = model_catalog.recommended("big")
+RECOMMENDED_SMALL = model_catalog.recommended("small")
 BIG_FROM_GB = 15
-BIG_FROM_CARD_GB = 6      # a graphics card's own memory: the 7B takes about 4.7 GB of it
+BIG_FROM_CARD_GB = 8      # a graphics card's own memory: the big model takes about 6.6 GB of it
 
 # The official Mac app, signed and notarized by Ollama (Infra Technologies, Inc). Only a download that carries that
 # signature is installed.
