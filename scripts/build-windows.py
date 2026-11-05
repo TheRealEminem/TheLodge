@@ -115,6 +115,50 @@ def pe_machine(path: Path) -> int:
     return int.from_bytes(head[pe + 4:pe + 6], "little")
 
 
+def pe_imports(path: Path) -> list[str]:
+    """The DLLs a PE file links against, lower-case, as its import table names them."""
+    data = path.read_bytes()
+
+    def u32(at: int) -> int:
+        return int.from_bytes(data[at:at + 4], "little")
+
+    pe = u32(0x3C)
+    opt = pe + 24
+    size_of_optional = int.from_bytes(data[pe + 20:pe + 22], "little")
+    sections = [opt + size_of_optional + 40 * i for i in range(int.from_bytes(data[pe + 6:pe + 8], "little"))]
+    dirs = opt + (112 if data[opt:opt + 2] == b"\x0b\x02" else 96)  # (PE32+, or PE32)
+
+    def offset(rva: int) -> int:
+        for s in sections:
+            va, size = u32(s + 12), max(u32(s + 8), u32(s + 16))
+            if va <= rva < va + size:
+                return u32(s + 20) + rva - va
+        raise ValueError(f"{path.name}: RVA {rva:#x} is in no section")
+
+    names, rva = [], u32(dirs + 8)  # the import directory (data directory 1)
+    at = offset(rva) if rva else None
+    while at is not None and u32(at + 12):
+        start = offset(u32(at + 12))
+        names.append(data[start:data.index(b"\0", start)].decode("ascii", "replace").lower())
+        at += 20
+    return names
+
+
+def drop_stray_runtime(python: Path) -> None:
+    """python-build-standalone's ARM runtime carries an x64 vcruntime140_1.dll (as of 3.14.7+20260929). An ARM process
+    can't load it and nothing imports it, so it goes; and if something ever does import it, the build stops, since
+    that file would then have to be an ARM one."""
+    stray = python / "vcruntime140_1.dll"
+    if ARCH != "arm64" or not stray.is_file() or pe_machine(stray) == MACHINE:
+        return
+    binaries = [python / "python.exe", *python.rglob("*.pyd"), *python.rglob("*.dll")]
+    users = [p.name for p in binaries if p != stray and stray.name in pe_imports(p)]
+    if users:
+        die(f"{', '.join(users)} use {stray.name}, and the ARM runtime's copy of it is an x64 one")
+    stray.unlink()
+    say(f"Removed the runtime's unused x64 {stray.name}")
+
+
 def semver_ok(version: str) -> bool:
     core, _, _ = version.partition("-")
     parts = core.split(".")
@@ -195,6 +239,7 @@ def stage() -> None:
 
     say("Trimming…")
     trim(python)
+    drop_stray_runtime(python)
     copy_app(STAGE / "app")
     shutil.copytree(ROOT / "dist", STAGE / "ui")
 
