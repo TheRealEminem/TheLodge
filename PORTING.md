@@ -40,7 +40,7 @@ Each chunk ships on its own and is synced into the apps when they choose.
    the web app words things to match ("this Mac", "this PC", "this computer"; Finder or File Explorer; menu bar or
    system tray). The shell names itself and what it can do (`<PREFIX>_SHELL`, `<PREFIX>_SHELL_CAN`), and the web app
    hides what it can't (`can("updates")`) instead of showing broken buttons.
-2. **Local AI off the Mac.** The hardware readout (`resources.py`) finds a GPU or NPU and its framework; setup
+2. **Written 5 Nov 2026, not yet run on Windows.** **Local AI off the Mac.** The hardware readout (`resources.py`) finds a GPU or NPU and its framework; setup
    recommends local only with one. Ollama setup for Windows and Linux.
 3. **Release files per platform and architecture** (`<App>-<version>-windows-x64.exe`, `-linux-x86_64.AppImage`…),
    and each updater picks its own.
