@@ -48,6 +48,7 @@ DEFAULTS = {
     "heavy_provider": "auto",    # for the jobs modules call heavy (reading a long document): "auto" = the same as provider
     "ollama_url": os.getenv("OLLAMA_URL", "http://localhost:11434"),
     "ollama_model": os.getenv("OLLAMA_MODEL", ""),  # empty = the best installed one
+    "model_suggestion_dismissed": "",  # the suggested model someone said "not now" to (shared, so once for every family app)
     "anthropic_model": "claude-opus-5-5",
     "anthropic_api_key": "",
     "openai_model": "gpt-5-mini",

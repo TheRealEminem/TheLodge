@@ -205,6 +205,8 @@ export interface OllamaStatus {
   models: string[];
   using: string;
   recommended: string;
+  /** A newer model than the one in use, when the catalog has one that suits this computer; null otherwise. */
+  suggestion: { model: string; replaces: string } | null;
   locked: boolean;
   install: { active: boolean; status: string; progress: number | null; error: string | null } | null;
   pull: { model: string; active: boolean; status: string; progress: number | null; error: string | null } | null;
@@ -295,6 +297,7 @@ export const api = {
   ollama: () => request<OllamaStatus>("/ollama"),
   ollamaInstall: () => request<{ started: boolean }>("/ollama/install", json("POST")),
   ollamaPull: (model = "") => request<{ started: boolean }>("/ollama/pull", json("POST", { model })),
+  ollamaDismissSuggestion: (model: string) => request<{ ok: true }>("/ollama/dismiss-suggestion", json("POST", { model })),
 
   search: (q: string) => request<SearchGroup[]>(`/search?q=${encodeURIComponent(q)}`),
   people: (q: string, limit = 8) => request<PeopleResult>(`/people?q=${encodeURIComponent(q)}&limit=${limit}`),

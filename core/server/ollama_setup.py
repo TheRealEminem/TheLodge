@@ -86,6 +86,29 @@ def recommended() -> str:
     return RECOMMENDED_BIG if resources.snapshot()["ram_total_gb"] >= BIG_FROM_GB else RECOMMENDED_SMALL
 
 
+def suggestion(cfg: dict, tags: list[dict]) -> dict | None:
+    """A newer model to offer someone who already has one: {"model": what to get, "replaces": what they use now}, or None.
+    Only for a model the catalog lists whose family a better one has replaced. Never when they've chosen a model
+    themselves, or brought one the catalog doesn't know, or already said "not now" to this suggestion, or when they
+    have the model already."""
+    if cfg.get("ollama_model"):
+        return None
+    using = ai.preferred_ollama_model(tags)
+    wanted = recommended()
+    if not using or model_catalog.family_of(using) is None or cfg.get("model_suggestion_dismissed") == wanted:
+        return None
+    if any(m["name"] in (wanted, f"{wanted}:latest") for m in tags):
+        return None
+    if model_catalog.rank(wanted) >= model_catalog.rank(using):
+        return None
+    return {"model": wanted, "replaces": using}
+
+
+def dismiss_suggestion(model: str) -> None:
+    """"Not now": don't offer this model again. A later catalog that recommends a different one offers that."""
+    settings.update({"ai.model_suggestion_dismissed": model})
+
+
 def _linux_commands(installed: bool) -> dict:
     """On Linux, what to run yourself (the app runs nothing as root): the install command and Ollama's page for it, or,
     once installed, how to start it. None elsewhere."""
@@ -122,6 +145,7 @@ def status() -> dict:
         "models": [m["name"] for m in tags],
         "using": ai.model_for("ollama", cfg) if tags else "",
         "recommended": recommended(),
+        "suggestion": suggestion(cfg, tags) if tags else None,
         "pull": pull or None,
         "locked": lockdown.on(),
     }
