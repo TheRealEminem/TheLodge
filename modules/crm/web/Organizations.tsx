@@ -2,7 +2,7 @@ import { useState } from "react";
 import { CloseIcon, OrgIcon, PlusIcon, SearchIcon } from "@core/components/icons";
 import { PageHeader, Segmented, Select, Skeleton } from "@core/components/ui";
 import { useLive } from "@core/live";
-import { navigate, useQueryParams } from "@core/router";
+import { keepFilters, navigate, useQueryLimit, useQueryParams, useQueryText } from "@core/router";
 import { crmApi } from "./api";
 import { EntityFormDialog } from "./forms";
 import type { OrgRow, OrgScope } from "./api";
@@ -70,11 +70,13 @@ export function OrgLine({ row }: { row: OrgRow }) {
   );
 }
 
+keepFilters("crm/organizations");
+
 export default function Organizations() {
   const [params, setParams] = useQueryParams();
   const [creating, setCreating] = useState(false);
-  const [q, setQ] = useState("");
-  const [limit, setLimit] = useState(PAGE);
+  const [q, setQ] = useQueryText();
+  const [limit, setLimit] = useQueryLimit(PAGE);
   const dq = useDebounced(q);
   const scope = (params.get("scope") as OrgScope | null) ?? "known";
   const sort = params.get("sort") ?? "known";

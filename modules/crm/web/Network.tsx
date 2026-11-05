@@ -7,7 +7,7 @@ import { Suspense, lazy, useEffect, useMemo, useState } from "react";
 import { CloseIcon, NetworkIcon, SignpostIcon } from "@core/components/icons";
 import { PageHeader, Segmented, Select, Skeleton } from "@core/components/ui";
 import { useLive } from "@core/live";
-import { navigate, useQueryParams } from "@core/router";
+import { keepFilters, navigate, useQueryParams } from "@core/router";
 import { crmApi } from "./api";
 import type { NetGroup, NetNode } from "./api";
 import { Empty } from "./bits";
@@ -40,6 +40,8 @@ function useWide() {
   }, []);
   return wide;
 }
+
+keepFilters("crm/network");
 
 export default function Network() {
   const [params, setParams] = useQueryParams();

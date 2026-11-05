@@ -2,7 +2,7 @@ import { useState } from "react";
 import { CloseIcon, PlusIcon, SearchIcon, UsersIcon } from "@core/components/icons";
 import { PageHeader, Segmented, Select, Skeleton } from "@core/components/ui";
 import { useLive } from "@core/live";
-import { navigate, useQueryParams } from "@core/router";
+import { keepFilters, navigate, useQueryLimit, useQueryParams, useQueryText } from "@core/router";
 import { crmApi } from "./api";
 import { EntityFormDialog } from "./forms";
 import type { PersonRow, Tier } from "./api";
@@ -78,11 +78,13 @@ export function PersonLine({ row, showFlag = true }: { row: PersonRow; showFlag?
   );
 }
 
+keepFilters("crm/people");
+
 export default function People() {
   const [params, setParams] = useQueryParams();
   const [creating, setCreating] = useState(false);
-  const [q, setQ] = useState(() => params.get("q") ?? "");  // Home's finder links here with what was typed
-  const [limit, setLimit] = useState(PAGE);
+  const [q, setQ] = useQueryText();  // Home's finder links here with what was typed
+  const [limit, setLimit] = useQueryLimit(PAGE);
   const dq = useDebounced(q);
   const tier = (params.get("tier") as Tier | null) ?? "all";
   const sort = params.get("sort") ?? "strength";

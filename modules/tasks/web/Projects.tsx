@@ -5,7 +5,7 @@ import { Avatar, Empty } from "@core/components/blocks";
 import { PlusIcon } from "@core/components/icons";
 import { PageHeader, Segmented, Skeleton } from "@core/components/ui";
 import { useLive } from "@core/live";
-import { navigate, useQueryParams } from "@core/router";
+import { keepFilters, navigate, useQueryParams } from "@core/router";
 import { useShell } from "@core/shell";
 import { tasksApi } from "./api";
 import type { ProjectSummary } from "./api";
@@ -61,6 +61,8 @@ function ProjectRow({ project }: { project: ProjectSummary }) {
     </a>
   );
 }
+
+keepFilters("tasks/projects");
 
 export default function Projects() {
   const { toast } = useShell();

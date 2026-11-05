@@ -46,6 +46,7 @@ import {
   X,
   Download,
   ArrowLeft,
+  ArrowRight,
   House,
   NotebookPen,
   LogOut,
@@ -119,6 +120,7 @@ export const LockIcon = icon(Lock);
 export const MenuIcon = icon(Menu);
 export const ArrowUpIcon = icon(ArrowUp);
 export const BackIcon = icon(ArrowLeft);
+export const ForwardIcon = icon(ArrowRight);
 export const HomeIcon = icon(House);
 export const NoteIcon = icon(NotebookPen);
 export const LogOutIcon = icon(LogOut);

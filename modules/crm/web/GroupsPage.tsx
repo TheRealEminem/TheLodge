@@ -1,17 +1,20 @@
 // Groups: organizations, topics and tags are all named sets of people. Switch any of them on in the Network.
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { NetworkIcon, SearchIcon } from "@core/components/icons";
 import { PageHeader, Segmented, Skeleton } from "@core/components/ui";
 import { useLive } from "@core/live";
+import { keepFilters, useQueryText, useQueryValue } from "@core/router";
 import { crmApi } from "./api";
 import type { GroupKind } from "./api";
 import { Empty } from "./bits";
 import { GROUP_META, GROUP_ORDER, GroupGlyph } from "./groups";
 import { RoundupFromGroup } from "./Roundups";
 
+keepFilters("crm/groups");
+
 export default function Groups() {
-  const [kind, setKind] = useState<GroupKind | "all">("all");
-  const [q, setQ] = useState("");
+  const [kind, setKind] = useQueryValue<GroupKind | "all">("kind", "all");
+  const [q, setQ] = useQueryText();
   const { data: net, error } = useLive(() => crmApi.network({ max_nodes: 10 }), []);
   const rows = useMemo(() => {
     const needle = q.trim().toLowerCase();

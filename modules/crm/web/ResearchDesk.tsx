@@ -6,6 +6,7 @@ import { AlertIcon, CheckIcon, ClockIcon, SearchIcon, SparkleIcon } from "@core/
 import { PageHeader, Segmented, Select, Skeleton, Spinner, useConfirm } from "@core/components/ui";
 import { words } from "@core/api";
 import { useLive } from "@core/live";
+import { keepFilters, useQueryLimit, useQueryText, useQueryValue } from "@core/router";
 import { useSettings, useShell } from "@core/shell";
 import { crmApi } from "./api";
 import type { DeskItem, DeskMark, DeskShow, GeminiOverview, ResearchTool } from "./api";
@@ -120,13 +121,15 @@ function Row({ item, picked, onPick }: { item: DeskItem; picked: boolean; onPick
   );
 }
 
+keepFilters("crm/research");
+
 export default function ResearchDesk() {
   const { toast } = useShell();
   const { get, save } = useSettings();
   const [confirm, confirmDialog] = useConfirm();
-  const [show, setShow] = useState<DeskShow>("new");
-  const [q, setQ] = useState("");
-  const [limit, setLimit] = useState(PAGE);
+  const [show, setShow] = useQueryValue<DeskShow>("show", "new");
+  const [q, setQ] = useQueryText();
+  const [limit, setLimit] = useQueryLimit(PAGE);
   const [picked, setPicked] = useState<Map<string, string>>(new Map());
   const [busy, setBusy] = useState(false);
   const { data } = useLive(() => crmApi.researchDesk({ show, q: q.trim() || undefined, limit }), [show, q, limit]);

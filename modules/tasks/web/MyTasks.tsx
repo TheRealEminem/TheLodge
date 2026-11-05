@@ -6,7 +6,7 @@ import { Empty } from "@core/components/blocks";
 import { CheckSquareIcon, ClockIcon, PlusIcon, UsersIcon } from "@core/components/icons";
 import { Collapse, PageHeader, Segmented, Select, Skeleton } from "@core/components/ui";
 import { useLive } from "@core/live";
-import { useQueryParams } from "@core/router";
+import { keepFilters, useQueryParams } from "@core/router";
 import { useShell } from "@core/shell";
 import { tasksApi } from "./api";
 import type { Task } from "./api";
@@ -102,6 +102,8 @@ function QuickAdd({ when, inputRef, onAdded }: { when: When; inputRef: React.Ref
     </form>
   );
 }
+
+keepFilters("tasks");
 
 export default function MyTasks() {
   const { toast } = useShell();
