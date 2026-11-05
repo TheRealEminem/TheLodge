@@ -192,7 +192,7 @@ def update_test(new: Path, new_version: str, old: Path, arch: str, work: Path) -
     (feed / "releases.json").write_text(json.dumps(releases))
     server = serve_feed(feed)
     base_env = {**os.environ, f"{PREFIX}_DATA_DIR": str(data), f"{PREFIX}_PORT": str(PORT), f"{PREFIX}_NO_OPEN": "1",
-                f"{PREFIX}_UPDATE_URL": f"http://127.0.0.1:{FEED_PORT}/releases.json", f"{PREFIX}_UPDATE_DELAY": "3",
+                f"{PREFIX}_UPDATE_URL": f"http://127.0.0.1:{FEED_PORT}/releases.json", f"{PREFIX}_UPDATE_DELAY": "15",  # (time to leave the mark first)
                 "TRAILMIX_FAMILY_DIR": "off"}
     try:
         app = subprocess.Popen([str(exe)], env={**base_env, f"{PREFIX}_UPDATE_TEST": "install"},

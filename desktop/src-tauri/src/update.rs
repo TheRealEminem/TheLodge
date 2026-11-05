@@ -208,13 +208,22 @@ impl Updater {
         matches!(self.state(), State::Downloading(..) | State::Installing(_) | State::GoingBack(_))
     }
 
-    /// Looks a little after launch (<PREFIX>_UPDATE_DELAY seconds, 20 by default) and every 6 hours.
+    /// Looks a little after launch (<PREFIX>_UPDATE_DELAY seconds, 20 by default), once the app's server answers,
+    /// and every 6 hours. Not before the server: until it answers, Lockdown can't be read (and would read as off),
+    /// and nothing would wait for its work to finish.
     pub fn begin(self: &Arc<Self>) {
         clean_old_downloads();
         let delay: f64 = config::env("UPDATE_DELAY").and_then(|d| d.parse().ok()).unwrap_or(20.0);
         let updater = self.clone();
         let _ = thread::Builder::new().name("updater".into()).spawn(move || {
             thread::sleep(Duration::from_secs_f64(delay.max(0.0)));
+            let base = config::server_url();
+            for _ in 0..600 {
+                if config::answering(&base) {
+                    break;
+                }
+                thread::sleep(Duration::from_millis(500));
+            }
             updater.check(false);
             match config::env("UPDATE_TEST").as_deref() {
                 Some("install") => updater.install(),
