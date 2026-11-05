@@ -6,7 +6,7 @@ import httpx
 import pytest
 from pydantic import BaseModel
 
-from core.server import ai, ai_adapters, db, jobs, resources, schedule
+from core.server import ai, ai_adapters, computer, db, jobs, resources, schedule
 
 GB = resources.GB
 Mem = namedtuple("Mem", "total available percent")
@@ -35,7 +35,7 @@ def test_short_of_memory_still_goes_ahead_when_the_mac_can_swap(mac):
 
 
 @pytest.mark.parametrize("numbers, says", [
-    (dict(ram=8, free_ram=1), "more than this Mac can spare"),
+    (dict(ram=8, free_ram=1), f"more than {computer.word('here')} can spare"),
     (dict(ram=16, free_ram=3, disk_free=20, disk_total=500), "little room to swap"),
     (dict(ram=16, free_ram=3, pressure=4), "critical memory pressure"),
 ])
