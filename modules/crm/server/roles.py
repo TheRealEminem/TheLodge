@@ -65,9 +65,9 @@ def keep_what_people_have() -> None:
 
 
 def basic() -> bool:
-    """True when a model that runs on this Mac is too small to be trusted with reading notes into the graph: this Mac has
-    less memory than app.json's localAiMinGb (what its heaviest job needs to do well locally)."""
-    return resources.snapshot()["ram_total_gb"] < float(config.IDENTITY.get("localAiMinGb", 12))
+    """True when a model that runs on this computer is too small to be trusted with reading notes into the graph: it has
+    less room for one than app.json's localAiMinGb (what its heaviest job needs to do well locally)."""
+    return resources.local_memory_gb() < float(config.IDENTITY.get("localAiMinGb", 12))
 
 
 def ai_jobs() -> dict:

@@ -26,7 +26,7 @@ const choices = (): { id: AiPath; title: string; use: string; icon: typeof Cloud
 
 export function macLine(s: SetupState): string {
   const a = s.advice;
-  return [a.chip, `${a.ram_gb} GB memory`, `${a.disk_free_gb} GB free`].filter(Boolean).join(" · ");
+  return [a.chip, a.gpu, `${a.ram_gb} GB memory`, `${a.disk_free_gb} GB free`].filter(Boolean).join(" · ");
 }
 
 /** Where each job will run, and whether it's ready or says plainly what it needs. */

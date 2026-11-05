@@ -6,7 +6,7 @@ import httpx
 import pytest
 from pydantic import BaseModel
 
-from core.server import ai, ai_adapters, computer, db, jobs, resources, schedule
+from core.server import ai, ai_adapters, computer, db, hardware, jobs, resources, schedule
 
 GB = resources.GB
 Mem = namedtuple("Mem", "total available percent")
@@ -21,6 +21,8 @@ def mac(monkeypatch):
         monkeypatch.setattr(resources, "_disk", lambda: Disk(disk_total * GB, (disk_total - disk_free) * GB, disk_free * GB))
         monkeypatch.setattr(resources, "memory_pressure", lambda: pressure)
         monkeypatch.setattr(resources, "chip", lambda: name)
+        monkeypatch.setattr(hardware, "profile", lambda: {"cpu": "Apple M4", "gpus": hardware.mac_hardware("Apple M4")[1], "npu": "Apple Neural Engine",
+                                                          "ai_memory_gb": 11.2, "ai_runs_on": "unified"})
     return make
 
 

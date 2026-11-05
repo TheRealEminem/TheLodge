@@ -3,7 +3,7 @@ import json
 
 import pytest
 
-from core.server import ai, ollama_setup, resources
+from core.server import ai, hardware, ollama_setup, resources
 
 GB = resources.GB
 
@@ -20,6 +20,7 @@ def clean():
 @pytest.mark.parametrize("ram, model", [(8, "qwen2.5:3b"), (14.9, "qwen2.5:3b"), (16, "qwen2.5:7b"), (64, "qwen2.5:7b")])
 def test_the_model_follows_the_macs_memory(monkeypatch, ram, model):
     monkeypatch.setattr(resources, "snapshot", lambda: {"ram_total_gb": ram})
+    monkeypatch.setattr(hardware, "profile", lambda: {"ai_runs_on": "unified", "ai_memory_gb": ram * 0.7})
     assert ollama_setup.recommended() == model
 
 

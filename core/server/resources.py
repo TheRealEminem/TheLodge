@@ -1,9 +1,13 @@
-"""What this Mac can do: a readout of memory, disk and chip, the gate that keeps a big local model from starving
-everything else, and the advice setup shows. Ported from Trailmix, so a shared Settings can show either app's.
+"""What this computer can do: a readout of memory, disk and chips (hardware.py), the gate that keeps a big local model from
+starving everything else, and the advice setup shows. Ported from Trailmix, so a shared Settings can show either app's.
 
-The gate (check) says "wait" only when going ahead would be a bad idea: the model can't fit in this Mac's memory at all,
-the disk is too full for macOS to swap, or macOS already reports critical memory pressure. Anything short of that
-runs, because macOS pages other memory out to disk and the work still gets done.
+The gate (check) says "wait" only when going ahead would be a bad idea: the model can't fit in this computer's memory at
+all, the disk is too full for the system to swap, or macOS already reports critical memory pressure. Anything short of
+that runs, because the system pages other memory out to disk and the work still gets done.
+
+The advice follows the family's rule (PORTING.md): a local model is recommended only where a chip Ollama supports runs it,
+which is Apple silicon or an NVIDIA or AMD card (hardware.py). On the CPU and main memory alone it's too slow to be worth
+it, so that's a cloud recommendation, whatever the memory. Choosing local anyway stays open.
 """
 import contextlib
 import contextvars
@@ -15,7 +19,7 @@ import sys
 
 import psutil
 
-from . import computer, config
+from . import computer, config, hardware
 
 GB = 1024**3
 # Extra free memory kept for macOS and other apps on top of what a model needs.
@@ -61,14 +65,34 @@ def _disk_free_share() -> float:
 
 
 def chip() -> str:
-    """e.g. "Apple M4" ("" where it can't be read)."""
-    if sys.platform != "darwin":
-        return ""
-    try:
-        return subprocess.run(["/usr/sbin/sysctl", "-n", "machdep.cpu.brand_string"], capture_output=True, text=True,
-                              timeout=2).stdout.strip()
-    except (OSError, subprocess.TimeoutExpired):
-        return ""
+    """e.g. "Apple M4", "AMD Ryzen 7 7840U w/ Radeon 780M Graphics" ("" where it can't be read)."""
+    return hardware.profile()["cpu"]
+
+
+def local_memory_gb() -> float:
+    """The memory a local model has here, in the Mac's terms, so one figure (app.json's localAiMinGb, measured on Macs in
+    total memory) fits every computer: a Mac's total memory; a usable graphics card's own, as a Mac's worth
+    (hardware.CARD_GB_AS_MAC_GB); none without either, because on the CPU a model is too slow to count."""
+    hw = hardware.profile()
+    if hw["ai_runs_on"] == "unified":
+        return snapshot()["ram_total_gb"]
+    if hw["ai_runs_on"] == "gpu":
+        return round(hw["ai_memory_gb"] * hardware.CARD_GB_AS_MAC_GB, 1)
+    return 0.0
+
+
+def _no_chip_note(hw: dict) -> str:
+    """Why a local model isn't recommended here, naming what was found and can't be used."""
+    note = (f"A local AI model would run on the processor here, which is too slow to be useful: it needs an NVIDIA or AMD "
+            f"graphics card with at least {hardware.MIN_VRAM_GB:.0f} GB of its own memory. A cloud AI (Claude, OpenAI or "
+            "Gemini) is the better fit.")
+    others = [g["name"] for g in hw.get("gpus", []) if not g["unified"]]
+    if others:
+        note += f" The {others[0]} isn't one local models can use."
+    npu = hw.get("npu")
+    if npu:
+        note += f" The {npu} isn't something local models can use yet."
+    return note
 
 
 def snapshot() -> dict:
@@ -106,7 +130,7 @@ def check(required_gb: float, what: str) -> str | None:
                 "Pick a smaller model in Settings, or proceed anyway.")
     if _disk_free_share() < SWAP_DISK_FREE:
         return (f"{WAIT}: {available:.1f} GB is free and {what} needs about {needed:.1f} GB, and with "
-                f"under {SWAP_DISK_FREE:.0%} of the disk free macOS has little room to swap. "
+                f"under {SWAP_DISK_FREE:.0%} of the disk free {computer.word('os')} has little room to swap. "
                 "Free up some disk space or close some apps, or proceed anyway.")
     if memory_pressure() >= 4:
         return (f"{WAIT}: macOS reports critical memory pressure and {what} needs about {needed:.1f} GB. "
@@ -115,37 +139,50 @@ def check(required_gb: float, what: str) -> str | None:
 
 
 def device_advice(local_min_gb: float | None = None) -> dict:
-    """What this Mac can comfortably do, for setup: {"verdict": "local" | "mixed" | "cloud", "chip", "ram_gb",
-    "disk_free_gb", "notes": [...]}.
+    """What this computer can comfortably do, for setup: {"verdict": "local" | "mixed" | "cloud", "chip", "gpu", "npu",
+    "ram_gb", "disk_free_gb", "notes": [...]}.
 
     local: everything an app asks of AI runs well here. mixed: the light jobs run here, and the heavy ones are better
-    with a cloud AI. cloud: short on memory or disk for local models at all. `local_min_gb` is the memory an app's
-    heaviest job needs to do well locally (app.json: localAiMinGb; 12 if it doesn't say)."""
+    with a cloud AI. cloud: no chip that can run a local model, or short on memory or disk for one. `local_min_gb` is
+    the memory an app's heaviest job needs to do well locally, on a Mac (app.json: localAiMinGb; 12 if it doesn't
+    say); local_memory_gb() puts a graphics card in the same terms. `gpu` names the card a model would use ("" if none)."""
     if local_min_gb is None:
         local_min_gb = float(config.IDENTITY.get("localAiMinGb", 12))
     vm, usage = psutil.virtual_memory(), _disk()
     ram, free = vm.total / GB, usage.free / GB
     share = usage.free / usage.total if usage.total else 1
     name = chip()
+    hw = hardware.profile()
+    runs_on = hw["ai_runs_on"]
+    gpu = hardware.gpu_label(hw.get("gpus", []))
     notes: list[str] = []
-    if ram < 8:
+    if runs_on == "cpu":
+        verdict = "cloud"
+        notes.append(_no_chip_note(hw))
+    elif ram < 8:
         verdict = "cloud"
         notes.append(f"{ram:.0f} GB of memory is too little to run an AI model beside your other apps. "
                      "A cloud AI (Claude, OpenAI or Gemini) is the better fit.")
-    elif ram < local_min_gb:
+    elif local_memory_gb() < local_min_gb:
         verdict = "mixed"
-        notes.append(f"{ram:.0f} GB of memory runs a small AI model well for the lighter jobs. For the careful ones, "
+        room = f"The {gpu} graphics card" if runs_on == "gpu" else f"{ram:.0f} GB of memory"
+        notes.append(f"{room} runs a small AI model well for the lighter jobs. For the careful ones, "
                      "like reading a long document, a cloud AI does much better.")
     else:
         verdict = "local"
-        notes.append(f"{ram:.0f} GB of memory leaves room for a larger local model, so everything can run on {computer.word('here')}.")
+        room = f"The {gpu} graphics card" if runs_on == "gpu" else f"{ram:.0f} GB of memory"
+        notes.append(f"{room} leaves room for a larger local model, so everything can run on {computer.word('here')}.")
     if re.search(r"\bM1\b", name) and ram < 12:
         notes.append("An M1 with this much memory is slow with local models; a cloud AI is the better fit.")
-    if free < 8:
+    os_name = computer.word("os")
+    if runs_on == "cpu":
+        pass  # no local model is being recommended, so how much room one would have doesn't come up
+    elif free < 8:
         verdict = "cloud"
-        notes.append(f"Only {free:.0f} GB of disk is free. A local model takes 2 to 9 GB and macOS needs room to swap. "
+        notes.append(f"Only {free:.0f} GB of disk is free. A local model takes 2 to 9 GB and {os_name} needs room to swap. "
                      "Free up space, or use a cloud AI.")
     elif free < 20 or share < SWAP_DISK_FREE:
-        notes.append(f"{free:.0f} GB of disk free: enough for one small model, but a full disk leaves macOS little room "
+        notes.append(f"{free:.0f} GB of disk free: enough for one small model, but a full disk leaves {os_name} little room "
                      "to swap, so keep an eye on it.")
-    return {"verdict": verdict, "chip": name, "ram_gb": round(ram), "disk_free_gb": round(free), "notes": notes}
+    return {"verdict": verdict, "chip": name, "gpu": gpu, "npu": hw.get("npu", ""), "ram_gb": round(ram),
+            "disk_free_gb": round(free), "notes": notes}

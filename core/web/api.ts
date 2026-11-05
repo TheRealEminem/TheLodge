@@ -108,6 +108,8 @@ export interface Words {
   app: string;
   /** Where apps are opened from: "Applications", "the Start menu" or "your apps menu" */
   apps: string;
+  /** "Terminal", "PowerShell" or "a terminal" */
+  terminal: string;
 }
 export interface PlatformInfo {
   os: "mac" | "windows" | "linux";
@@ -117,7 +119,7 @@ export interface PlatformInfo {
 }
 /** The words for this system, set from the app info as it loads (the Mac's until then). Write `On ${words.here}`,
  *  never "this Mac", in anything a person reads. */
-export const words: Words = { here: "this Mac", files: "Finder", tray: "the menu bar", app: "the Mac app", apps: "Applications" };
+export const words: Words = { here: "this Mac", files: "Finder", tray: "the menu bar", app: "the Mac app", apps: "Applications", terminal: "Terminal" };
 export let computer: PlatformInfo = { os: "mac", words, shell: null, can: [] };
 export function setSystem(info: PlatformInfo | undefined) {
   if (!info) return;
@@ -188,13 +190,17 @@ export interface PersonChoice {
 /** What this Mac can do (core/server/resources.py): its memory, disk and chip, and the path that suits it. */
 export interface SystemInfo {
   snapshot: { chip: string; ram_total_gb: number; ram_available_gb: number; disk_free_gb: number; memory_pressure: number };
-  advice: { verdict: "local" | "mixed" | "cloud"; chip: string; ram_gb: number; disk_free_gb: number; notes: string[] };
+  advice: { verdict: "local" | "mixed" | "cloud"; chip: string; gpu: string; npu: string; ram_gb: number; disk_free_gb: number; notes: string[] };
 }
 
 /** Ollama on this Mac (core/server/ollama_setup.py). */
 export interface OllamaStatus {
   can_install: boolean;
   installed: boolean;
+  /** Linux: what to run yourself, since the app runs nothing as root. Null elsewhere. */
+  install_command: string | null;
+  install_page: string | null;
+  start_command: string | null;
   reachable: boolean;
   models: string[];
   using: string;

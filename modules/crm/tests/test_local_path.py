@@ -3,7 +3,7 @@ with (basic mode), and that an install that was using Claude and Gemini keeps us
 import pytest
 from crm_helpers import post_notes
 
-from core.server import ai, resources, settings, setup
+from core.server import ai, hardware, resources, settings, setup
 from modules.crm.server import ingest, roles
 from modules.crm.server.extraction import BasicNotes, Extraction
 
@@ -15,6 +15,7 @@ def mac(monkeypatch):
     """mac(ram): a Mac with this much memory, running a local model."""
     def make(ram):
         monkeypatch.setattr(resources, "snapshot", lambda: {"ram_total_gb": ram})
+        monkeypatch.setattr(hardware, "profile", lambda: {"ai_runs_on": "unified", "ai_memory_gb": ram * 0.7, "cpu": "Apple M4", "gpus": [], "npu": ""})
         monkeypatch.setattr(ai, "_ollama_tags", lambda c: [{"name": "qwen2.5:7b", "details": {"parameter_size": "7B"}}])
     return make
 
@@ -115,3 +116,9 @@ def test_a_new_install_follows_setup_instead(old_install, monkeypatch):
     monkeypatch.setattr(setup, "done", lambda: False)                 # first run: setup hasn't happened yet
     roles.keep_what_people_have()
     assert stored == {"crm.providers_kept": True}
+
+
+@pytest.mark.parametrize("runs_on, room, basic", [("cpu", 76.8, True), ("gpu", 8, True), ("gpu", 16, False)])
+def test_off_the_mac_basic_mode_follows_the_graphics_card_not_the_memory(monkeypatch, runs_on, room, basic):
+    monkeypatch.setattr(hardware, "profile", lambda: {"ai_runs_on": runs_on, "ai_memory_gb": room})
+    assert roles.basic() is basic

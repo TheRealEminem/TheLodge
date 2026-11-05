@@ -244,10 +244,36 @@ jobs:
         shell: pwsh
         run: python scripts/smoke-test-windows.py (Get-Item "dist-app/*-windows-$env:ARCH.exe").FullName (Get-Item "previous/*.exe" | Select-Object -First 1).FullName
 
+  # The app installing Ollama, as Settings does: Ollama's real installer and signature check. Downloads over 1 GB, so it
+  # runs where the update test does, and beside it.
+  windows-ollama:
+    needs: [plan, windows]
+    if: needs.plan.outputs.full == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.plan.outputs.windows_matrix) }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    env:
+      ARCH: ${{ matrix.arch }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/download-artifact@v4
+        with:
+          name: windows-${{ matrix.arch }}
+          path: dist-app
+      - name: "Smoke test: installing Ollama from inside the app"
+        shell: pwsh
+        run: python scripts/smoke-test-windows.py --ollama (Get-Item "dist-app/*-windows-$env:ARCH.exe").FullName
+
   # Adds the Windows installers to the release this tag made (release.yml publishes the Mac app first). A release is
   # all or nothing: this waits for every arch's build and update test.
   publish:
-    needs: [plan, shell-tests, windows, windows-update]
+    needs: [plan, shell-tests, windows, windows-update, windows-ollama]
     if: needs.plan.outputs.release == 'true' && needs.plan.outputs.repo != ''
     runs-on: ubuntu-latest
     timeout-minutes: 10

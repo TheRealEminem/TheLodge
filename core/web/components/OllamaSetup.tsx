@@ -58,7 +58,22 @@ export function OllamaSetup({ onReady }: { onReady?: () => void }) {
 
   const failure = s.install?.error || s.pull?.error;
   let body;
-  if (!s.can_install && !s.reachable) {
+  if (s.install_command && !s.reachable) {
+    body = (
+      <>
+        <p className="text-hint text-ink-soft">Ollama is the free app that runs AI models on {words.here}. Its install script needs your password, so run this in {words.terminal}, and it shows up here:</p>
+        <code className="mt-2 block break-all font-mono text-meta">{s.install_command}</code>
+        {s.install_page && <a className="mt-2 inline-block text-hint underline" href={s.install_page} target="_blank" rel="noreferrer">Ollama's instructions</a>}
+      </>
+    );
+  } else if (s.start_command && !s.reachable) {
+    body = (
+      <>
+        <p className="text-hint text-ink-soft">Ollama is installed but not running. Run this in {words.terminal}, and it shows up here:</p>
+        <code className="mt-2 block break-all font-mono text-meta">{s.start_command}</code>
+      </>
+    );
+  } else if (!s.can_install && !s.reachable) {
     body = <p className="text-hint text-ink-soft">Ollama isn't running. Install it from ollama.com and open it, and it shows up here.</p>;
   } else if (!s.installed && !s.reachable) {
     body = (
