@@ -1,6 +1,7 @@
 """What this computer has for running AI models, and the advice drawn from it: a local model is recommended only where a
 chip Ollama supports will run it. The parsers take plain text and values, so these read any system's output on any system."""
 from collections import namedtuple
+from pathlib import Path
 
 import pytest
 
@@ -158,6 +159,23 @@ def test_only_a_valid_signature_of_ollamas_is_run_on_windows():
     assert "signature check" in ollama_setup.signature_problem("HashMismatch", "CN=Ollama Inc.")
     assert "signature check" in ollama_setup.signature_problem("NotSigned", "")
     assert "isn't signed by Ollama" in ollama_setup.signature_problem("Valid", "CN=Someone Else")
+
+
+def test_the_signature_check_finds_powershell_without_the_path(monkeypatch):
+    """The installed app's server has a short PATH without PowerShell on it: that stopped every install on Windows."""
+    seen = {}
+
+    class Done:
+        stdout = "Valid\nCN=Ollama Inc.\n"
+
+    def run(cmd, **kw):
+        seen["program"] = cmd[0]
+        return Done()
+
+    monkeypatch.setenv("SystemRoot", r"C:\Windows")
+    monkeypatch.setattr(ollama_setup.subprocess, "run", run)
+    ollama_setup._verify_windows(Path("OllamaSetup.exe"))
+    assert "System32" in seen["program"] and seen["program"].endswith("powershell.exe")
 
 
 def test_linux_shows_what_to_run_and_nothing_elsewhere(monkeypatch):
