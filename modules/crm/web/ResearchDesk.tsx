@@ -11,7 +11,7 @@ import { crmApi } from "./api";
 import type { DeskItem, DeskMark, DeskShow, GeminiOverview, ResearchTool } from "./api";
 import { Avatar, roleLine } from "./bits";
 import { formatDate } from "./format";
-import { money } from "./GeminiResearch";
+import { DepthAndTime, hour, money, useDepthAndTime } from "./GeminiResearch";
 import { connectionLine } from "./tier";
 
 const SHOWS: { id: DeskShow; label: string; empty: string }[] = [
@@ -56,6 +56,10 @@ function HowItRuns({ data, deep, setDeep }: { data: GeminiOverview; deep: Resear
             ? `On ${deep.plan}, nothing charged here. It starts from what the first pass found and goes further, one person at a time, a few minutes each. When the plan's limit is reached it waits and carries on.`
             : <span className="text-trail-deep">{deep?.reason ?? `No AI tool is set up on ${words.here}.`}</span>}
         </p>
+        {deep?.ready && <div className="mt-3"><DepthAndTime data={data} /></div>}
+        {data.waiting_for_night > 0 && !data.is_night && (
+          <p className="mt-2 flex items-center gap-1.5 text-hint text-ink-soft"><ClockIcon size={14} /> {data.waiting_for_night} waiting for {hour(data.night_hours[0])}.</p>
+        )}
       </div>
       <label className="flex items-start gap-2.5 border-t border-line pt-3 text-ui text-ink-soft sm:col-span-2">
         <input type="checkbox" className="mt-1 accent-forest" checked={get<boolean>("crm.research_auto_add") ?? true}
@@ -99,8 +103,8 @@ function Row({ item, picked, onPick }: { item: DeskItem; picked: boolean; onPick
           <>
             <Spinner className="text-ink-faint" />
             <span>
-              {run.via === "api" ? "Gemini first pass" : TOOL_NAMES[run.via]}{run.status === "queued" ? ", waiting its turn" : run.status === "waiting" ? ", waiting" : ", searching"}
-              {run.then_via && `, then ${TOOL_NAMES[run.then_via]}`}
+              {run.via === "api" ? "Gemini first pass" : `${TOOL_NAMES[run.via]}, ${run.depth}`}{run.status === "queued" ? (run.night && run.via !== "api" ? ", waiting for the night" : ", waiting its turn") : run.status === "waiting" ? ", waiting" : ", searching"}
+              {run.then_via && `, then ${TOOL_NAMES[run.then_via]} (${run.depth}${run.night ? ", overnight" : ""})`}
             </span>
             <button className="btn btn-sm btn-ghost" onClick={() => act(() => crmApi.cancelRun(run.id))}>Cancel</button>
           </>
@@ -127,6 +131,7 @@ export default function ResearchDesk() {
   const [busy, setBusy] = useState(false);
   const { data } = useLive(() => crmApi.researchDesk({ show, q: q.trim() || undefined, limit }), [show, q, limit]);
   const { data: how } = useLive(crmApi.geminiOverview, []);
+  const when = useDepthAndTime(how);
 
   const deepId = get<string>("crm.research_deep_via") ?? "claude";
   const deep = how?.tools.find((t) => t.id === deepId) ?? how?.tools.find((t) => t.ready);
@@ -150,6 +155,7 @@ export default function ResearchDesk() {
 
   const start = async (pass: Pass) => {
     if (!how || !deep) return;
+    const { depth, night } = when;
     const ids = [...picked.keys()];
     const cost = pass === "deep" ? 0 : each * ids.length;
     if (how.warn_over > 0 && cost >= how.warn_over && !(await confirm({
@@ -159,10 +165,11 @@ export default function ResearchDesk() {
     setBusy(true);
     try {
       const r = pass === "deep"
-        ? await crmApi.startGemini(ids, how.level, how.batch, deep.id)
-        : await crmApi.startGemini(ids, how.level, how.batch, "api", pass === "both" ? deep.id : null);
+        ? await crmApi.startGemini(ids, how.level, how.batch, deep.id, null, depth, night)
+        : await crmApi.startGemini(ids, how.level, how.batch, "api", pass === "both" ? deep.id : null, depth, night);
       const why = r.skipped.length ? ` ${r.skipped.length} skipped: ${r.skipped[0].reason}${r.skipped.length > 1 ? ", …" : ""}.` : "";
-      const what = pass === "both" ? `A first pass with Gemini, then deep research with ${deep.label}` : pass === "first" ? "A first pass with Gemini" : `Deep research with ${deep.label}`;
+      const later = night ? `, overnight from ${hour(how.night_hours[0])}` : "";
+      const what = pass === "both" ? `A first pass with Gemini now, then ${depth} research with ${deep.label}${later}` : pass === "first" ? "A first pass with Gemini" : `${depth[0].toUpperCase() + depth.slice(1)} research with ${deep.label}${later}`;
       toast(r.started ? `${what}, on ${r.started === 1 ? "1 person" : `${r.started} people`}.${why}` : `Nothing started.${why}`, r.started ? "success" : "error");
       setPicked(new Map());
     } catch (e) {

@@ -618,6 +618,7 @@ export interface MergeRecord {
 type Brief = { id: string; name: string; kind: EntityKind };
 
 export type ResearchLevel = "quick" | "better" | "best";
+export type ResearchDepth = "light" | "standard" | "deep";
 /** How research runs: "api" is Gemini with your key; the others are AI tools signed in on this Mac, on your own plan. */
 export type ResearchVia = "api" | "claude" | "codex" | "gemini_cli";
 
@@ -645,6 +646,9 @@ export interface ResearchRun {
   inbox_id: string | null;
   /** A first pass that hands over to deep research through this tool when it ends. */
   then_via: ResearchTool["id"] | null;
+  /** How hard a tool's run works, and whether it waits for the night hours (on a first pass: for the one after). */
+  depth: ResearchDepth;
+  night: boolean;
   created_at: string;
   finished_at: string | null;
 }
@@ -683,6 +687,13 @@ export interface GeminiOverview {
   batch: boolean;
   via: ResearchVia;
   tools: ResearchTool[];
+  depths: { id: ResearchDepth; label: string; hint: string }[];
+  depth: ResearchDepth;
+  when: "now" | "night";
+  /** From this hour up to that one, in the computer's time. */
+  night_hours: [number, number];
+  is_night: boolean;
+  waiting_for_night: number;
   budget: number;
   spent: number;
   prices_as_of: string;
@@ -816,8 +827,9 @@ export const crmApi = {
   setResearch: (id: string, action: "snooze" | "dismiss" | "restore") =>
     request<ResearchStatus>(`/crm/people/${id}/research`, json("POST", { action })),
   geminiOverview: () => request<GeminiOverview>("/crm/research/gemini"),
-  startGemini: (personIds: string[], level: ResearchLevel, batch: boolean, via: ResearchVia = "api", then: ResearchTool["id"] | null = null) =>
-    request<{ started: number; skipped: { id: string; reason: string }[]; estimate_each: number }>("/crm/research/gemini", json("POST", { person_ids: personIds, level, batch, via, then })),
+  startGemini: (personIds: string[], level: ResearchLevel, batch: boolean, via: ResearchVia = "api", then: ResearchTool["id"] | null = null,
+    depth: ResearchDepth | null = null, night: boolean | null = null) =>
+    request<{ started: number; skipped: { id: string; reason: string }[]; estimate_each: number }>("/crm/research/gemini", json("POST", { person_ids: personIds, level, batch, via, then, depth, night })),
   researchDesk: (p: { show: DeskShow; q?: string; limit?: number }) => request<DeskPage>(`/crm/research/desk${qs(p)}`),
   geminiRun: (personId: string) => request<{ run: ResearchRun | null }>(`/crm/people/${personId}/research/gemini`),
   cancelRun: (runId: string) => request<ResearchRun>(`/crm/research/gemini/${runId}/cancel`, json("POST")),

@@ -287,7 +287,7 @@ def earlier(person_id: str) -> tuple[str, str] | None:
     return text, _day(at) if at else "undated"
 
 
-def brief(person_id: str) -> str:
+def brief(person_id: str, words: str = "1,500 to 2,500") -> str:
     """A prompt for a deep-research tool, shaped for Gemini Deep Research (it works in ChatGPT, Claude and Perplexity
     too): who this is as far as you know, why you care, and a report layout the importer reads best. The report is
     asked to keep a ref and say how sure it is of the person, so it comes back to the right profile by itself and a
@@ -335,6 +335,6 @@ def brief(person_id: str) -> str:
         "- Then these sections, in this order: Background, Current role, Organizations and affiliations, "
         "Expertise and interests, Notable work and mentions, People they're connected to, Why they could matter to me.",
         "- Cite a source for every claim that matters, and say when something is uncertain. Use public sources only.",
-        "- Aim for 1,500 to 2,500 words. Leave out general background on their industry or employer.",
+        f"- Aim for {words} words. Leave out general background on their industry or employer.",
     ]
     return "\n".join(lines)

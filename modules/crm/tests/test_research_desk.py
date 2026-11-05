@@ -87,3 +87,54 @@ def test_everyone_is_sorted_by_how_far_their_research_has_got(client, tool):  # 
     assert failed["run"]["status"] == "failed"                                          # shown with its error, to try again
     assert client.get("/api/crm/research/desk", params={"show": "new", "q": "frost"}).json()["total"] == 0
     assert lee["id"]
+
+
+def test_depth_sets_the_model_effort_and_length_each_tool_is_given(client, tool):  # noqa: F811
+    jordan, sam = person(client), person(client, "Sam Okafor")
+    cr.start([jordan["id"]], "claude", "light")
+    jobs.drain()
+    seen = tool.seen()
+    assert seen["argv"][-4:] == ["--model", "sonnet", "--effort", "low"]
+    assert "light pass" in seen["prompt"] and "Aim for 600 to 900 words" in seen["prompt"]
+    tool.mode("codex")
+    cr.start([sam["id"]], "codex", "deep")
+    jobs.drain()
+    seen = tool.seen()
+    assert 'model_reasoning_effort="high"' in seen["argv"] and "40 or more searches" in seen["prompt"]
+    report = db.one("SELECT raw_text FROM crm_inbox WHERE id = ?", (runs(sam["id"])[0]["inbox_id"],))["raw_text"]
+    assert "with Codex (deep)" in report
+
+
+def test_an_overnight_run_waits_for_the_night_hours(client, tool, monkeypatch):  # noqa: F811
+    jordan = person(client)
+    monkeypatch.setattr(cr, "is_night", lambda hour=None: False)
+    r = client.post("/api/crm/research/gemini", json={"person_ids": [jordan["id"]], "via": "claude", "night": True})
+    assert r.status_code == 202
+    jobs.enqueue("crm", "research_cli", "scheduled")
+    jobs.drain()
+    [waiting] = runs(jordan["id"])
+    assert waiting["status"] == "queued" and waiting["night"] == 1
+    assert client.get("/api/crm/research/gemini").json()["waiting_for_night"] == 1
+    monkeypatch.setattr(cr, "is_night", lambda hour=None: True)
+    jobs.enqueue("crm", "research_cli", "scheduled")
+    jobs.drain()
+    assert runs(jordan["id"])[0]["status"] == "done"
+
+
+def test_the_usual_depth_and_time_come_from_settings_and_follow_a_first_pass(client, google, tool, monkeypatch):  # noqa: F811
+    monkeypatch.setattr(cr, "is_night", lambda hour=None: False)
+    settings.update({"crm.research_depth": "deep", "crm.research_when": "night"})
+    jordan = person(client)
+    client.post("/api/crm/research/gemini", json={"person_ids": [jordan["id"]], "via": "api", "batch": False, "then": "claude"})
+    jobs.drain()
+    first, deep = runs(jordan["id"])
+    assert first["status"] == "done"                                     # the first pass goes now
+    assert (deep["depth"], deep["night"], deep["status"]) == ("deep", 1, "queued")
+    settings.update({"crm.research_depth": "standard", "crm.research_when": "now"})
+
+
+def test_the_night_hours_can_run_past_midnight():
+    settings.update({"crm.research_night_from": 22, "crm.research_night_to": 6})
+    assert cr.is_night(23) and cr.is_night(3) and not cr.is_night(6) and not cr.is_night(12)
+    settings.update({"crm.research_night_from": 1, "crm.research_night_to": 6})
+    assert cr.is_night(1) and not cr.is_night(0) and not cr.is_night(7)

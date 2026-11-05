@@ -22,6 +22,7 @@ import subprocess
 import sys
 import tempfile
 import threading
+from datetime import datetime
 from pathlib import Path
 
 import psutil
@@ -53,17 +54,50 @@ else:
 # where their sign-ins are. Still no API keys.
 WINDOWS_ENV = ("SYSTEMROOT", "WINDIR", "COMSPEC", "PATHEXT", "USERPROFILE", "APPDATA", "LOCALAPPDATA", "PROGRAMDATA",
                "PROGRAMFILES", "TEMP", "TMP", "USERNAME", "HOMEDRIVE", "HOMEPATH", "CODEX_HOME")
-TIMEOUT = 30 * 60          # seconds one person may take
 RETRY_AFTER = 15 * 60      # seconds a run waits after the plan's limit is reached
 UNFINISHED = ("queued", "running", "waiting")
 LIMIT = re.compile(r"usage limit|rate.?limit|limit (?:reached|exceeded)|hit your limit|quota|too many requests|\b429\b|"
                    r"resets? (?:at|in)|try again (?:later|in)", re.I)
 
-INSTRUCTIONS = (
-    "You're running unattended for the owner of a personal CRM, with nobody to answer questions. Search the web as "
-    "much as you need (dozens of searches is fine) and read the pages that matter. Don't create or change any files. "
-    "Reply with only the finished report in Markdown: no preamble, no questions, nothing after it."
-)
+# How hard a run works: what it's told, how long its report is, the model and effort each tool is started with
+# (Gemini CLI has no effort setting, so only what it's told changes), and how long it may take.
+DEPTHS = {
+    "light": {"label": "Light", "words": "600 to 900", "minutes": 15,
+              "hint": "A quick look: who they are and the main facts, in about 10 searches. Uses the least of your plan.",
+              "how": "This is a light pass: about 5 to 10 searches, enough to be sure who they are and find the main facts.",
+              "claude": ["--model", "sonnet", "--effort", "low"], "codex": ["-c", 'model_reasoning_effort="low"']},
+    "standard": {"label": "Standard", "words": "1,500 to 2,500", "minutes": 30,
+                 "hint": "A full report with a source for every claim that matters, on the tool's usual model.",
+                 "how": "Search the web as much as you need (dozens of searches is fine) and read the pages that matter.",
+                 "claude": [], "codex": []},
+    "deep": {"label": "Deep", "words": "3,000 to 5,000", "minutes": 60,
+             "hint": "Exhaustive, on the strongest model: primary sources, every lead followed, claims checked twice. "
+                     "Uses several times what a standard run does.",
+             "how": "This is a deep session, so be thorough: run 40 or more searches, read primary sources (their own "
+                    "sites, filings, talks, interviews, papers), follow every lead in the earlier search, and check "
+                    "each important claim against a second source.",
+             "claude": ["--model", "opus", "--effort", "high"], "codex": ["-c", 'model_reasoning_effort="high"']},
+}
+
+
+def instructions(depth: str) -> str:
+    return ("You're running unattended for the owner of a personal CRM, with nobody to answer questions. "
+            f"{DEPTHS[depth]['how']} Don't create or change any files. Reply with only the finished report in "
+            "Markdown: no preamble, no questions, nothing after it.")
+
+
+def night_hours() -> tuple[int, int]:
+    """When overnight runs may go: from this hour up to (not including) that one, in this computer's time."""
+    cfg = settings.section("crm")
+    return int(cfg["research_night_from"]) % 24, int(cfg["research_night_to"]) % 24
+
+
+def is_night(hour: int | None = None) -> bool:
+    start, end = night_hours()
+    h = datetime.now().hour if hour is None else hour
+    if start == end:
+        return True
+    return start <= h < end if start < end else (h >= start or h < end)
 
 _running: dict[str, subprocess.Popen] = {}
 _lock = threading.Lock()
@@ -151,15 +185,21 @@ def tools() -> list[dict]:
              "reason": why} for k, t in TOOLS.items()]
 
 
+def depths() -> list[dict]:
+    return [{"id": k, "label": d["label"], "hint": d["hint"]} for k, d in DEPTHS.items()]
+
+
 # ── One run ───────────────────────────────────────────────────────────
 
-def command(via: str, program: str, folder: Path) -> list[str]:
+def command(via: str, program: str, folder: Path, depth: str = "standard") -> list[str]:
     if via == "claude":
         return [program, "-p", "--output-format", "json", "--tools", "WebSearch,WebFetch", "--allowedTools", "WebSearch",
-                "WebFetch", "--permission-mode", "dontAsk", "--strict-mcp-config", "--no-session-persistence"]
+                "WebFetch", "--permission-mode", "dontAsk", "--strict-mcp-config", "--no-session-persistence",
+                *DEPTHS[depth]["claude"]]
     if via == "codex":
-        return [program, "exec", "-c", 'web_search="live"', "-c", "mcp_servers={}", "--skip-git-repo-check", "--ephemeral",
-                "-s", "read-only", "--color", "never", "-C", str(folder), "-o", str(folder / "report.md"), "--json", "-"]
+        return [program, "exec", "-c", 'web_search="live"', "-c", "mcp_servers={}", *DEPTHS[depth]["codex"],
+                "--skip-git-repo-check", "--ephemeral", "-s", "read-only", "--color", "never", "-C", str(folder),
+                "-o", str(folder / "report.md"), "--json", "-"]
     return [program, "-o", "json", "--skip-trust", "-e", "none", "-p", "Write the report now."]
 
 
@@ -230,26 +270,34 @@ def trim(text: str, title: str) -> str:
     return text[at:].lstrip("# ").strip() if at > 0 else text.strip()
 
 
-def research_one(via: str, run_id: str, prompt: str) -> dict:
+def _stay_awake(pid: int) -> None:
+    """Keeps a Mac from dozing off while the tool works (an overnight run especially). Ends with the tool."""
+    if sys.platform == "darwin" and (caffeinate := shutil.which("caffeinate", path="/usr/bin")):
+        subprocess.Popen([caffeinate, "-i", "-w", str(pid)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+
+def research_one(via: str, run_id: str, prompt: str, depth: str = "standard") -> dict:
     """Runs the tool on one brief and waits for it. {text, error, limited, model, in, out}."""
+    timeout = DEPTHS[depth]["minutes"] * 60
     program = find(via)
     if not program:
         return {"text": "", "error": f"{TOOLS[via]['label']} isn't installed on {computer.word('here')}.", "limited": False}
     with tempfile.TemporaryDirectory(prefix="lodge-research-") as tmp:
         folder = Path(tmp)
         try:
-            proc = subprocess.Popen(command(via, program, folder), cwd=folder, env=environment(program),
+            proc = subprocess.Popen(command(via, program, folder, depth), cwd=folder, env=environment(program),
                                     encoding="utf-8", errors="replace", stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         except OSError as e:
             return {"text": "", "error": f"Couldn't start {TOOLS[via]['label']}: {e}", "limited": False}
         with _lock:
             _running[run_id] = proc
+        _stay_awake(proc.pid)
         try:
-            out, err = proc.communicate(prompt, timeout=TIMEOUT)
+            out, err = proc.communicate(prompt, timeout=timeout)
         except subprocess.TimeoutExpired:
             _kill(proc)
             proc.communicate()
-            return {"text": "", "error": f"{TOOLS[via]['label']} took longer than {TIMEOUT // 60} minutes", "limited": False}
+            return {"text": "", "error": f"{TOOLS[via]['label']} took longer than {timeout // 60} minutes", "limited": False}
         finally:
             with _lock:
                 _running.pop(run_id, None)
@@ -291,11 +339,14 @@ def _update(run_id: str, **fields) -> None:
     db.execute(f"UPDATE crm_research_runs SET {', '.join(f'{k} = ?' for k in fields)} WHERE id = ?", (*fields.values(), run_id))
 
 
-def start(person_ids: list[str], via: str) -> dict:
-    """Queue research on these people through this tool. Someone already being researched, or who can't be (no
-    surname), is skipped and said why."""
+def start(person_ids: list[str], via: str, depth: str = "standard", night: bool = False) -> dict:
+    """Queue research on these people through this tool, at this depth. Overnight, a run waits for the night hours
+    (night_hours) before it starts. Someone already being researched, or who can't be (no surname), is skipped and
+    said why."""
     if (why := problem(via)):
         raise CliResearchError(why)
+    if depth not in DEPTHS:
+        raise CliResearchError("Unknown depth")
     started, skipped = [], []
     for pid in dict.fromkeys(person_ids):
         try:
@@ -307,8 +358,8 @@ def start(person_ids: list[str], via: str) -> dict:
             skipped.append({"id": pid, "reason": f"{sub.person.name} is already being researched"})
             continue
         now = _now()
-        db.execute("INSERT INTO crm_research_runs (id, entity_id, level, via, batch, status, stage, created_at, updated_at) "
-                   "VALUES (?, ?, ?, ?, 0, 'queued', 'write', ?, ?)", (db.new_id(), pid, via, via, now, now))
+        db.execute("INSERT INTO crm_research_runs (id, entity_id, level, via, batch, status, stage, depth, night, created_at, "
+                   "updated_at) VALUES (?, ?, ?, ?, 0, 'queued', 'write', ?, ?, ?, ?)", (db.new_id(), pid, via, via, depth, int(night), now, now))
         started.append(pid)
     if started:
         jobs.enqueue("crm", "research_cli", "scheduled")
@@ -317,10 +368,12 @@ def start(person_ids: list[str], via: str) -> dict:
 
 
 def _due() -> dict | None:
-    """The next run to work on: queued ones first, then any whose wait for the plan's limit is over."""
+    """The next run to work on: queued ones first, then any whose wait for the plan's limit is over. Overnight runs
+    only during the night hours; one already going when they end finishes."""
     since = db.one("SELECT strftime('%Y-%m-%dT%H:%M:%fZ', 'now', ?) AS t", (f"-{RETRY_AFTER} seconds",))["t"]
     return db.one("SELECT * FROM crm_research_runs WHERE via != 'api' AND (status = 'queued' OR (status = 'waiting' "
-                  "AND updated_at <= ?)) ORDER BY status = 'waiting', created_at LIMIT 1", (since,))
+                  f"AND updated_at <= ?)) {'' if is_night() else 'AND night = 0 '}"
+                  "ORDER BY status = 'waiting', created_at LIMIT 1", (since,))
 
 
 def handle(job: jobs.Job) -> None:
@@ -341,21 +394,23 @@ def _run(job: jobs.Job, r: dict) -> None:
         return
     try:
         sub = research.subject(r["entity_id"])
-        prompt = f"{research.brief(r['entity_id'])}\n\n---\n\n{INSTRUCTIONS}"
+        depth = r["depth"] if r["depth"] in DEPTHS else "standard"
+        prompt = f"{research.brief(r['entity_id'], DEPTHS[depth]['words'])}\n\n---\n\n{instructions(depth)}"
     except research.ResearchError as e:
         _update(r["id"], status="failed", error=str(e), finished_at=_now())
         _changed(r["entity_id"])
         return
     _update(r["id"], status="running", error=None)
     _changed(r["entity_id"])
-    job.stage(f"{label} is researching {sub.person.name}")
-    got = research_one(via, r["id"], prompt)
+    job.stage(f"{label} is researching {sub.person.name} ({DEPTHS[depth]['label'].lower()})")
+    got = research_one(via, r["id"], prompt, depth)
     if (db.one("SELECT status FROM crm_research_runs WHERE id = ?", (r["id"],)) or {}).get("status") != "running":
         return                                                      # cancelled while the tool worked
     tally.record(via, got.get("model") or label, got.get("in", 0), got.get("out", 0), cost=0.0, source="Researching people")
     if got["text"]:
         report = trim(got["text"], sub.title)
-        footer = f"\n\n---\nResearched by The Lodge with {label}, on {TOOLS[via]['plan']}, on {sub.today}."
+        footer = (f"\n\n---\nResearched by The Lodge with {label} ({DEPTHS[depth]['label'].lower()}), on "
+                  f"{TOOLS[via]['plan']}, on {sub.today}.")
         row = ingest.create_note_job(report + footer, sub.title, None, r["entity_id"],
                                      auto_apply=settings.section("crm")["research_auto_add"])
         _update(r["id"], status="done", stage="done", inbox_id=row["id"], finished_at=_now())
@@ -373,7 +428,7 @@ def retry(run_id: str) -> None:
 
 
 def seconds() -> int:
-    """Every minute while a run is queued or waiting on a limit, otherwise not at all."""
+    """Every minute while a run is queued or waiting on a limit or the night, otherwise not at all."""
     if locked():
         return 0
     return 60 if db.one("SELECT 1 AS x FROM crm_research_runs WHERE via != 'api' AND status IN ('queued', 'waiting')") else 0

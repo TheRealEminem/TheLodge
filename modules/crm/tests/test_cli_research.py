@@ -98,7 +98,7 @@ def test_claude_code_gets_the_brief_and_only_the_web_and_the_report_waits_in_the
     item = client.get(f"/api/crm/ingest/jobs/{done['inbox_id']}").json()
     assert item["payload"]["subject_id"] == jordan["id"]
     assert item["raw_text"].startswith("Jordan Reyes — research profile")        # what it said first is left out
-    assert "with Claude Code, on your Claude plan" in item["raw_text"]
+    assert "with Claude Code (standard), on your Claude plan" in item["raw_text"]
     use = db.one("SELECT * FROM core_ai_usage WHERE provider = 'claude' ORDER BY at DESC LIMIT 1")
     assert use["model"] == "claude-sonnet-5-5" and use["cost"] == 0 and use["tokens_in"] == 1200
 

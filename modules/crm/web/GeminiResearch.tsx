@@ -6,12 +6,12 @@ import { words } from "@core/api";
 import { Section } from "@core/components/blocks";
 import { ModelPicker } from "@core/components/ModelPicker";
 import { AlertIcon, ClockIcon, SearchIcon, SparkleIcon } from "@core/components/icons";
-import { ControlRow, Select, Spinner, SwitchRow } from "@core/components/ui";
+import { ControlRow, Segmented, Select, Spinner, SwitchRow } from "@core/components/ui";
 import { useLive } from "@core/live";
 import { navigate } from "@core/router";
 import { useSettings, useShell } from "@core/shell";
 import { crmApi } from "./api";
-import type { Entity, ResearchLevel, ResearchRun, ResearchTool, ResearchVia } from "./api";
+import type { Entity, GeminiOverview, ResearchDepth, ResearchLevel, ResearchRun, ResearchTool, ResearchVia } from "./api";
 import { Dialog } from "./forms";
 import { formatDate } from "./format";
 
@@ -22,6 +22,44 @@ const STAGE: Record<ResearchRun["stage"], string> = {
 };
 const TOOL_NAMES: Record<ResearchTool["id"], string> = { claude: "Claude Code", codex: "Codex", gemini_cli: "Gemini CLI" };
 const PLANS: Record<ResearchTool["id"], string> = { claude: "your Claude plan", codex: "your ChatGPT plan", gemini_cli: "your Google AI plan" };
+
+export const hour = (h: number) => (h === 0 ? "midnight" : h === 12 ? "noon" : h < 12 ? `${h} am` : `${h - 12} pm`);
+
+/** The usual depth and time for research through an AI tool, as Settings has them. */
+export function useDepthAndTime(data: GeminiOverview | null) {
+  const { get } = useSettings();
+  const depth = (get<string>("crm.research_depth") ?? data?.depth ?? "standard") as ResearchDepth;
+  const night = (get<string>("crm.research_when") ?? data?.when) === "night";
+  return { depth, night };
+}
+
+/** How hard research through an AI tool works and when it runs. A choice here is the usual one from then on. */
+export function DepthAndTime({ data }: { data: GeminiOverview }) {
+  const { save } = useSettings();
+  const { depth, night } = useDepthAndTime(data);
+  const [from, to] = data.night_hours;
+  return (
+    <div className="space-y-2">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+        <span className="w-12 text-ui text-ink-soft">Depth</span>
+        <Segmented size="sm" label="Depth" value={depth} onChange={(v) => void save({ "crm.research_depth": v })}
+          options={data.depths.map((d) => ({ id: d.id, label: d.label }))} />
+      </div>
+      <p className="text-hint text-ink-soft">{data.depths.find((d) => d.id === depth)?.hint}</p>
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+        <span className="w-12 text-ui text-ink-soft">When</span>
+        <Segmented size="sm" label="When" value={night ? "night" : "now"} onChange={(v) => void save({ "crm.research_when": v })}
+          options={[{ id: "now", label: "Now" }, { id: "night", label: `Overnight, ${hour(from)} to ${hour(to)}` }]} />
+      </div>
+      {night && (
+        <p className="text-hint text-ink-soft">
+          People wait their turn until {hour(from)}, then go one after another until {hour(to)}, so your plan&apos;s usage goes on the night, not
+          your working day. {words.here[0].toUpperCase() + words.here.slice(1)} has to be on and awake then: plugged in, and not set to sleep.
+        </p>
+      )}
+    </div>
+  );
+}
 
 /** Who did a run: Gemini through your key, or the AI tool. */
 const by = (run: ResearchRun) => (run.via === "api" ? "Gemini" : TOOL_NAMES[run.via]);
@@ -49,6 +87,7 @@ export function GeminiDialog({ people, onClose }: { people: { id: string; name: 
   const [tool, setTool] = useState<ResearchVia | null>(null);
   const [batch, setBatch] = useState<boolean | null>(null);
   const [busy, setBusy] = useState(false);
+  const when = useDepthAndTime(data);
   if (!data) return null;
   // Start on the usual way if it can run now, else on the first tool that can.
   const usable = (v: ResearchVia) => (v === "api" ? data.ready : !!data.tools.find((t) => t.id === v)?.ready);
@@ -65,10 +104,10 @@ export function GeminiDialog({ people, onClose }: { people: { id: string; name: 
   const go = async () => {
     setBusy(true);
     try {
-      const r = await crmApi.startGemini(people.map((p) => p.id), lv, b, via);
+      const r = await crmApi.startGemini(people.map((p) => p.id), lv, b, via, null, when.depth, when.night);
       if (via !== data.via) void save({ "crm.research_via": via });
       const why = r.skipped.length ? ` ${r.skipped.length} skipped: ${r.skipped[0].reason}${r.skipped.length > 1 ? ", …" : ""}.` : "";
-      toast(r.started ? `Researching ${r.started === 1 ? people.find((p) => !r.skipped.some((s) => s.id === p.id))?.name ?? "1 person" : `${r.started} people`}. Reports wait in the Inbox for your OK.${why}` : `Nothing started.${why}`, r.started ? "success" : "error");
+      toast(r.started ? `Researching ${r.started === 1 ? people.find((p) => !r.skipped.some((s) => s.id === p.id))?.name ?? "1 person" : `${r.started} people`}${picked && when.night ? `, starting at ${hour(data.night_hours[0])}` : ""}. Reports wait in the Inbox for your OK.${why}` : `Nothing started.${why}`, r.started ? "success" : "error");
       onClose();
     } catch (e) {
       toast((e as Error).message, "error");
@@ -98,10 +137,13 @@ export function GeminiDialog({ people, onClose }: { people: { id: string; name: 
         {!data.ready && <p className="mt-2 flex items-start gap-1.5 text-hint text-trail-deep"><AlertIcon size={14} className="mt-0.5 shrink-0" />{data.reason}</p>}
       </div>
       {picked ? (
-        <p className="mt-3 text-hint text-ink-soft">
-          Nothing is charged here: it counts toward {picked.plan}&apos;s usage limits. People go one at a time, a few minutes each, and if the
-          plan&apos;s limit is reached a run waits and tries again later.
-        </p>
+        <>
+          <p className="mt-3 text-hint text-ink-soft">
+            Nothing is charged here: it counts toward {picked.plan}&apos;s usage limits. People go one at a time, a few minutes each, and if the
+            plan&apos;s limit is reached a run waits and tries again later.
+          </p>
+          <div className="mt-3 border-t border-line pt-3"><DepthAndTime data={data} /></div>
+        </>
       ) : (
         <label className="mt-3 flex items-start gap-2.5 text-ui text-ink-soft">
           <input type="checkbox" className="mt-1 accent-forest" checked={b} onChange={(e) => setBatch(e.target.checked)} />
@@ -191,6 +233,8 @@ export function GeminiRunLine({ person, offerMore }: { person: Entity; offerMore
   );
 }
 
+const HOURS = Array.from({ length: 24 }, (_, h) => ({ value: String(h), label: hour(h) }));
+
 /** Settings → People: research, the usual way, the AI tools on this Mac, and Gemini's levels, models and budget. */
 export function GeminiSettings() {
   const { get, save } = useSettings();
@@ -209,6 +253,21 @@ export function GeminiSettings() {
           options={[...(data?.tools ?? []).map((t) => ({ value: t.id, label: t.label, hint: t.ready ? `On ${t.plan}` : "Not ready" })),
             { value: "api", label: "Gemini, with your key", hint: "Costs per person" }]}
           onChange={(v) => void save({ "crm.research_via": v })} />
+      </ControlRow>
+      {data && (
+        <div className="py-3.5">
+          <p className="mb-2 text-label font-medium">Research through an AI tool</p>
+          <DepthAndTime data={data} />
+        </div>
+      )}
+      <ControlRow label="Night hours" hint="When overnight research may start, in this computer's time. One still going at the end finishes.">
+        <span className="inline-flex items-center gap-2 text-ui">
+          <Select label="Night starts" size="sm" className="w-32" value={String(data?.night_hours[0] ?? 1)}
+            options={HOURS} onChange={(v) => void save({ "crm.research_night_from": Number(v) })} />
+          to
+          <Select label="Night ends" size="sm" className="w-32" value={String(data?.night_hours[1] ?? 6)}
+            options={HOURS} onChange={(v) => void save({ "crm.research_night_to": Number(v) })} />
+        </span>
       </ControlRow>
       {data && (
         <div className="py-3.5">

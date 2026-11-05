@@ -244,6 +244,12 @@ MIGRATIONS = [
     """
     ALTER TABLE crm_research_runs ADD COLUMN then_via TEXT;   -- claude | codex | gemini_cli, started when this run ends
     """,
+    # How hard a run through an AI tool works, and whether it waits for the night hours (cli_research.DEPTHS). On a
+    # Gemini first pass, they're for the deep research it hands over to.
+    """
+    ALTER TABLE crm_research_runs ADD COLUMN depth TEXT NOT NULL DEFAULT 'standard';   -- light | standard | deep
+    ALTER TABLE crm_research_runs ADD COLUMN night INTEGER NOT NULL DEFAULT 0;
+    """,
 ]
 
 _version = 0
