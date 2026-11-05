@@ -17,7 +17,7 @@ def clean():
     ollama_setup._install.clear()
 
 
-@pytest.mark.parametrize("ram, model", [(8, "qwen2.5:3b"), (14.9, "qwen2.5:3b"), (16, "qwen2.5:7b"), (64, "qwen2.5:7b")])
+@pytest.mark.parametrize("ram, model", [(8, "qwen3.5:4b"), (14.9, "qwen3.5:4b"), (16, "qwen3.5:9b"), (64, "qwen3.5:9b")])
 def test_the_model_follows_the_macs_memory(monkeypatch, ram, model):
     monkeypatch.setattr(resources, "snapshot", lambda: {"ram_total_gb": ram})
     monkeypatch.setattr(hardware, "profile", lambda: {"ai_runs_on": "unified", "ai_memory_gb": ram * 0.7})
@@ -29,7 +29,7 @@ def test_status_says_what_is_there(client, monkeypatch):
     monkeypatch.setattr(ai, "_ollama_tags", lambda c: [])
     monkeypatch.setattr(ollama_setup, "_reachable", lambda url: False)
     s = client.get("/api/ollama").json()
-    assert s["installed"] is False and s["reachable"] is False and s["models"] == [] and s["recommended"].startswith("qwen2.5")
+    assert s["installed"] is False and s["reachable"] is False and s["models"] == [] and s["recommended"].startswith("qwen3.5")
     monkeypatch.setattr(ollama_setup, "app_path", lambda: "/Applications/Ollama.app")
     monkeypatch.setattr(ai, "_ollama_tags", lambda c: [{"name": "qwen2.5:7b", "details": {"parameter_size": "7B"}}])
     s = client.get("/api/ollama").json()

@@ -231,6 +231,7 @@ def test_ollama_gets_the_portable_schema_a_right_sized_context_and_its_own_model
     body = call["json"]
     assert call["url"].endswith("/api/chat") and body["model"] == "qwen3:8b" and body["stream"] is False
     assert body["format"]["required"] == ["summary"]
+    assert body["think"] is False    # qwen3 thinks by default; that would use up the output budget
     assert body["options"]["num_ctx"] == 32768 and body["messages"][0] == {"role": "system", "content": "sys"}
 
 
