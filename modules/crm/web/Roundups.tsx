@@ -1,7 +1,7 @@
 // Roundups: a packet about a set of people, for someone else to take to an event (the server half is roundups.py).
 // Start from a group (an organization, a topic or a tag) or pick people one by one, say what the event is, prepare the
 // packet, and save it as Word, PDF or Markdown. Every roundup stays here with the files made from it.
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -337,22 +337,36 @@ function AddPerson({ onAdd, taken }: { onAdd: (id: string) => Promise<unknown>; 
     return () => { alive = false; clearTimeout(t); };
   }, [q]);
   const [open, setOpen] = useState(false);
+  const box = useRef<HTMLDivElement>(null);
+  // The list closes on a click outside it, not when the box loses focus: Safari's engine, which the Mac app runs on,
+  // doesn't focus a button you click, so a blur can't tell a click on a name from a click elsewhere.
+  useEffect(() => {
+    const away = (e: MouseEvent) => { if (!box.current?.contains(e.target as Node)) setOpen(false); };
+    document.addEventListener("mousedown", away);
+    return () => document.removeEventListener("mousedown", away);
+  }, []);
   const shown = (rows ?? []).filter((r) => !r.person.is_self);
+  const first = shown.find((r) => !taken.has(r.person.id));
+  const add = (id: string) => void onAdd(id).then(() => setQ(""));
   return (
-    <div className="relative" onFocus={() => setOpen(true)}
-      onBlur={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setOpen(false); }}
-      onKeyDown={(e) => { if (e.key === "Escape") setQ(""); }}>
+    <div ref={box} className="relative"
+      onKeyDown={(e) => {
+        if (e.key === "Escape") setQ("");
+        if (e.key === "Tab") setOpen(false);
+        if (e.key === "Enter" && open && first) add(first.person.id);
+      }}>
       <SearchIcon size={16} className="pointer-events-none absolute left-3 top-[1.25rem] -translate-y-1/2 text-ink-faint" />
-      <input className="field h-10 w-full pl-9" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Add a person" aria-label="Add a person" />
+      <input className="field h-10 w-full pl-9" value={q} onChange={(e) => { setQ(e.target.value); setOpen(true); }} onFocus={() => setOpen(true)} onClick={() => setOpen(true)}
+        placeholder="Add a person" aria-label="Add a person" />
       {rows && open && (
-        <ul className="absolute inset-x-0 top-11 z-20 max-h-72 overflow-y-auto rounded-lg border border-line bg-surface shadow-lg">
+        <ul className="absolute inset-x-0 top-11 z-20 max-h-72 overflow-y-auto rounded-lg border border-line bg-surface shadow-lg" onMouseDown={(e) => e.preventDefault()}>
           {shown.length === 0 && <li className="px-4 py-3 text-ui text-ink-soft">No one matches.</li>}
           {shown.map((row) => {
             const on = taken.has(row.person.id);
             return (
               <li key={row.person.id}>
                 <button className="flex w-full items-center gap-3 px-3 py-2 text-left hover:bg-surface-subtle disabled:opacity-60" disabled={on}
-                  onClick={() => void onAdd(row.person.id).then(() => setQ(""))}>
+                  onClick={() => add(row.person.id)}>
                   <Avatar name={row.person.name} id={row.person.id} size={28} />
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-label">{row.person.name}</span>
