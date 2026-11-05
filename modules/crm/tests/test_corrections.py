@@ -105,12 +105,85 @@ def test_a_source_moves_to_who_it_is_really_about_and_can_be_put_back(client, fa
     assert client.get(f"/api/crm/entities/{dana['id']}/corrections").json() == []
 
 
+def test_a_surname_the_ai_filled_in_is_not_remembered_as_a_name_they_are_not(client, fake_structured, me):
+    jack = make(client, "person", "Jack Marlow")
+    row = proposal_row(client, fake_structured, [entity("p1", "Jack Marlow", role="attendee")], text="Jack led the session.")
+    p = row["proposal"]
+    for e in p["entities"]:
+        if e["ref"] == "p1":
+            e.update(name="Jack Marlow", action="link", match_id=jack["id"], ambiguous=False)
+    client.post(f"/api/crm/ingest/jobs/{row['id']}/apply", json={"proposal": p})
+    doc = client.get(f"/api/crm/ingest/jobs/{row['id']}").json()["result"]["record_id"]
+    assert client.post(f"/api/crm/entities/{jack['id']}/sources/{doc}/detach", json={}).status_code == 200
+    assert jack["id"] in {c.entity.id for c in resolve.find_candidates("person", "Jack Marlow")}
+
+
 def test_a_source_can_just_be_taken_off(client, fake_structured, me):
     dana, _, doc = wrong_link(client, fake_structured)
     done = client.post(f"/api/crm/entities/{dana['id']}/sources/{doc}/detach", json={}).json()
     assert done["to"] is None and done["notes"] == 1
     assert [n for n in store.notes_of(dana["id"]) if n.evidence_id == doc] == []
     assert client.post(f"/api/crm/entities/{dana['id']}/sources/{doc}/detach", json={}).status_code == 422
+
+
+def test_what_a_source_planted_goes_with_it_and_comes_back(client, fake_structured, me):
+    wrong = make(client, "organization", "Harbor Foundation", attributes={"location": "Riverton"}, tags=["energy"])
+    store.update_entity(wrong["id"], source="ai")
+    fake_structured.reply = extraction([entity("o1", "Harbor Foundation", kind="organization", website="https://ames.example", tags=["vaccines"])])
+    r = client.post("/api/crm/ingest/notes", json={"text": "The Harbor Foundation funds vaccines."})
+    jobs.drain()
+    row = client.get(f"/api/crm/ingest/jobs/{r.json()['id']}").json()
+    if row["status"] == "review":
+        client.post(f"/api/crm/ingest/jobs/{row['id']}/apply", json={"proposal": row["proposal"]})
+        row = client.get(f"/api/crm/ingest/jobs/{row['id']}").json()
+    doc = row["result"]["record_id"]
+    assert store.get_entity(wrong["id"]).attributes["website"] == "https://ames.example"
+    labels = {f["label"]: f["value"] for f in client.get(f"/api/crm/entities/{wrong['id']}/sources/{doc}").json()["fields"]}
+    assert labels == {"Website": "https://ames.example", "Tags": "vaccines"}
+
+    done = client.post(f"/api/crm/entities/{wrong['id']}/sources/{doc}/detach", json={"new_name": "Ames Family Foundation"}).json()
+    kept, moved = store.get_entity(wrong["id"]), store.get_entity(done["to"]["id"])
+    assert "website" not in kept.attributes and kept.attributes["location"] == "Riverton" and kept.tags == ["energy"]
+    assert moved.attributes["website"] == "https://ames.example" and moved.tags == ["vaccines"]
+
+    client.post(f"/api/crm/corrections/{done['id']}/undo")
+    back = store.get_entity(wrong["id"])
+    assert back.attributes["website"] == "https://ames.example" and set(back.tags) == {"energy", "vaccines"}
+
+
+def test_a_value_another_source_also_gave_stays(client, fake_structured, me):
+    p = make(client, "person", "Ana Ruiz")
+    store.update_entity(p["id"], source="ai")
+    docs = []
+    for i, text in enumerate(("Ana Ruiz runs pilots here.", "Ana Ruiz runs pilots there too.")):
+        fake_structured.reply = extraction([entity("p1", "Ana Ruiz", title="Pilot lead")], title=f"Doc {i}", doc_type="document")
+        r = client.post("/api/crm/ingest/notes", json={"text": text})
+        jobs.drain()
+        row = client.get(f"/api/crm/ingest/jobs/{r.json()['id']}").json()
+        if row["status"] == "review":
+            client.post(f"/api/crm/ingest/jobs/{row['id']}/apply", json={"proposal": row["proposal"]})
+            row = client.get(f"/api/crm/ingest/jobs/{row['id']}").json()
+        docs.append(row["result"]["record_id"])
+    client.post(f"/api/crm/entities/{p['id']}/sources/{docs[0]}/detach", json={})
+    assert store.get_entity(p["id"]).attributes["title"] == "Pilot lead"
+    client.post(f"/api/crm/entities/{p['id']}/sources/{docs[1]}/detach", json={})
+    assert "title" not in store.get_entity(p["id"]).attributes
+
+
+def test_a_title_goes_only_on_the_one_job_it_could_belong_to(client, fake_structured, me):
+    fake_structured.reply = extraction(
+        [entity("p1", "Ana Ruiz", title="Founder"), entity("o1", "Acme", kind="organization"), entity("o2", "Birch", kind="organization"),
+         entity("p2", "Raj Patel", title="Engineer"), entity("o3", "Cedar", kind="organization")],
+        relationships=[{"source": "p1", "target": "o1", "kind": "works_at"}, {"source": "p1", "target": "o2", "kind": "works_at"},
+                       {"source": "p2", "target": "o3", "kind": "works_at"}])
+    r = client.post("/api/crm/ingest/notes", json={"text": "Ana Ruiz works at Acme and Birch. Raj Patel works at Cedar."})
+    jobs.drain()
+    row = client.get(f"/api/crm/ingest/jobs/{r.json()['id']}").json()
+    if row["status"] == "review":
+        client.post(f"/api/crm/ingest/jobs/{row['id']}/apply", json={"proposal": row["proposal"]})
+    works = [e for e in store.all_edges() if e.kind == "works_at"]
+    titles = {store.get_entity(e.target_id).name: e.properties.get("title") for e in works}
+    assert titles == {"Acme": None, "Birch": None, "Cedar": "Engineer"}
 
 
 def test_guessed_links_come_up_for_a_look_until_you_settle_them(client, fake_structured, me):

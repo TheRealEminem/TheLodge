@@ -887,6 +887,11 @@ def _apply(row_id: str, proposal: dict) -> tuple[dict, list[str], str | None]:
                                evidence_id=record.id if record else None, conn=c)
                 counts["notes"] += 1
 
+        # A title says what someone is at one place: with several jobs in one source, it isn't known which it belongs to.
+        jobs_of: dict[str, int] = {}
+        for rel in proposal["relationships"]:
+            if rel.get("include", True) and rel["kind"] == "works_at" and not rel.get("ended"):
+                jobs_of[rel["source"]] = jobs_of.get(rel["source"], 0) + 1
         for rel in proposal["relationships"]:
             if not rel.get("include", True):
                 continue
@@ -896,7 +901,7 @@ def _apply(row_id: str, proposal: dict) -> tuple[dict, list[str], str | None]:
             if validate_relationship(rel["kind"], kinds[rel["source"]], kinds[rel["target"]]):
                 continue
             props = {"context": rel["context"]} if rel.get("context") else {}
-            if rel["kind"] == "works_at" and titles.get(rel["source"]) and not rel.get("ended"):
+            if rel["kind"] == "works_at" and titles.get(rel["source"]) and not rel.get("ended") and jobs_of.get(rel["source"]) == 1:
                 props["title"] = titles[rel["source"]]
             _, created = store.upsert_edge(s, t, rel["kind"], properties=props, conn=c, source=source_label,
                                            evidence_id=record.id if record else None,

@@ -18,9 +18,15 @@ import json
 import re
 
 from core.server import db
+from core.server.tags import normalize_tags
 
 from . import resolve, snapshot, store, views
 from .kinds import EVENT_KINDS, RELATIONSHIP_KINDS
+
+
+FIELDS = {"title": "Title", "email": "Email", "location": "Location", "linkedin_url": "LinkedIn", "website": "Website"}
+# Records that didn't start with an import: their tags were yours or your spreadsheet's before any source agreed.
+OWN_TAGS = ("manual", "spreadsheet", "linkedin")
 
 
 class CorrectionError(ValueError):
@@ -44,6 +50,50 @@ def _written(entity_id: str, evidence_id: str) -> str | None:
             if (result.get("entity_ids") or {}).get(ent.get("ref")) == entity_id:
                 return ent.get("name")
     return None
+
+
+def _source_text(evidence_id: str) -> str:
+    rows = db.query("SELECT title, raw_text, payload FROM crm_inbox WHERE status = 'applied' AND json_extract(result, '$.record_id') = ?", (evidence_id,))
+    parts: list[str] = []
+    for r in rows:
+        attendees = json.loads(r["payload"] or "{}").get("attendees") or []
+        parts += [r["title"] or "", r["raw_text"] or "", *((a.get("name") or "") for a in attendees)]
+    return " ".join(parts)
+
+
+def _sources(entity_id: str) -> list[tuple[str, dict]]:
+    """Every import that named this record: (the meeting or document it made, what it said about them)."""
+    out = []
+    for row in db.query("SELECT proposal, result FROM crm_inbox WHERE status = 'applied' AND proposal IS NOT NULL "
+                        "AND EXISTS (SELECT 1 FROM json_each(result, '$.entity_ids') WHERE value = ?)", (entity_id,)):
+        result, proposal = json.loads(row["result"] or "{}"), json.loads(row["proposal"] or "{}")
+        for ent in proposal.get("entities") or []:
+            if (result.get("entity_ids") or {}).get(ent.get("ref")) == entity_id:
+                out.append((result.get("record_id"), ent))
+    return out
+
+
+def _planted(entity, evidence_id: str) -> dict:
+    """What this source alone put on the record and is still there as it wrote it: its title, website, summary, tags.
+    A value another source still linked here also gave, or that you've changed since, stays."""
+    snap = snapshot.load()
+    sources = _sources(entity.id)
+    mine = [ent for rid, ent in sources if rid == evidence_id]
+    linked = {(e.target_id if e.source_id == entity.id else e.source_id) for e in snap.by_entity.get(entity.id, ())}
+    others = [ent for rid, ent in sources if rid != evidence_id and (rid is None or rid in linked)]
+    attrs, out = entity.attributes or {}, {"fields": {}, "tags": [], "summary": None}
+    for ent in mine:
+        for key in FIELDS:
+            value = ent.get(key)
+            if value and str(attrs.get(key)) == str(value)[:300] and not any(str(o.get(key) or "")[:300] == str(value)[:300] for o in others):
+                out["fields"][key] = attrs[key]
+        given = (ent.get("summary") or "").strip()
+        if given and given == (entity.summary or "").strip() and not any((o.get("summary") or "").strip() == given for o in others):
+            out["summary"] = entity.summary
+        if entity.source not in OWN_TAGS:
+            kept = {t for o in others for t in normalize_tags(o.get("tags") or [])}
+            out["tags"] += [t for t in normalize_tags(ent.get("tags") or []) if t in (entity.tags or []) and t not in kept and t not in out["tags"]]
+    return out
 
 
 def _require(entity_id: str, evidence_id: str):
@@ -93,8 +143,14 @@ def preview(entity_id: str, evidence_id: str) -> dict:
         rel = RELATIONSHIP_KINDS.get(e["kind"])
         label = (rel.label if e["source_id"] == entity_id else rel.inverse) if rel else e["kind"]
         links.append({"id": e["id"], "label": label, "other": ents[other].name})
+    planted = _planted(entity, evidence_id)
+    fields = [{"label": FIELDS[k], "value": str(v)} for k, v in planted["fields"].items()]
+    if planted["summary"]:
+        fields.append({"label": "Summary", "value": planted["summary"]})
+    if planted["tags"]:
+        fields.append({"label": "Tags", "value": ", ".join(planted["tags"])})
     return {"entity": {"id": entity.id, "name": entity.name}, "evidence": {"id": evidence.id, "name": evidence.name, "kind": evidence.kind},
-            "written": _written(entity_id, evidence_id), "links": links, "notes": [dict(n) for n in notes]}
+            "written": _written(entity_id, evidence_id), "links": links, "notes": [dict(n) for n in notes], "fields": fields}
 
 
 def detach(entity_id: str, evidence_id: str, *, to_id: str | None = None, new_name: str | None = None) -> dict:
@@ -108,7 +164,9 @@ def detach(entity_id: str, evidence_id: str, *, to_id: str | None = None, new_na
     if to_id and (target is None or target.kind != entity.kind):
         raise CorrectionError("That record can't take this over")
     written = _written(entity_id, evidence_id)
-    blocked = written.strip().lower() if written and len(written.split()) > 1 else None
+    # Only a full name the source really used: a surname the AI filled in from your book says nothing about this record.
+    blocked = written.strip().lower() if written and len(written.split()) > 1 and resolve.as_written(written, _source_text(evidence_id)) == written else None
+    planted = _planted(entity, evidence_id)
     if new_name and not target:
         target = store.create_entity(entity.kind, new_name, source="manual")
     with db.connect() as c:
@@ -138,12 +196,73 @@ def detach(entity_id: str, evidence_id: str, *, to_id: str | None = None, new_na
         if blocked:
             added_block = c.execute("INSERT OR IGNORE INTO crm_name_blocks (entity_id, name, created_at) VALUES (?, ?, ?)",
                                     (entity_id, blocked, db.now())).rowcount > 0
-        snap = {"edges": kept, "notes": notes, "block": blocked if added_block else None, "created": bool(new_name and target)}
+        given = _take_planted(entity, target, planted, c)
+        snap = {"edges": kept, "notes": notes, "block": blocked if added_block else None, "created": bool(new_name and target),
+                "planted": planted, "given": given}
         cid = db.new_id()
         c.execute("INSERT INTO crm_corrections (id, entity_id, evidence_id, to_id, name, snapshot, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
                   (cid, entity_id, evidence_id, target.id if target else None, evidence.name, json.dumps(snap), db.now()))
     store._touch()
     return {"id": cid, "to": {"id": target.id, "name": target.name} if target else None, "links": len(edges), "notes": len(notes)}
+
+
+def _take_planted(entity, target, planted: dict, c) -> dict:
+    """Take what the source planted off the record, and give it to `target` where it has nothing of its own.
+    Returns what the target was given, so undo can take back exactly that."""
+    attrs = dict(entity.attributes or {})
+    fields: dict = {"attributes": attrs}
+    given: dict = {"fields": {}, "tags": [], "summary": None}
+    for key in planted["fields"]:
+        attrs.pop(key, None)
+    if planted["summary"]:
+        fields["summary"] = None
+    if planted["tags"]:
+        fields["tags"] = [t for t in entity.tags or [] if t not in planted["tags"]]
+    if planted["fields"] or planted["summary"] or planted["tags"]:
+        store.update_entity(entity.id, conn=c, **fields)
+    if target is not None:
+        theirs = dict(target.attributes or {})
+        for key, value in planted["fields"].items():
+            if not theirs.get(key):
+                theirs[key] = value
+                given["fields"][key] = value
+        changes: dict = {}
+        if given["fields"]:
+            changes["attributes"] = theirs
+        if planted["summary"] and not target.summary:
+            changes["summary"] = given["summary"] = planted["summary"]
+        new_tags = [t for t in planted["tags"] if t not in (target.tags or [])]
+        if new_tags:
+            given["tags"] = new_tags
+            changes["tags"] = [*(target.tags or []), *new_tags]
+        if changes:
+            store.update_entity(target.id, conn=c, **changes)
+    return given
+
+
+def _put_planted_back(row: dict, snap: dict, c) -> None:
+    planted, given = snap.get("planted"), snap.get("given")
+    if not planted:
+        return
+    entity = store.get_entity(row["entity_id"], c)
+    if planted["fields"] or planted["summary"] or planted["tags"]:
+        attrs = dict(entity.attributes or {})
+        for key, value in planted["fields"].items():
+            attrs.setdefault(key, value)
+        changes: dict = {"attributes": attrs, "tags": list(dict.fromkeys([*(entity.tags or []), *planted["tags"]]))}
+        if planted["summary"] and not entity.summary:
+            changes["summary"] = planted["summary"]
+        store.update_entity(entity.id, conn=c, **changes)
+    target = store.get_entity(row["to_id"], c) if row["to_id"] else None
+    if target is not None and given and (given["fields"] or given["summary"] or given["tags"]):
+        attrs = dict(target.attributes or {})
+        for key, value in given["fields"].items():
+            if attrs.get(key) == value:
+                attrs.pop(key)
+        changes = {"attributes": attrs, "tags": [t for t in target.tags or [] if t not in given["tags"]]}
+        if given["summary"] and target.summary == given["summary"]:
+            changes["summary"] = None
+        store.update_entity(target.id, conn=c, **changes)
 
 
 def undo(correction_id: str) -> dict:
@@ -172,6 +291,7 @@ def undo(correction_id: str) -> dict:
                 c.execute(f"INSERT OR IGNORE INTO crm_notes ({', '.join(cols)}) VALUES ({', '.join('?' for _ in cols)})", [note[k] for k in cols])
         if snap.get("block"):
             c.execute("DELETE FROM crm_name_blocks WHERE entity_id = ? AND name = ?", (row["entity_id"], snap["block"]))
+        _put_planted_back(row, snap, c)
         if snap.get("created") and row["to_id"]:
             # The record made for it goes again, if nothing else has come to it since.
             busy = (c.execute("SELECT 1 FROM crm_relationships WHERE source_id = ? OR target_id = ?", (row["to_id"], row["to_id"])).fetchone()
