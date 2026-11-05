@@ -1,8 +1,9 @@
 """The first run, and choosing where AI runs. The setup screen asks three things (where should AI run, is this Mac locked
 down, anything a module wants to ask), and this is what it reads and writes.
 
-The recommendation comes from resources.device_advice(): "local" when this Mac has room for everything an app asks of AI,
-"mixed" when the light jobs fit but the heavy ones do better in the cloud, "cloud" when it's short of memory or disk.
+The recommendation comes from resources.device_advice(): "local" when this computer has room for everything an app asks of
+AI, "mixed" when the light jobs fit but the heavy ones do better in the cloud, "cloud" when it has no chip that can run a
+local model, or is short of memory or disk.
 Modules say how heavy their AI jobs are (Module.ai_jobs) so the host can place them without knowing what they do.
 
 New or existing: the first time an app starts with this code it records whether it already had settings of its own. One that

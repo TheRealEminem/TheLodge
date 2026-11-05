@@ -76,7 +76,7 @@ function ProviderFields({ id, values, hints, save }: { id: ProviderId; values: R
 /** "Apple M4 · 16 GB memory · 20 GB free", for setup and Settings. */
 export function macLine(info: SystemInfo): string {
   const a = info.advice;
-  return [a.chip, `${a.ram_gb} GB memory`, `${a.disk_free_gb} GB free`].filter(Boolean).join(" · ");
+  return [a.chip, a.gpu, `${a.ram_gb} GB memory`, `${a.disk_free_gb} GB free`].filter(Boolean).join(" · ");
 }
 
 /** What this Mac can do, and getting a model onto it. */

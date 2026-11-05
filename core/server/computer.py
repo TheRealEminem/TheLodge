@@ -22,11 +22,11 @@ OS = "mac" if sys.platform == "darwin" else "windows" if sys.platform == "win32"
 
 _WORDS = {
     "mac": {"here": "this Mac", "files": "Finder", "tray": "the menu bar", "app": "the Mac app", "apps": "Applications",
-            "terminal": "Terminal"},
+            "terminal": "Terminal", "os": "macOS"},
     "windows": {"here": "this PC", "files": "File Explorer", "tray": "the system tray", "app": "the desktop app",
-                "apps": "the Start menu", "terminal": "PowerShell"},
+                "apps": "the Start menu", "terminal": "PowerShell", "os": "Windows"},
     "linux": {"here": "this computer", "files": "your file manager", "tray": "the system tray", "app": "the desktop app",
-              "apps": "your apps menu", "terminal": "a terminal"},
+              "apps": "your apps menu", "terminal": "a terminal", "os": "Linux"},
 }
 WORDS: dict[str, str] = _WORDS[OS]
 

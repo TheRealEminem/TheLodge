@@ -5,13 +5,15 @@ app runs with a throwaway data folder and on a port of its own.
 
   python scripts/smoke-test-windows.py dist-app/TheLodge-0.8.0-windows-x64.exe
   python scripts/smoke-test-windows.py dist-app/TheLodge-0.8.0-windows-x64.exe previous/TheLodge-0.7.1-windows-x64.exe
+  python scripts/smoke-test-windows.py --ollama dist-app/TheLodge-0.8.0-windows-x64.exe
 
 What it checks, in order:
   1. the installer installs, silently, and the files the app needs are there, built for this arch
   2. --version says the installer's version, and --about the real install's paths (the bundled server is found, the
      data goes in %LOCALAPPDATA%), not a development build's
   3. the app starts its server, which answers as this app and says it's on Windows in the desktop shell, and serves
-     the web app; a second launch hands over to the first instead of starting another
+     the web app; the hardware readout works, and without a usable graphics card it recommends a cloud AI (GitHub's
+     runners have none); a second launch hands over to the first instead of starting another
   4. ending the app (as Task Manager would) takes its server with it
   5. the real window, pointed at the installed server, shows the web app (the page names itself): a picture of it is
      kept beside the installer
@@ -22,6 +24,9 @@ With a previous version's installer it then tries the update path, as someone on
      releases that has the new version: it downloads it, checks it, quits, installs it over itself and opens it
   8. Go back, from the new version's own updater: the previous version is back, the new one is skipped, and the mark
      is still there each time
+--ollama instead installs the app and has it install Ollama, as Settings does: Ollama's real installer, its real signature
+check, then Ollama answering. It really installs Ollama for this user, so it's for build machines.
+
 Quit the app before running this on your own PC: going back ends whatever runs from the test's install folder only,
 but the update test takes the app's port while it runs.
 """
@@ -120,6 +125,56 @@ def server_env(install: Path, data: Path) -> dict:
         f"{PREFIX}_SHELL": "desktop", f"{PREFIX}_SHELL_CAN": "quit,reveal,login", "TRAILMIX_FAMILY_DIR": "off",
     })
     return env
+
+
+def get_json(path: str) -> dict:
+    with urllib.request.urlopen(f"{URL}{path}", timeout=30) as r:
+        return json.loads(r.read())
+
+
+def check_advice() -> None:
+    """The real hardware readout on this real machine, and the family's rule: no usable card, no local recommendation."""
+    advice = get_json("/api/system")["advice"]
+    print(f"advice: {advice['verdict']}; chip {advice['chip']!r}; card {advice['gpu']!r}; NPU {advice['npu']!r}; {advice['ram_gb']} GB")
+    print(f"  {advice['notes'][0]}")
+    if not advice["chip"]:
+        raise Failure("the hardware readout couldn't read the processor's name")
+    if not advice["gpu"] and advice["verdict"] != "cloud":
+        raise Failure(f"no usable graphics card, but the advice is {advice['verdict']!r}, not 'cloud'")
+    if not get_json("/api/ollama").get("can_install"):
+        raise Failure("Ollama setup says it can't install on Windows")
+
+
+def ollama_test(installer: Path, work: Path) -> None:
+    """Has the installed app install Ollama, as Settings → AI does."""
+    install, data = work / "o-app", work / "o-data"
+    exe = install / f"{SLUG}.exe"
+    log(f"Installing {installer.name}, then Ollama from inside it")
+    subprocess.run([str(installer), "/S", f"/D={install}"], check=True, timeout=900)
+    env = {**os.environ, f"{PREFIX}_DATA_DIR": str(data), f"{PREFIX}_PORT": str(PORT), f"{PREFIX}_NO_OPEN": "1", "TRAILMIX_FAMILY_DIR": "off"}
+    subprocess.Popen([str(exe)], env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    try:
+        wait_for_app(120)
+        before = get_json("/api/ollama")
+        print(f"before: installed {before['installed']}, running {before['reachable']}, would get {before['recommended']}")
+        request = urllib.request.Request(f"{URL}/api/ollama/install", data=b"", method="POST")
+        urllib.request.urlopen(request, timeout=30).read()
+        deadline, last = time.time() + 1200, ""
+        while time.time() < deadline:
+            now = get_json("/api/ollama")
+            install_state = now.get("install") or {}
+            if install_state.get("status") != last:
+                last = install_state.get("status")
+                print(f"  {last}", flush=True)
+            if install_state.get("error"):
+                raise Failure(f"installing Ollama failed: {install_state['error']}")
+            if now["installed"] and now["reachable"] and not install_state.get("active"):
+                print(f"after: installed, running, models {now['models']}")
+                return
+            time.sleep(3)
+        raise Failure("Ollama wasn't installed and answering after 20 minutes")
+    finally:
+        end_install(install)
 
 
 def end_install(install: Path) -> None:
@@ -241,11 +296,24 @@ def main(argv: list[str]) -> int:
     if sys.platform != "win32":
         print("The Windows smoke test runs on Windows.", file=sys.stderr)
         return 2
+    with_ollama = "--ollama" in argv
+    argv = [a for a in argv if a != "--ollama"]
     if len(argv) not in (2, 3):
         print(__doc__)
         return 2
     installer = Path(argv[1]).resolve()
     previous = Path(argv[2]).resolve() if len(argv) == 3 else None
+    if with_ollama:
+        work = Path(tempfile.mkdtemp(prefix="smoke-"))
+        try:
+            ollama_test(installer, work)
+            print(f"\nPASSED: Ollama, from inside {installer.name}")
+            return 0
+        except Failure as e:
+            print(f"\nFAILED: {e}\n\n-- the server's log --\n{tail(work / 'o-data' / 'logs' / 'server.log')}", file=sys.stderr)
+            return 1
+        finally:
+            shutil.rmtree(work, ignore_errors=True)
     found = re.match(rf"{re.escape(SLUG)}-(.+)-windows-([a-z0-9]+)\.exe$", installer.name)
     if not found:
         print(f"{installer.name} isn't named {SLUG}-<version>-windows-<arch>.exe", file=sys.stderr)
@@ -311,6 +379,7 @@ def main(argv: list[str]) -> int:
             page = r.read().decode("utf-8", "replace")
         if "<div id=\"root\"" not in page and "id=root" not in page:
             raise Failure("the server doesn't serve the web app")
+        check_advice()
         server_log = data / "logs" / "server.log"
         if not server_log.is_file():
             raise Failure("the server log isn't in the data folder")
