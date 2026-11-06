@@ -129,7 +129,7 @@ def _person(v: views.Views, p: Entity) -> list[str]:
             + ("" if r["about_them"] else f" (about {r['about']}, and names them)" if r["about"] else "") for r in reps]))
     parts.append(_section("Documents", [f"- {_day(d.event.occurred_at)} · {d.event.name} ({d.role})" for d in ctx.documents[:DOCUMENTS]]))
     parts.append(_section("People they're connected to", [
-        f"- {l.person.name}: {l.relation}" + (f" ({l.detail})" if l.detail else "") for l in ctx.people[:PEOPLE]]))
+        f"- {link.person.name}: {link.relation}" + (f" ({link.detail})" if link.detail else "") for link in ctx.people[:PEOPLE]]))
     return parts
 
 
@@ -142,8 +142,8 @@ def _organization(v: views.Views, o: Entity) -> list[str]:
     if o.tags:
         parts.append(_section("Tags", [", ".join(o.tags)]))
     parts.append(_section("People there", [
-        f"- {l.person.name}: {l.relation}" + (f" ({l.detail})" if l.detail else "") + ("" if l.current else ", earlier")
-        for l in ctx.people[:40]]))
+        f"- {link.person.name}: {link.relation}" + (f" ({link.detail})" if link.detail else "") + ("" if link.current else ", earlier")
+        for link in ctx.people[:40]]))
     parts.append(_section("Meetings, newest first", _meetings(v, ctx)))
     parts.append(_section("Notes, newest first", _notes(o.id)))
     parts.append(_section("Documents", [f"- {_day(d.event.occurred_at)} · {d.event.name} ({d.role})" for d in ctx.documents[:DOCUMENTS]]))

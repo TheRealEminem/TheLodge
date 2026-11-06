@@ -296,9 +296,9 @@ def _section(v: views.Views, p: Entity, in_packet: set[str], owner: str) -> dict
         close = any(w in link.relation for w in ("colleague", "reports to", "manages", "knows", "introduced", "related"))
         return (link.person.id not in in_packet, not close, -TIER_RANK[link.tier], link.person.name.lower())
 
-    connections = [{"name": l.person.name, "headline": l.person.subtitle, "relation": l.relation,
-                    "in_packet": l.person.id in in_packet}
-                   for l in sorted((l for l in ctx.people if l.current), key=weight)[:CONNECTIONS]]
+    connections = [{"name": link.person.name, "headline": link.person.subtitle, "relation": link.relation,
+                    "in_packet": link.person.id in in_packet}
+                   for link in sorted((link for link in ctx.people if link.current), key=weight)[:CONNECTIONS]]
 
     with_owner = None
     if ctx.connection and ctx.connection.tier in WITH_OWNER:

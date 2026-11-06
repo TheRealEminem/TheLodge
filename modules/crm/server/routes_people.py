@@ -7,7 +7,7 @@ from fastapi import APIRouter, HTTPException, Query
 from . import hats, people_net, research, store, views
 from .kinds import EVENT_KINDS
 from .connections import TIER_RANK, sort_key
-from .schemas import ConnectionOut, ConnectionUpdate, EntityContext, OrgPage, PeoplePage
+from .schemas import ConnectionUpdate, OrgPage, PeoplePage
 
 router = APIRouter()
 

@@ -153,7 +153,7 @@ def _build() -> PeopleNet:
         link(a.id, b.id).add("direct", weight, text)
 
     # lines from shared meetings and documents
-    for ev_id, ev in events.items():
+    for ev in events.values():
         e = ev["entity"]
         ref = {"id": e.id, "kind": e.kind, "name": e.name}
         took = [p for p, role in ev["people"].items() if role == "took part"]
@@ -287,7 +287,7 @@ def network(focus: str | None = None, depth: int = 2, max_nodes: int = 400, only
             ids = ids[:max_nodes]
         keep = dict.fromkeys(ids)
     nodes = [_node(net, pid, d) for pid, d in sorted(keep.items(), key=lambda kv: net.people[kv[0]].name.lower())]
-    lids = [lid for lid, l in net.links.items() if l.a in keep and l.b in keep]
+    lids = [lid for lid, link in net.links.items() if link.a in keep and link.b in keep]
     groups = group_list(net) if only is None else [
         {**g, "size": size} for g in group_list(net)
         if (size := sum(1 for p in net.groups[g["id"]].members if p in only)) >= 2]
@@ -311,7 +311,7 @@ def evidence(pid: str) -> list[dict]:
     if pid not in net.people:
         raise store.NotFound("Person not found")
     out = []
-    for ev_id, ev in net.events.items():
+    for ev in net.events.values():
         if pid not in ev["people"]:
             continue
         e = ev["entity"]

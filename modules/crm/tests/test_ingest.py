@@ -8,7 +8,7 @@ from crm_helpers import NOTES, entity, extraction, link, make, post_notes, uploa
 
 from core.server import ai, events, jobs, settings
 from modules.crm.server import ingest, inbox
-from modules.crm.server.extraction import (EXTRACTION_SYSTEM, ExtractedEntity, ExtractedRelationship, Extraction,
+from modules.crm.server.extraction import (EXTRACTION_SYSTEM, ExtractedRelationship, Extraction,
                                            Triage, extract_heuristic)
 
 @pytest.fixture

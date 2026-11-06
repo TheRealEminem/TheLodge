@@ -203,7 +203,7 @@ def test_a_title_goes_only_on_the_one_job_it_could_belong_to(client, fake_struct
 def test_a_report_about_someone_else_moves_with_everything_it_gave_and_comes_back(client, fake_structured, me):
     sam = make(client, "person", "Sam Reed", attributes={"title": "Mentor"})
     client.post(f"/api/crm/entities/{sam['id']}/notes", json={"body": "Sam's own note."})
-    acme = make(client, "organization", "Acme Menus")
+    make(client, "organization", "Acme Menus")
     fake_structured.reply = extraction(
         [entity("p1", "Jo Reed", role="subject", title="Founder, Acme Menus", summary="Runs Acme Menus.", facts=["Sold a company in 1999."]), entity("o1", "Acme Menus", kind="organization")],
         doc_type="person_profile", subject_ref="p1",
