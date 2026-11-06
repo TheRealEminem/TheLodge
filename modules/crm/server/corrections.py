@@ -182,8 +182,12 @@ def move_report(entity_id: str, inbox_id: str, *, to_id: str | None = None, new_
             else:
                 c.execute("UPDATE crm_relationships SET source_id = ?, target_id = ? WHERE id = ?", (ns, nt, e["id"]))
                 kept.append({"row": e, "fate": "moved"})
-        notes = [dict(n) for n in c.execute("SELECT * FROM crm_notes WHERE entity_id = ? AND evidence_id IS NULL", (entity_id,))
-                 if n["body"].strip() in facts or (raw and n["body"].strip().endswith(raw))]
+        theirs = [dict(n) for n in c.execute("SELECT * FROM crm_notes WHERE entity_id = ? AND evidence_id IS NULL", (entity_id,))]
+        if "notes_made" in result:   # written down when it was applied: exactly the notes it made
+            made = {i for ref in refs for i in result["notes_made"].get(ref, [])} | ({result["text_note"]} if result.get("text_note") else set())
+            notes = [n for n in theirs if n["id"] in made]
+        else:   # an older import: the same words, as long as you didn't write the note yourself
+            notes = [n for n in theirs if n["source"] != "manual" and (n["body"].strip() in facts or (raw and n["body"].strip().endswith(raw)))]
         for n in notes:
             c.execute("UPDATE crm_notes SET entity_id = ? WHERE id = ?", (target.id, n["id"]))
         names = {e["name"].strip().lower() for e in ents if len((e.get("name") or "").split()) > 1 and e["name"].strip().lower() != target.name.strip().lower()}
