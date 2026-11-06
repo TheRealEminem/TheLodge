@@ -330,7 +330,7 @@ def write_overview(job: jobs.Job) -> None:
     db.execute(
         "INSERT INTO crm_overviews (id, entity_id, body, fingerprint, written_by, created_at) VALUES (?, ?, ?, ?, ?, ?) "
         "ON CONFLICT(entity_id) DO UPDATE SET body = excluded.body, fingerprint = excluded.fingerprint, "
-        "written_by = excluded.written_by, created_at = excluded.created_at",
+        "written_by = excluded.written_by, created_at = excluded.created_at WHERE crm_overviews.mine = 0",   # saved while this one was written: theirs stays
         (db.new_id(), p.id, body.strip(), fp, _written_by(pid), now),
     )
     _changed(p.id)
