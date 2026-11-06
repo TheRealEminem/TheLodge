@@ -233,9 +233,10 @@ def delete_milestone(milestone_id: str) -> bool:
 
 def add_update(*, project_id: str | None = None, item_id: str | None = None, kind: str = "comment", body: str,
                health: str | None = None, author_ref: str | None = "core:me", author_name: str | None = None,
-               written_by: str | None = None) -> dict:
+               written_by: str | None = None, edited: bool = False) -> dict:
     """A comment, status update or summary on a project or an item. Written by AI: author_ref None, written_by
-    names the provider (shown next to it)."""
+    names the provider (shown next to it). Drafted by AI and posted by you (drafts.py): author_ref "core:me",
+    written_by the provider, and edited when you changed what it wrote."""
     if (project_id is None) == (item_id is None):
         raise ValueError("An update belongs to a project or to a task")
     store.one_of(kind, vocab.UPDATE_KINDS, "Kind")
@@ -248,9 +249,10 @@ def add_update(*, project_id: str | None = None, item_id: str | None = None, kin
         raise ValueError("Only a project's status update reports health")
     update_id = db.new_id()
     db.execute("INSERT INTO tasks_updates (id, project_id, item_id, kind, body, health, author_ref, author_name, "
-               "written_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+               "written_by, edited, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                (update_id, project_id, item_id, kind, store.text(body, "An update"), health,
-                store.ref(author_ref, "An author"), store.name_or_none(author_name, "An author's name"), written_by, db.now()))
+                store.ref(author_ref, "An author"), store.name_or_none(author_name, "An author's name"), written_by,
+                int(bool(edited and written_by)), db.now()))
     if health:
         db.execute("UPDATE tasks_projects SET health = ?, updated_at = ? WHERE id = ?", (health, db.now(), project_id))
     owner = project_id or (items.get(item_id) or {}).get("project_id")

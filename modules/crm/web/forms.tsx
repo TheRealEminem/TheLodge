@@ -2,12 +2,12 @@
 import { useEffect, useId, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { CloseIcon, PlusIcon, SearchIcon } from "@core/components/icons";
+import { CloseIcon, PencilIcon, PlusIcon, SearchIcon } from "@core/components/icons";
 import { Select } from "@core/components/ui";
 import { useLive } from "@core/live";
 import { useShell } from "@core/shell";
 import { crmApi } from "./api";
-import type { Entity, EntityKind, EntitySummary, RelKindInfo } from "./api";
+import type { Entity, EntityKind, EntitySummary, RelationshipView, RelKindInfo } from "./api";
 import { ATTRIBUTE_FIELDS, KIND_LABEL, StrengthDots, useDebounced } from "./bits";
 
 /** The dialog the confirm uses, with room for a form. Esc or a click outside closes it. */
@@ -169,8 +169,12 @@ export function EntityFormDialog({ kind, entity, initialName = "", onClose, onSa
   const [attrs, setAttrs] = useState<Record<string, string>>(() =>
     Object.fromEntries(ATTRIBUTE_FIELDS[kind].map((f) => [f.key, String(entity?.attributes?.[f.key] ?? "")])),
   );
+  const [aliases, setAliases] = useState(((entity?.attributes?.aliases as string[] | undefined) ?? []).join(", "));
+  const [fixText, setFixText] = useState(true);
+  const [keepOld, setKeepOld] = useState(false);
   const [busy, setBusy] = useState(false);
   const isEvent = kind === "meeting" || kind === "document";
+  const renamed = Boolean(entity && name.trim() && name.trim() !== entity.name);
 
   const save = async () => {
     setBusy(true);
@@ -180,6 +184,12 @@ export function EntityFormDialog({ kind, entity, initialName = "", onClose, onSa
         if (v.trim()) attributes[k] = v.trim();
         else delete attributes[k];
       }
+      if (!isEvent) {
+        const names = aliases.split(",").map((a) => a.trim()).filter(Boolean);
+        if (renamed && keepOld) names.push(entity!.name);
+        if (names.length) attributes.aliases = [...new Set(names)];
+        else delete attributes.aliases;
+      }
       const body = {
         name: name.trim(),
         summary: summary.trim() || null,
@@ -188,6 +198,7 @@ export function EntityFormDialog({ kind, entity, initialName = "", onClose, onSa
         ...(isEvent ? { occurred_at: occurred ? new Date(occurred).toISOString() : null } : {}),
       };
       const saved = entity ? await crmApi.updateEntity(entity.id, body) : await crmApi.createEntity({ kind, ...body });
+      if (entity && renamed && fixText && entity.name.trim().includes(" ")) await crmApi.renameText(entity.id, entity.name, name.trim());
       onSaved?.(saved);
       onClose();
     } catch (e) {
@@ -202,6 +213,21 @@ export function EntityFormDialog({ kind, entity, initialName = "", onClose, onSa
         <Field label="Name">
           <input className="field h-10 w-full" value={name} onChange={(e) => setName(e.target.value)} autoFocus required />
         </Field>
+        {renamed && (
+          <div className="inset-surface space-y-2 p-3.5 text-ui">
+            {entity!.name.trim().includes(" ") && (
+              <label className="flex items-start gap-2"><input type="checkbox" className="mt-1 accent-forest" checked={fixText} onChange={(e) => setFixText(e.target.checked)} />
+                Also change “{entity!.name}” to “{name.trim()}” in the summaries of what's linked to them</label>
+            )}
+            <label className="flex items-start gap-2"><input type="checkbox" className="mt-1 accent-forest" checked={keepOld} onChange={(e) => setKeepOld(e.target.checked)} />
+              “{entity!.name}” is another name for them, so keep matching it. Leave this off if the old name was simply wrong.</label>
+          </div>
+        )}
+        {!isEvent && (
+          <Field label="Also known as" hint="Other names imports should match to this record, separated by commas.">
+            <input className="field h-10 w-full" value={aliases} onChange={(e) => setAliases(e.target.value)} />
+          </Field>
+        )}
         {isEvent && (
           <Field label={kind === "meeting" ? "When" : "Date"}>
             <input type="datetime-local" className="field h-10 w-full" value={occurred} onChange={(e) => setOccurred(e.target.value)} />
@@ -220,11 +246,87 @@ export function EntityFormDialog({ kind, entity, initialName = "", onClose, onSa
         <Field label="Tags" hint="Separate with commas.">
           <input className="field h-10 w-full" value={tags} onChange={(e) => setTags(e.target.value)} placeholder="investor, climate" />
         </Field>
+        {entity && kind === "person" && <OrgLinks person={entity} />}
         <div className="flex justify-end gap-2 pt-1">
           <button type="button" className="btn btn-md btn-ghost" onClick={onClose}>Cancel</button>
           <button className="btn btn-md btn-primary" disabled={!name.trim() || busy}>{entity ? "Save" : "Create"}</button>
         </div>
       </form>
+    </Dialog>
+  );
+}
+
+/** In the edit form: where someone works or has worked. Changes save as you make them. */
+function OrgLinks({ person }: { person: Entity }) {
+  const { toast } = useShell();
+  const { data } = useLive(() => crmApi.detail(person.id), [person.id]);
+  const [changing, setChanging] = useState<RelationshipView | null>(null);
+  const links = (data?.relationships ?? []).filter((r) => r.other.kind === "organization");
+  const act = (run: () => Promise<unknown>) => run().catch((e: Error) => toast((e as Error).message, "error"));
+  const add = (org: EntitySummary | null, name?: string) => act(async () => {
+    const id = org?.id ?? (await crmApi.createEntity({ kind: "organization", name: name ?? "" })).id;
+    await crmApi.createRelationship({ source_id: person.id, target_id: id, kind: "works_at" });
+  });
+  return (
+    <div>
+      <span className="mb-1 block text-ui font-medium">Organizations</span>
+      {links.length > 0 && (
+        <ul className="mb-2 divide-y divide-line rounded-md border border-line">
+          {links.map((r) => (
+            <li key={r.id} className="flex items-center gap-2 px-3 py-1.5 text-ui">
+              <div className="min-w-0 flex-1">
+                <div className="truncate"><span className="text-ink-soft">{r.label}</span> {r.other.name}</div>
+                {(r.properties.title || r.ended_at) && <div className="truncate text-hint text-ink-soft">{[r.properties.title as string, r.ended_at && `until ${r.ended_at}`].filter(Boolean).join(" · ")}</div>}
+              </div>
+              <button type="button" className="icon-btn h-7 w-7" aria-label={`Change ${r.label} ${r.other.name}`} onClick={() => setChanging(r)}><PencilIcon size={14} /></button>
+              <button type="button" className="icon-btn h-7 w-7" aria-label={`Take off ${r.label} ${r.other.name}`} onClick={() => void act(() => crmApi.deleteRelationship(r.id))}><CloseIcon size={14} /></button>
+            </li>
+          ))}
+        </ul>
+      )}
+      <EntityPicker kinds={["organization"]} exclude={links.map((r) => r.other.id)} onSelect={(o) => void add(o)} onCreate={(n) => void add(null, n)} placeholder="Add an organization they work at" />
+      {changing && <RelationshipDialog relationship={changing} onClose={() => setChanging(null)} />}
+    </div>
+  );
+}
+
+/** Change what a relationship says: the role, a note on it, and when it ran. */
+export function RelationshipDialog({ relationship: r, onClose }: { relationship: RelationshipView; onClose: () => void }) {
+  const { toast } = useShell();
+  const [title, setTitle] = useState(String(r.properties.title ?? ""));
+  const [context, setContext] = useState(String(r.properties.context ?? ""));
+  const [started, setStarted] = useState(r.started_at ?? "");
+  const [ended, setEnded] = useState(r.ended_at ?? "");
+  const [busy, setBusy] = useState(false);
+  const save = async () => {
+    setBusy(true);
+    try {
+      const properties: Record<string, unknown> = { ...r.properties };
+      for (const [k, v] of [["title", title], ["context", context]] as const) {
+        if (v.trim()) properties[k] = v.trim();
+        else delete properties[k];
+      }
+      await crmApi.updateRelationship(r.id, { properties, started_at: started || null, ended_at: ended || null });
+      onClose();
+    } catch (e) {
+      toast((e as Error).message, "error");
+      setBusy(false);
+    }
+  };
+  return (
+    <Dialog title={`${r.label} ${r.other.name}`} onClose={onClose} width={440}>
+      <div className="space-y-4">
+        <Field label="Role"><input className="field h-10 w-full" value={title} onChange={(e) => setTitle(e.target.value)} /></Field>
+        <Field label="Note"><input className="field h-10 w-full" value={context} onChange={(e) => setContext(e.target.value)} /></Field>
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="From"><input type="date" className="field h-10 w-full" value={started} onChange={(e) => setStarted(e.target.value)} /></Field>
+          <Field label="Until"><input type="date" className="field h-10 w-full" value={ended} onChange={(e) => setEnded(e.target.value)} /></Field>
+        </div>
+        <div className="flex justify-end gap-2">
+          <button type="button" className="btn btn-md btn-ghost" onClick={onClose}>Cancel</button>
+          <button type="button" className="btn btn-md btn-primary" disabled={busy} onClick={() => void save()}>Save</button>
+        </div>
+      </div>
     </Dialog>
   );
 }

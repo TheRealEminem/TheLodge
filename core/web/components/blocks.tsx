@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import type { CSSProperties, KeyboardEvent as ReactKeyboardEvent, ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { api } from "../api";
+import { LOCKDOWN, api, heldByLockdown } from "../api";
 import type { Job, Linked, Person, PersonChoice } from "../api";
 import { useLive } from "../live";
 import { useShell } from "../shell";
@@ -44,6 +44,7 @@ export function JobChip({ job }: { job: Job | null | undefined }) {
   if (!job || job.status === "done") return null;
   if (job.status === "running") return <StatusChip tone="sky" label={job.stage || "Working"} live />;
   if (job.status === "queued") return <StatusChip tone="neutral" label="Queued" />;
+  if (heldByLockdown(job)) return <StatusChip tone="neutral" label={LOCKDOWN} />;
   if (job.status === "waiting") return <StatusChip tone="sun" label={job.wait_reason || "Needs you"} />;
   return <StatusChip tone="trail" label="Failed" />;
 }
@@ -76,6 +77,14 @@ export function JobStatus({ job, startLabel = "Start" }: { job: Job | null | und
           <RefreshIcon size={16} />
           Try again
         </button>
+      </div>
+    );
+  }
+  if (heldByLockdown(job)) {
+    return (
+      <div className="flex animate-enter flex-wrap items-center gap-3">
+        <StatusChip tone="neutral" label={LOCKDOWN} />
+        <span className="text-meta text-ink-soft">It goes ahead by itself when Lockdown is off.</span>
       </div>
     );
   }

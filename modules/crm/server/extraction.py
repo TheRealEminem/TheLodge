@@ -181,7 +181,10 @@ def extraction_prompt(ctx: DocContext, today: date | None = None) -> str:
             "names and include their emails):\n" + "\n".join(f"- {a}" for a in ctx.attendees)
         )
     if ctx.known_entities:
-        parts.append("Known entities already in the CRM (reuse exact spelling):\n" + "\n".join(f"- {n}" for n in ctx.known_entities))
+        parts.append(
+            "Known entities already in the CRM. Reuse the exact spelling only when the text clearly means that one. Never "
+            "add a surname the text doesn't give: someone called only \"Sam\" stays \"Sam\", even if a Sam is listed "
+            "here, because it may be someone else.\n" + "\n".join(f"- {n}" for n in ctx.known_entities))
     if ctx.known_tags:
         parts.append("Existing tags (reuse when they fit): " + ", ".join(ctx.known_tags))
     if ctx.subject:

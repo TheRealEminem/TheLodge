@@ -8,7 +8,7 @@ import { useLive } from "@core/live";
 import { keepFilters, navigate, useQueryParams } from "@core/router";
 import { useShell } from "@core/shell";
 import { tasksApi } from "./api";
-import type { ProjectSummary } from "./api";
+import type { Meta, ProjectSummary } from "./api";
 import { HealthChip, ProjectTile, Progress } from "./bits";
 import { dueLabel } from "./dates";
 import { MountainIcon } from "./icons";
@@ -20,8 +20,7 @@ const FILTERS: Filter[] = ["active", "planned", "done", "all", "archived"];
 export const dueWords = (text: string, tone: string) =>
   tone === "late" || text.startsWith("Due") ? text : `Due ${text === "Tomorrow" ? "tomorrow" : text}`;
 
-function ProjectRow({ project }: { project: ProjectSummary }) {
-  const { data: meta } = useLive(tasksApi.meta);
+function ProjectRow({ project, meta }: { project: ProjectSummary; meta: Meta | null }) {
   const due = dueLabel(project.status === "done" ? null : project.due_on);
   const status = project.status !== "active" ? meta?.project_statuses.find((s) => s.value === project.status) : null;
   return (
@@ -34,7 +33,7 @@ function ProjectRow({ project }: { project: ProjectSummary }) {
         <div className="flex items-center gap-2">
           <span className="truncate text-label font-medium">{project.name}</span>
           {status && <span className="shrink-0 text-meta text-ink-soft">{status.label}</span>}
-          <HealthChip health={project.health} meta={meta ?? null} />
+          <HealthChip health={project.health} meta={meta} />
         </div>
         {project.summary && <div className="mt-0.5 truncate text-hint text-ink-soft">{project.summary}</div>}
       </div>
@@ -72,6 +71,7 @@ export default function Projects() {
     () => (filter === "archived" ? tasksApi.projects(undefined, true) : tasksApi.projects(filter === "all" ? undefined : filter)),
     [filter],
   );
+  const { data: meta } = useLive(tasksApi.meta);
   const [name, setName] = useState("");
   const [adding, setAdding] = useState(false);
 
@@ -144,7 +144,7 @@ export default function Projects() {
       {projects && projects.length > 0 && (
         <div className="panel animate-enter divide-y divide-line overflow-hidden">
           {projects.map((p) => (
-            <ProjectRow key={p.id} project={p} />
+            <ProjectRow key={p.id} project={p} meta={meta ?? null} />
           ))}
         </div>
       )}

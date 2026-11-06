@@ -7,6 +7,7 @@ import { navigate } from "@core/router";
 import { useShell } from "@core/shell";
 import { crmApi } from "./api";
 import type { Entity, ResearchReport } from "./api";
+import { ReportNotThemDialog } from "./corrections";
 import { Dialog } from "./forms";
 import { formatDate } from "./format";
 import { GeminiDialog, GeminiRunLine } from "./GeminiResearch";
@@ -88,7 +89,13 @@ function AddResearchDialog({ person, onClose }: { person: Entity; onClose: () =>
 
 /** The research reports about someone or naming them, newest first. Each one's full text is where it was filed (often
  *  on their organization), so "Open the report" goes to it in the Inbox. */
-export function ReportList({ reports, first }: { reports: ResearchReport[]; first: string }) {
+export function ReportList({ reports, first, personId, personName }: { reports: ResearchReport[]; first: string; personId?: string; personName?: string }) {
+  const { toast, confirm } = useShell();
+  const [moving, setMoving] = useState<ResearchReport | null>(null);
+  const notThem = async (r: ResearchReport) => {
+    if (!personId || !(await confirm({ title: `Not this ${first}?`, body: `${r.title} stops showing here, and the full name it used won't be matched to this record again.`, confirmLabel: "Take it off" }))) return;
+    crmApi.unlinkReport(personId, r.inbox_id).catch((e: Error) => toast(e.message, "error"));
+  };
   return (
     <ul className="divide-y divide-line">
       {reports.map((r) => (
@@ -100,9 +107,11 @@ export function ReportList({ reports, first }: { reports: ResearchReport[]; firs
               {formatDate(r.date)} · {r.about_them ? `About ${first}` : r.about ? `About ${r.about}, and names ${first}` : `Names ${first}`}
             </p>
           </div>
+          {personId && <button className="btn btn-sm btn-ghost" onClick={() => (r.about_them ? setMoving(r) : void notThem(r))}>Not {first}</button>}
           <button className="btn btn-sm btn-ghost" onClick={() => navigate(`crm/inbox/${r.inbox_id}`)}>Open the report</button>
         </li>
       ))}
+      {moving && personId && <ReportNotThemDialog who={{ id: personId, name: personName ?? first }} report={moving} onClose={() => setMoving(null)} />}
     </ul>
   );
 }

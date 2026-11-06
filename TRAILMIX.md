@@ -11,8 +11,8 @@ Anything not built yet is marked **Proposed**.
 **How this fits with the other guides.** `ARCHITECTURE.md` (the host and module contract) and `DESIGN.md` (the
 look), beside this file, are the rules for family apps, and they win where this file and they disagree.
 This file is the Trailmix side: what Trailmix has, where it already matches the family, where it doesn't yet, and what
-an app has to keep the same so Trailmix can join it later. Traverse's `TRAILMIX-COMPARISON.md` (18 October) is an
-older, line-by-line comparison; this one is newer and covers 0.15.1 to 0.16.0 too.
+an app has to keep the same so Trailmix can join it later. An older, line-by-line comparison
+stopped at 18 October; this one is newer and covers 0.15.1 to 0.16.0 too.
 
 ---
 

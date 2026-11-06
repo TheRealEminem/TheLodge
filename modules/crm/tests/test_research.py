@@ -218,7 +218,7 @@ def test_a_report_about_someone_is_listed_on_their_profile(client, book, fake_st
 
 def test_a_report_on_their_organization_that_names_them_shows_on_their_profile_too(client, book, fake_structured):
     priya = book["summary"]
-    org = make(client, "organization", "Helio Cold Chain")
+    make(client, "organization", "Helio Cold Chain")
     fake_structured.reply = extraction([entity("o1", "Helio Cold Chain", kind="organization", role="subject"),
                                        entity("p1", "Priya Nair", role="mentioned", title="CEO")],
                                        doc_type="organization_profile", subject_ref="o1", title="Helio Organization Deep Research")

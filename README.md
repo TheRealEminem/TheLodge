@@ -61,6 +61,11 @@ to do if something's wrong.
   Connect [Granola](https://granola.ai) and its meetings arrive the same way, matched to your people by email; a
   meeting Trailmix took from Granola comes in once. Connect a calendar's private iCal address and meetings with
   people you know go on your book too. Everything any of them adds can be taken back in one step.
+- **Hats.** Keep the parts of your life apart: wear one and your people, organizations, network and Home show only that
+  part. Each Trailmix workspace is a hat, and a meeting keeps its hat and tags from there.
+- **Put anything right.** Edit a person's overview, notes, roles and names. If an import tied a meeting or document to the
+  wrong person, move what it said to whoever it's really about, or take it off, and it stays that way. Links made on a
+  guess wait in a list for you to check.
 - **A sheet others can add to.** Share a Google Sheet so people without the app can read, correct and add to your
   people; it's kept in step both ways.
 

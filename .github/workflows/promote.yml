@@ -27,7 +27,7 @@ jobs:
   promote:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Promote the newest beta if it's ready
         env:
           # A repo other than this one needs a token that can write to it (the same RELEASE_TOKEN as release.yml).

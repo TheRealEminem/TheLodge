@@ -92,5 +92,13 @@ check(!UpdateRules.busy(status: 404, body: Data("Not Found".utf8)), "a server wi
 check(!UpdateRules.busy(status: 401, body: Data(#"{"busy": true}"#.utf8)), "an answer that isn't a 200 doesn't count")
 check(!UpdateRules.busy(status: 200, body: Data("<html>".utf8)), "an answer that isn't JSON: not busy")
 
+section("Lockdown")
+check(UpdateRules.lockedDown(status: 200, body: Data(#"{"on": true, "parked": 0}"#.utf8)) == true, "the server says Lockdown is on: on")
+check(UpdateRules.lockedDown(status: 200, body: Data(#"{"on": false, "parked": 2}"#.utf8)) == false, "the server says it's off: off")
+check(UpdateRules.lockedDown(status: 404, body: Data("Not Found".utf8)) == nil, "a server without the route can't say")
+check(UpdateRules.lockedDown(status: 503, body: Data(#"{"on": false}"#.utf8)) == nil, "an answer that isn't a 200 can't say")
+check(UpdateRules.lockedDown(status: 200, body: Data("<html>".utf8)) == nil, "an answer that isn't JSON can't say")
+check(UpdateRules.lockedDown(status: 200, body: Data(#"{"on": "no"}"#.utf8)) == nil, "an answer without a yes or no can't say")
+
 print(failures == 0 ? "\nAll good." : "\n\(failures) problem(s).")
 exit(failures == 0 ? 0 : 1)

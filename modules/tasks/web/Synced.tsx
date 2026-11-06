@@ -1,12 +1,18 @@
 // On a linked task's page: what it's kept in step with elsewhere (a Plane work item), and anything waiting for you.
 // Fields you haven't changed follow the other side by themselves; a field changed on both sides shows both values
-// until you take theirs or keep yours. Nothing here knows what "elsewhere" is: the server names it (synced.source).
-import { AlertIcon, ExternalIcon, NetworkIcon } from "@core/components/icons";
-import { useConfirm } from "@core/components/ui";
+// until you take theirs or keep yours. What you've changed goes there only when you send it, and then only after you
+// approve it where it's going (task.sharing says where it waits). A task that isn't linked, in a project that is, can
+// be sent to be made there. Nothing here knows what "elsewhere" is: the server names it (synced.source).
+import { useState } from "react";
+import { AlertIcon, ExternalIcon, NetworkIcon, icon } from "@core/components/icons";
+import { Spinner, useConfirm } from "@core/components/ui";
 import { formatDate, relativeTime } from "@core/format";
 import { useShell } from "@core/shell";
+import { Send } from "lucide-react";
 import { tasksApi } from "./api";
-import type { Meta, SyncedField, Task, TaskDetail } from "./api";
+import type { Meta, ProjectDetail, SyncedField, Task, TaskDetail } from "./api";
+
+const SendIcon = icon(Send);
 
 const FIELD_LABEL: Record<SyncedField, string> = {
   text: "Title",
@@ -47,12 +53,60 @@ function shown(field: SyncedField, v: Partial<Task>, meta: Meta | null): string 
   }
 }
 
-export function SyncedPanel({ task, meta, onChanged }: { task: TaskDetail; meta: Meta | null; onChanged: () => void }) {
+/** "Send to Plane": asks for the task to be sent; it then waits for your approval where it's going. */
+function useSend(task: TaskDetail, onChanged: () => void) {
   const { toast } = useShell();
+  const [busy, setBusy] = useState(false);
+  const send = async () => {
+    setBusy(true);
+    try {
+      const sent = await tasksApi.share(task.id);
+      toast(sent.sharing[0]?.title ?? "Waiting for you to send it", "success");
+      onChanged();
+    } catch (e) {
+      toast((e as Error).message, "error");
+    } finally {
+      setBusy(false);
+    }
+  };
+  return { send, busy };
+}
+
+/** Where the task's changes wait for you, with a way there; or the button that sends them. */
+function SendRow({ task, label, onChanged }: { task: TaskDetail; label: string; onChanged: () => void }) {
+  const { send, busy } = useSend(task, onChanged);
+  const waiting = task.sharing[0];
+  if (waiting) {
+    return (
+      <a href={waiting.href} className="btn btn-sm btn-sun -my-1">
+        <SendIcon size={16} /> Review and send
+      </a>
+    );
+  }
+  return (
+    <button className="btn btn-sm btn-soft -my-1" disabled={busy} onClick={() => void send()}>
+      {busy ? <Spinner /> : <SendIcon size={16} />} {label}
+    </button>
+  );
+}
+
+export function SyncedPanel({
+  task,
+  meta,
+  project,
+  onChanged,
+}: {
+  task: TaskDetail;
+  meta: Meta | null;
+  project?: ProjectDetail | null;
+  onChanged: () => void;
+}) {
+  const { toast, app } = useShell();
   const [confirm, dialog] = useConfirm();
   const synced = task.synced;
-  if (!synced) return null;
+  if (!synced) return <NotSentYet task={task} project={project ?? null} onChanged={onChanged} />;
   const where = synced.source;
+  const toSend = synced.removed_at ? 0 : synced.edited.length;
 
   const choose = (field: SyncedField, keep: "theirs" | "mine") =>
     void tasksApi.resolve(task.id, field, keep).then(onChanged, (e: Error) => toast(e.message, "error"));
@@ -87,18 +141,25 @@ export function SyncedPanel({ task, meta, onChanged }: { task: TaskDetail; meta:
           <button className="btn btn-sm btn-ghost -my-1" onClick={() => void unlink()}>
             Unlink
           </button>
-          <p className="basis-full">
-            {synced.edited.length
-              ? `Follows ${where} for what you haven't changed. Changed here only: ${synced.edited.map((f) => FIELD_LABEL[f]).join(", ")}.`
-              : `Follows ${where}: when it changes there, it changes here.`}
-          </p>
+          <div className="flex basis-full flex-wrap items-center gap-x-3 gap-y-2">
+            <p className="min-w-0 flex-1 basis-64">
+              {task.sharing.length
+                ? `${task.sharing[0].title}: ${synced.edited.map((f) => FIELD_LABEL[f]).join(", ") || "your changes"}.`
+                : synced.edited.length
+                  ? `Follows ${where} for what you haven't changed. Changed here only: ${synced.edited.map((f) => FIELD_LABEL[f]).join(", ")}.`
+                  : `Follows ${where}: when it changes there, it changes here.`}
+            </p>
+            {(toSend > 0 || task.sharing.length > 0) && (
+              <SendRow task={task} label={`Send ${toSend === 1 ? "it" : `these ${toSend}`} to ${where}`} onChanged={onChanged} />
+            )}
+          </div>
         </div>
 
         {synced.removed_at && (
           <div role="status" className="mt-3 rounded-lg border border-line bg-surface-subtle px-4 py-3 text-label">
             <div className="font-semibold">Removed in {where}</div>
             <p className="mt-0.5 text-ui text-ink-soft">
-              It's no longer in what Traverse reads from {where}: deleted, archived, or moved to a project Traverse doesn't read. Your copy stays as
+              It's no longer in what {app.name} reads from {where}: deleted, archived, or moved to a project {app.name} doesn't read. Your copy stays as
               it is. If it comes back, this goes away.
             </p>
           </div>
@@ -111,7 +172,7 @@ export function SyncedPanel({ task, meta, onChanged }: { task: TaskDetail; meta:
               <div>
                 <div className="text-label font-semibold text-sun-deep">Changed in {where}</div>
                 <p className="mt-0.5 text-ui text-ink-soft">
-                  You changed {synced.conflicts.length === 1 ? "this" : "these"} here too, so Traverse kept yours. Choose which to keep.
+                  You changed {synced.conflicts.length === 1 ? "this" : "these"} here too, so {app.name} kept yours. Choose which to keep.
                 </p>
               </div>
             </div>
@@ -143,5 +204,26 @@ export function SyncedPanel({ task, meta, onChanged }: { task: TaskDetail; meta:
       </section>
       {dialog}
     </>
+  );
+}
+
+/** A task that isn't linked, in a project that is: it can be sent to be made there. */
+function NotSentYet({ task, project, onChanged }: { task: TaskDetail; project: ProjectDetail | null; onChanged: () => void }) {
+  const { app } = useShell();
+  const target = project?.synced_with[0];
+  if (!project || !target || task.parent_id) return null;
+  const where = app.modules.find((m) => m.id === target.module)?.name ?? target.module;
+  return (
+    <section className="mt-6 animate-enter" aria-label={`Not in ${where} yet`}>
+      <div className="inset-surface flex flex-wrap items-center gap-x-3 gap-y-2 px-4 py-3 text-hint text-ink-soft">
+        <NetworkIcon size={16} className="shrink-0 text-ink-faint" />
+        <p className="min-w-0 flex-1 basis-64">
+          {task.sharing.length
+            ? `${task.sharing[0].title}.`
+            : `Only in ${app.name} so far. ${project.name} is linked to ${target.title} in ${where}, so you can add it there.`}
+        </p>
+        <SendRow task={task} label={`Send to ${where}`} onChanged={onChanged} />
+      </div>
+    </section>
   );
 }

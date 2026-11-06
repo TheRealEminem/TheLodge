@@ -4,22 +4,24 @@ import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { LinkedList } from "@core/components/blocks";
+import { LinkedList, PersonPicker } from "@core/components/blocks";
 import { BackIcon, NetworkIcon, PencilIcon, PlusIcon, TrashIcon } from "@core/components/icons";
 import { ControlRow, Segmented, Select, Skeleton, StatusChip, useConfirm } from "@core/components/ui";
 import { formatDate, relativeTime } from "@core/format";
 import { useLive } from "@core/live";
 import type { RouteProps } from "@core/registry";
 import { navigate, useQueryParams } from "@core/router";
-import { useShell } from "@core/shell";
+import { useSettings, useShell } from "@core/shell";
 import { tasksApi } from "./api";
-import type { Health, Meta, Milestone, ProjectChanges, ProjectDetail, Task } from "./api";
+import type { Draft, Health, Meta, Milestone, ProjectChanges, ProjectDetail, Task } from "./api";
 import { HealthChip, Progress } from "./bits";
 import { Board } from "./Board";
 import { dueLabel } from "./dates";
+import { DraftStatusButton, OfferUpdate, StatusDraftPanel, commentTargets, whoWrote } from "./Drafts";
 import { Field } from "./Field";
 import { BoardIcon, ListIcon, MilestoneIcon, MountainIcon } from "./icons";
 import { dueWords } from "./Projects";
+import { personChoice } from "./TaskPage";
 import { Check, TaskList } from "./TaskRow";
 
 type View = "overview" | "list" | "board";
@@ -131,9 +133,26 @@ function MilestoneRow({ m, onChanged }: { m: Milestone; onChanged: () => void })
   );
 }
 
-function Updates({ project, meta, onChanged }: { project: ProjectDetail; meta: Meta | null; onChanged: () => void }) {
+function Updates({
+  project,
+  meta,
+  draft,
+  tasks,
+  onChanged,
+}: {
+  project: ProjectDetail;
+  meta: Meta | null;
+  draft: Draft | null | undefined;
+  tasks: Task[] | null | undefined;
+  onChanged: () => void;
+}) {
   const { toast } = useShell();
   const { data: all, reload } = useLive(() => tasksApi.projectUpdates(project.id), [project.id]);
+  const { targets, where } = commentTargets(tasks);
+  const changed = () => {
+    onChanged();
+    void reload();
+  };
   const [health, setHealth] = useState<Health | "">(project.health ?? "");
   const [body, setBody] = useState("");
   const [showAll, setShowAll] = useState(false);
@@ -153,24 +172,28 @@ function Updates({ project, meta, onChanged }: { project: ProjectDetail; meta: M
       setPosting(false);
     }
   };
-  const who = (u: { written_by: string | null; author_ref: string | null; author_name: string | null }) =>
-    u.written_by ? `Written by ${u.written_by}` : u.author_ref === "core:me" || !u.author_name ? "You" : u.author_name;
   return (
     <>
+      <StatusDraftPanel draft={draft} meta={meta} targets={targets} where={where} onChanged={changed} />
       {project.latest_status ? (
         <div className="panel mb-3 px-5 py-4">
           <div className="mb-1.5 flex flex-wrap items-center gap-2">
             <HealthChip health={project.latest_status.health} meta={meta} />
             <span className="text-meta text-ink-soft" data-tip={formatDate(project.latest_status.created_at)}>
-              {who(project.latest_status)} · {relativeTime(project.latest_status.created_at)}
+              {whoWrote(project.latest_status)} · {relativeTime(project.latest_status.created_at)}
             </span>
           </div>
           <div className="prose-family">
             <ReactMarkdown remarkPlugins={[remarkGfm]}>{project.latest_status.body}</ReactMarkdown>
           </div>
+          {(project.latest_status.shared?.length || targets.length > 0) && (
+            <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-2 border-t border-line pt-3 text-meta">
+              <OfferUpdate update={project.latest_status} targets={targets} where={where} onChanged={changed} />
+            </div>
+          )}
         </div>
       ) : (
-        <p className="mb-3 px-1 text-hint text-ink-soft">No updates yet. Say how it's going, and whether it's on track.</p>
+        !draft && <p className="mb-3 px-1 text-hint text-ink-soft">No updates yet. Say how it's going, and whether it's on track, or let the AI draft one.</p>
       )}
       <form
         className="inset-surface flex flex-col gap-3 px-4 py-3.5"
@@ -214,9 +237,14 @@ function Updates({ project, meta, onChanged }: { project: ProjectDetail; meta: M
                 <li key={u.id} className="inset-surface px-4 py-3">
                   <div className="mb-1 flex flex-wrap items-center gap-2">
                     <HealthChip health={u.health} meta={meta} />
-                    <span className="text-meta text-ink-soft">{who(u)} · {relativeTime(u.created_at)}</span>
+                    <span className="text-meta text-ink-soft">{whoWrote(u)} · {relativeTime(u.created_at)}</span>
                   </div>
                   <p className="whitespace-pre-wrap text-label leading-relaxed">{u.body}</p>
+                  {(u.shared?.length || targets.length > 0) && (
+                    <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-2 text-meta">
+                      <OfferUpdate update={u} targets={targets} where={where} onChanged={changed} />
+                    </div>
+                  )}
                 </li>
               ))}
             </ul>
@@ -227,8 +255,26 @@ function Updates({ project, meta, onChanged }: { project: ProjectDetail; meta: M
   );
 }
 
-function Overview({ project, meta, save, reload }: { project: ProjectDetail; meta: Meta | null; save: (c: ProjectChanges) => Promise<unknown>; reload: () => void }) {
+function Overview({
+  project,
+  meta,
+  tasks,
+  save,
+  reload,
+}: {
+  project: ProjectDetail;
+  meta: Meta | null;
+  tasks: Task[] | null | undefined;
+  save: (c: ProjectChanges) => Promise<unknown>;
+  reload: () => void;
+}) {
   const { toast } = useShell();
+  const yourName = (useSettings().get<string>("core.your_name") ?? "").trim();
+  const { data: draft, reload: reloadDraft } = useLive(() => tasksApi.projectDraft(project.id), [project.id]);
+  const changed = () => {
+    reload();
+    void reloadDraft();
+  };
   const late = project.rollup.late;
   const counts = project.rollup.by_status;
   const lines = [counts.doing && `${counts.doing} doing`, counts.waiting && `${counts.waiting} waiting`, late && `${late} late`].filter(Boolean);
@@ -250,8 +296,15 @@ function Overview({ project, meta, save, reload }: { project: ProjectDetail; met
             onChange={(v) => void save({ status: v })}
           />
         </ControlRow>
-        <ControlRow label="Owner" hint="Who answers for it. Empty: nobody yet.">
-          <Field label="Owner" className="w-full sm:w-56" placeholder="Nobody yet" value={project.owner_name ?? ""} onSave={(v) => void save({ owner_ref: null, owner_name: v.trim() || null })} />
+        <ControlRow label="Owner" hint="Who answers for it. Nobody yet, until you choose someone.">
+          <PersonPicker
+            label="Owner"
+            className="w-full sm:w-56"
+            placeholder="Nobody yet"
+            noneLabel="Nobody"
+            value={personChoice(project.owner_ref, project.owner_name, yourName)}
+            onChange={(who) => void save(who ? { owner_ref: who.ref, owner_name: who.ref === "core:me" ? null : who.name } : { owner_ref: null, owner_name: null })}
+          />
         </ControlRow>
         <ControlRow label="Start">
           <Field type="date" label="Start" className="w-full sm:w-56" value={project.start_on ?? ""} onSave={(v) => void save({ start_on: v || null })} />
@@ -279,8 +332,8 @@ function Overview({ project, meta, save, reload }: { project: ProjectDetail; met
         />
       </Block>
 
-      <Block title="How it's going">
-        <Updates project={project} meta={meta} onChanged={reload} />
+      <Block title="How it's going" action={<DraftStatusButton projectId={project.id} draft={draft} onChanged={changed} />}>
+        <Updates project={project} meta={meta} draft={draft} tasks={tasks} onChanged={changed} />
       </Block>
 
       <LinkedList of={`tasks:${project.id}`} />
@@ -450,7 +503,7 @@ export default function ProjectPage({ params, board = false }: RouteProps & { bo
               {dueWords(due.text, due.tone)}
             </span>
           )}
-          <SyncedWith project={project} />
+          <SyncedWith project={project} onChanged={refresh} />
         </p>
       </header>
 
@@ -470,7 +523,7 @@ export default function ProjectPage({ params, board = false }: RouteProps & { bo
       </div>
 
       {view === "overview" ? (
-        <Overview project={project} meta={meta ?? null} save={save} reload={refresh} />
+        <Overview project={project} meta={meta ?? null} tasks={tasks} save={save} reload={refresh} />
       ) : view === "board" && tasks ? (
         <Board project={project} tasks={tasks} meta={meta ?? null} onChanged={refresh} />
       ) : tasks ? (
@@ -484,8 +537,23 @@ export default function ProjectPage({ params, board = false }: RouteProps & { bo
 }
 
 /** "Linked to Plane: Software", for a project kept in step with one elsewhere (named by that module). */
-function SyncedWith({ project }: { project: ProjectDetail }) {
-  const { app } = useShell();
+function SyncedWith({ project, onChanged }: { project: ProjectDetail; onChanged: () => void }) {
+  const { app, toast } = useShell();
+  const [sending, setSending] = useState(false);
+  const where = project.synced_with[0];
+  const there = where ? (app.modules.find((m) => m.id === where.module)?.name ?? where.module) : "";
+  const sendNew = async () => {
+    setSending(true);
+    try {
+      const { asked } = await tasksApi.shareProject(project.id);
+      toast(asked === 1 ? `Asked to send 1 task to ${there}.` : `Asked to send ${asked} tasks to ${there}.`, "success");
+      onChanged();
+    } catch (e) {
+      toast((e as Error).message, "error");
+    } finally {
+      setSending(false);
+    }
+  };
   return (
     <>
       {project.synced_with.map((s) => (
@@ -494,6 +562,17 @@ function SyncedWith({ project }: { project: ProjectDetail }) {
           Linked to {app.modules.find((m) => m.id === s.module)?.name ?? s.module}: {s.title}
         </a>
       ))}
+      {where && project.unshared > 0 && (
+        <button
+          type="button"
+          className="btn btn-sm btn-soft"
+          disabled={sending}
+          data-tip={`Each one waits in ${there}'s outbox for you, unless that project sends new tasks on its own`}
+          onClick={() => void sendNew()}
+        >
+          Send {project.unshared === 1 ? "the 1 new task" : `the ${project.unshared} new tasks`} to {there}
+        </button>
+      )}
     </>
   );
 }

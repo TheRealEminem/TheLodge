@@ -24,6 +24,9 @@ def export() -> dict:
         # Records merged into others, each with all it held when it was merged, so nothing a merge folded away is lost.
         "merges": [_parsed(r) for r in db.query("SELECT * FROM crm_merges ORDER BY created_at, id")],
         "roundups": roundups.export_rows(),
+        "hats": db.query("SELECT * FROM crm_hats ORDER BY position, created_at"),
+        "hat_links": db.query("SELECT * FROM crm_hat_links ORDER BY hat_id, entity_id"),
+        "corrections": [_parsed(r) for r in db.query("SELECT * FROM crm_corrections ORDER BY created_at, id")],
     }
 
 

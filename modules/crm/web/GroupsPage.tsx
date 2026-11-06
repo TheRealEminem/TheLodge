@@ -15,7 +15,7 @@ keepFilters("crm/groups");
 export default function Groups() {
   const [kind, setKind] = useQueryValue<GroupKind | "all">("kind", "all");
   const [q, setQ] = useQueryText();
-  const { data: net, error } = useLive(() => crmApi.network({ max_nodes: 10 }), []);
+  const { data: net, error } = useLive(() => crmApi.network({ max_nodes: 10, hat: "active" }), []);
   const rows = useMemo(() => {
     const needle = q.trim().toLowerCase();
     return (net?.groups ?? []).filter((g) => (kind === "all" || g.kind === kind) && (!needle || g.name.toLowerCase().includes(needle)));
@@ -43,22 +43,29 @@ export default function Groups() {
         {error && <p className="text-ui text-trail-deep">{error}</p>}
         {!net && !error && <Skeleton className="h-64 w-full rounded-xl" />}
         {net && rows.length === 0 && <Empty icon={<NetworkIcon size={20} />} title="No groups here">A group needs at least two people: a shared employer, a topic they took part in, or a tag you give them.</Empty>}
-        {rows.length > 0 && (
-          <ul className="panel divide-y divide-line">
-            {rows.map((g) => (
-              <li key={g.id} className="flex items-center gap-3 px-5 py-3">
-                <span className="well well-forest"><GroupGlyph kind={g.kind} size={16} /></span>
-                <div className="min-w-0 flex-1">
-                  <div className="truncate text-label font-medium">{g.name}</div>
-                  <div className="text-meta text-ink-soft">{GROUP_META[g.kind].one} · {g.size} people</div>
-                </div>
-                {g.ref && <a className="btn btn-sm btn-ghost" href={`#/crm/e/${g.ref}`}>Open record</a>}
-                <RoundupFromGroup group={g.id} />
-                <a className="btn btn-sm btn-soft" href={`#/crm/network?wells=${encodeURIComponent(g.id)}`}><NetworkIcon size={16} /> In the network</a>
-              </li>
-            ))}
-          </ul>
-        )}
+        {GROUP_ORDER.map((k) => {
+          const here = rows.filter((g) => g.kind === k);
+          if (!here.length) return null;
+          return (
+            <section key={k} className="space-y-1.5">
+              {kind === "all" && <h2 className="flex items-center gap-2 px-1 pt-2 text-ui font-semibold"><GroupGlyph kind={k} size={14} /> {GROUP_META[k].many} <span className="font-normal tabular-nums text-ink-soft">{here.length}</span></h2>}
+              <ul className="panel divide-y divide-line">
+                {here.map((g) => (
+                  <li key={g.id} className="flex items-center gap-3 px-5 py-3">
+                    <span className="well well-forest"><GroupGlyph kind={g.kind} size={16} /></span>
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate text-label font-medium">{g.name}</div>
+                      <div className="text-meta text-ink-soft">{g.size} people</div>
+                    </div>
+                    {g.ref && <a className="btn btn-sm btn-ghost" href={`#/crm/e/${g.ref}`}>Open record</a>}
+                    <RoundupFromGroup group={g.id} />
+                    <a className="btn btn-sm btn-soft" href={`#/crm/network?wells=${encodeURIComponent(g.id)}`}><NetworkIcon size={16} /> In the network</a>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          );
+        })}
         <p className="pt-2 text-hint text-ink-soft">
           The records underneath: <a className="underline" href="#/crm/organizations">organizations</a>, <a className="underline" href="#/crm/meetings">meetings and documents</a>, <a className="underline" href="#/crm/topics">topics</a>.
         </p>
