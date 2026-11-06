@@ -840,6 +840,7 @@ def _apply(row_id: str, proposal: dict) -> tuple[dict, list[str], str | None]:
             new_actions = list(attrs["action_items"])
 
         titles: dict[str, str] = {}
+        planted: dict[str, dict] = {}
         for ent in proposal["entities"]:
             if ent["action"] == "skip":
                 continue
@@ -856,21 +857,27 @@ def _apply(row_id: str, proposal: dict) -> tuple[dict, list[str], str | None]:
                     entity = store.create_entity(ent["kind"], ent["name"].strip(), source=source_label, conn=c)
                     counts["created"] += 1
             attrs = dict(entity.attributes or {})
+            put: dict = {"fields": [], "tags": [], "summary": False}   # what this import really added (a value that was already there isn't its to take back)
             for key in ("title", "email", "location", "linkedin_url", "website"):
                 if ent.get(key) and not attrs.get(key):
                     attrs[key] = str(ent[key])[:300]
+                    put["fields"].append(key)
             fields = {"attributes": attrs}
             if ent.get("summary") and not entity.summary:
                 fields["summary"] = ent["summary"]
+                put["summary"] = True
             elif (ent.get("summary") and ent["ref"] == proposal.get("subject_ref") and proposal.get("doc_type") in PROFILE_TYPES
                   and ent["summary"].strip() != (entity.summary or "").strip()):
                 # New research on them is the better summary. The one it replaces is kept as a note.
                 store.add_note(entity.id, f"Summary before the research of {occurred.date().isoformat()}:\n\n{entity.summary.strip()}",
                                occurred_at=occurred, source="summary", conn=c)
                 fields["summary"] = ent["summary"]
+                put["summary"] = True
                 counts["notes"] += 1
             if ent.get("tags"):
                 fields["tags"] = _tags([*(entity.tags or []), *ent["tags"]])[:20]
+                put["tags"] = [t for t in fields["tags"] if t not in (entity.tags or [])]
+            planted[ent["ref"]] = put
             entity = store.update_entity(entity.id, conn=c, **fields)
             ids[ent["ref"]], kinds[ent["ref"]] = entity.id, entity.kind
             if ent.get("title"):
@@ -924,7 +931,7 @@ def _apply(row_id: str, proposal: dict) -> tuple[dict, list[str], str | None]:
             counts["relationships"] += int(created)
 
         result = {**counts, "record_id": record.id if record else None, "record_kind": record.kind if record else None,
-                  "subject_id": ids.get(proposal.get("subject_ref") or ""), "entity_ids": dict(ids)}
+                  "subject_id": ids.get(proposal.get("subject_ref") or ""), "entity_ids": dict(ids), "planted": planted}
         inbox.update(row_id, conn=c, proposal=proposal, status="applied", error=None, result=result)
     return result, new_actions if (record and record.kind == "meeting") else [], record.id if record else None
 

@@ -76,7 +76,7 @@ def _sources(entity_id: str) -> list[tuple[str, dict, str]]:
         result, proposal = json.loads(row["result"] or "{}"), json.loads(row["proposal"] or "{}")
         for ent in proposal.get("entities") or []:
             if (result.get("entity_ids") or {}).get(ent.get("ref")) == entity_id:
-                out.append((result.get("record_id"), ent, row["id"]))
+                out.append((result.get("record_id"), {**ent, "_put": (result.get("planted") or {}).get(ent.get("ref"))}, row["id"]))
     return out
 
 
@@ -91,16 +91,21 @@ def _planted(entity, evidence_id: str | None, inbox_id: str | None = None) -> di
     others = [ent for rid, ent, row_id in sources if not is_mine(rid, row_id) and (rid is None or rid in linked)]
     attrs, out = entity.attributes or {}, {"fields": {}, "tags": [], "summary": None}
     for ent in mine:
+        put = ent.get("_put")   # what the import really added, where it wrote that down; older imports didn't
         for key in FIELDS:
             value = ent.get(key)
+            if put is not None and key not in put["fields"] and not any(
+                    o.get("_put") and key in o["_put"]["fields"] and str(o.get(key) or "")[:300] == str(value or "")[:300] for _, o, _ in sources):
+                continue   # it was there before this source, and no source put it there: it's yours
             if value and str(attrs.get(key)) == str(value)[:300] and not any(str(o.get(key) or "")[:300] == str(value)[:300] for o in others):
                 out["fields"][key] = attrs[key]
         given = (ent.get("summary") or "").strip()
-        if given and given == (entity.summary or "").strip() and not any((o.get("summary") or "").strip() == given for o in others):
+        if given and (put is None or put["summary"] or any(o.get("_put") and o["_put"]["summary"] and (o.get("summary") or "").strip() == given for _, o, _ in sources)) and given == (entity.summary or "").strip() and not any((o.get("summary") or "").strip() == given for o in others):
             out["summary"] = entity.summary
         if entity.source not in OWN_TAGS:
             kept = {t for o in others for t in normalize_tags(o.get("tags") or [])}
-            out["tags"] += [t for t in normalize_tags(ent.get("tags") or []) if t in (entity.tags or []) and t not in kept and t not in out["tags"]]
+            out["tags"] += [t for t in normalize_tags(ent.get("tags") or []) if t in (entity.tags or []) and t not in kept and t not in out["tags"]
+                            and (put is None or t in put["tags"] or any(o.get("_put") and t in o["_put"]["tags"] for _, o, _ in sources))]
     return out
 
 
