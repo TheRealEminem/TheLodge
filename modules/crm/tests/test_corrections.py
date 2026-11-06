@@ -432,3 +432,23 @@ def test_moving_a_report_leaves_a_note_you_wrote_that_says_the_same_as_one_of_it
     assert any(n.body == "Sold a company in 1999." for n in store.notes_of(done["to"]["id"]))
     client.post(f"/api/crm/corrections/{done['id']}/undo")
     assert sorted(n.body for n in store.notes_of(sam["id"]))[-1] == "Sold a company in 1999." and len(store.notes_of(sam["id"])) == 3
+
+
+def test_a_report_filed_on_a_record_that_was_merged_away_can_still_be_moved(client, fake_structured, me):
+    sam, twin = make(client, "person", "Sam Reed"), make(client, "person", "S. Reed")
+    fake_structured.reply = extraction([entity("p1", "Jo Reed", role="subject", facts=["Sold a company in 1999."])],
+                                       doc_type="person_profile", subject_ref="p1")
+    r = client.post("/api/crm/ingest/notes", json={"text": "A full report about Jo Reed."})
+    jobs.drain()
+    row = client.get(f"/api/crm/ingest/jobs/{r.json()['id']}").json()
+    proposal = row["proposal"]
+    for e in proposal["entities"]:
+        if e["ref"] == "p1":
+            e.update(action="link", match_id=twin["id"], ambiguous=False)
+    assert client.post(f"/api/crm/ingest/jobs/{row['id']}/apply", json={"proposal": proposal}).status_code == 200
+    store.merge_entities(twin["id"], sam["id"])
+    assert client.get(f"/api/crm/people/{sam['id']}/research").json()["reports"]
+    done = client.post(f"/api/crm/entities/{sam['id']}/reports/{row['id']}/move", json={"new_name": "Jo Reed"})
+    assert done.status_code == 200, done.text
+    assert client.get(f"/api/crm/people/{sam['id']}/research").json()["reports"] == []
+    assert any(n.body == "Sold a company in 1999." for n in store.notes_of(done.json()["to"]["id"]))
