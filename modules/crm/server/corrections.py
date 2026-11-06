@@ -118,13 +118,33 @@ def _require(entity_id: str, evidence_id: str):
     return entity, evidence
 
 
+def _same(entity_id: str) -> set[str]:
+    """This record and every record merged into it (a report filed on one of them is on this one now)."""
+    out, todo = {entity_id}, [entity_id]
+    while todo:
+        for r in db.query("SELECT source_id FROM crm_merges WHERE target_id = ? AND undone_at IS NULL", (todo.pop(),)):
+            if r["source_id"] not in out:
+                out.add(r["source_id"])
+                todo.append(r["source_id"])
+    return out
+
+
+def _as_survivor(result: dict, entity_id: str) -> dict:
+    """The report's result with whoever was merged into this record shown as this record."""
+    same = _same(entity_id)
+    out = {**result, "entity_ids": {ref: (entity_id if eid in same else eid) for ref, eid in (result.get("entity_ids") or {}).items()}}
+    if out.get("subject_id") in same:
+        out["subject_id"] = entity_id
+    return out
+
+
 def unlink_report(entity_id: str, inbox_id: str) -> None:
     """A research report about someone else named a person, but not this one: it stops showing on their page, and the
     full name it used is remembered as one this record isn't."""
     row = db.one("SELECT proposal, result FROM crm_inbox WHERE id = ? AND status = 'applied'", (inbox_id,))
     if row is None:
         raise store.NotFound("That report isn't on record")
-    result, proposal = json.loads(row["result"] or "{}"), json.loads(row["proposal"] or "{}")
+    result, proposal = _as_survivor(json.loads(row["result"] or "{}"), entity_id), json.loads(row["proposal"] or "{}")
     if result.get("subject_id") == entity_id:
         raise CorrectionError("That report is about them")
     held = result.get("entity_ids") or {}
@@ -148,7 +168,8 @@ def move_report(entity_id: str, inbox_id: str, *, to_id: str | None = None, new_
     entity = store.get_entity(entity_id)
     if row is None or entity is None:
         raise store.NotFound("That report isn't on record")
-    result, proposal = json.loads(row["result"] or "{}"), json.loads(row["proposal"] or "{}")
+    original = json.loads(row["result"] or "{}")
+    result, proposal = _as_survivor(original, entity_id), json.loads(row["proposal"] or "{}")
     held = result.get("entity_ids") or {}
     refs = [ref for ref, eid in held.items() if eid == entity_id]
     if not refs:
@@ -201,7 +222,7 @@ def move_report(entity_id: str, inbox_id: str, *, to_id: str | None = None, new_
             new_result["subject_id"] = target.id
         c.execute("UPDATE crm_inbox SET result = ? WHERE id = ?", (json.dumps(new_result), inbox_id))
         snap = {"edges": kept, "notes": notes, "block": block, "created": bool(new_name and not to_id), "planted": planted, "given": given,
-                "report": {"inbox_id": inbox_id, "result": result}}
+                "report": {"inbox_id": inbox_id, "result": original}}
         cid = db.new_id()
         c.execute("INSERT INTO crm_corrections (id, entity_id, evidence_id, to_id, name, snapshot, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
                   (cid, entity_id, inbox_id, target.id, row["title"] or "Research report", json.dumps(snap), db.now()))
