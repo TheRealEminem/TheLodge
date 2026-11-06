@@ -841,6 +841,8 @@ def _apply(row_id: str, proposal: dict) -> tuple[dict, list[str], str | None]:
 
         titles: dict[str, str] = {}
         planted: dict[str, dict] = {}
+        note_ids: dict[str, list[str]] = {}   # the facts each entity got, so a report moved to someone else takes these and no other note
+        text_note: str | None = None
         for ent in proposal["entities"]:
             if ent["action"] == "skip":
                 continue
@@ -884,8 +886,9 @@ def _apply(row_id: str, proposal: dict) -> tuple[dict, list[str], str | None]:
                 titles[ent["ref"]] = ent["title"]
             for fact in ent.get("facts") or []:
                 if fact and fact.strip():
-                    store.add_note(entity.id, fact.strip(), occurred_at=occurred, source=source_label,
-                                   evidence_id=record.id if record else None, conn=c)
+                    made = store.add_note(entity.id, fact.strip(), occurred_at=occurred, source=source_label,
+                                          evidence_id=record.id if record else None, conn=c)
+                    note_ids.setdefault(ent["ref"], []).append(made.id)
                     counts["notes"] += 1
 
         if payload.get("hat_id") and db.one("SELECT 1 AS x FROM crm_hats WHERE id = ?", (payload["hat_id"],)):
@@ -903,9 +906,9 @@ def _apply(row_id: str, proposal: dict) -> tuple[dict, list[str], str | None]:
             if target:
                 heading = spec.get("title") or row["title"] or "Source"
                 body = row["raw_text"] if record else f"{heading}\n\n{row['raw_text']}"
-                store.add_note(target, body, occurred_at=occurred,
-                               source="document" if row["source"] == "document" else payload.get("origin") or "ingest",
-                               evidence_id=record.id if record else None, conn=c)
+                text_note = store.add_note(target, body, occurred_at=occurred,
+                                           source="document" if row["source"] == "document" else payload.get("origin") or "ingest",
+                                           evidence_id=record.id if record else None, conn=c).id
                 counts["notes"] += 1
 
         # A title says what someone is at one place: with several jobs in one source, it isn't known which it belongs to.
@@ -931,7 +934,8 @@ def _apply(row_id: str, proposal: dict) -> tuple[dict, list[str], str | None]:
             counts["relationships"] += int(created)
 
         result = {**counts, "record_id": record.id if record else None, "record_kind": record.kind if record else None,
-                  "subject_id": ids.get(proposal.get("subject_ref") or ""), "entity_ids": dict(ids), "planted": planted}
+                  "subject_id": ids.get(proposal.get("subject_ref") or ""), "entity_ids": dict(ids), "planted": planted,
+                  "notes_made": note_ids, "text_note": text_note}
         inbox.update(row_id, conn=c, proposal=proposal, status="applied", error=None, result=result)
     return result, new_actions if (record and record.kind == "meeting") else [], record.id if record else None
 
