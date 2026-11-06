@@ -491,6 +491,18 @@ def _candidates(candidates: list[resolve.Candidate]) -> list[dict]:
     return [c.as_dict(subtitle(c.entity)) for c in candidates]
 
 
+def _first_name_is_owner(owner, name: str, email: str | None) -> bool:
+    """The owner by their first name alone: not when an email says it's someone else (another record's, or not the owner's)."""
+    if not owner or (name or "").strip().lower() != owner.name.split()[0].lower():
+        return False
+    if not email:
+        return True
+    wanted, theirs = email.strip().lower(), str((owner.attributes or {}).get("email") or "").strip().lower()
+    if theirs:
+        return wanted == theirs
+    return not any(c.entity.id != owner.id for c in resolve.find_candidates("person", "", email))
+
+
 def _settled_by_hat(candidates: list[resolve.Candidate], hat_id: str | None) -> tuple[resolve.Candidate | None, bool]:
     """A first name alone is settled when exactly one of the people it could be is someone you know in this hat: "Theo"
     in a Parks Board meeting is the Theo from Parks Board. Otherwise it waits for you."""
@@ -528,7 +540,7 @@ def build_proposal(row: dict, extraction: Extraction, warnings: list[str], *, br
                 written_as[re.sub(r"[\s_]+", " ", original).strip().lower()] = ent.ref
         # You, by your first name alone, in your own meeting.
         is_owner = is_owner or bool(owner and ent.kind == "person" and record_kind == "meeting"
-                                    and (ent.name.strip().lower() == owner.name.split()[0].lower() or "(the crm owner)" in ent.name.lower()))
+                                    and (_first_name_is_owner(owner, ent.name, ent.email) or "(the crm owner)" in ent.name.lower()))
         candidates = resolve.find_candidates(ent.kind, ent.name, ent.email)
         match, ambiguous = resolve.pick_match(candidates, MATCH_THRESHOLD)
         if ambiguous:
@@ -667,7 +679,7 @@ def _merge_invitees(row: dict, entities: list[dict], kinds_by_ref: dict[str, str
             ent["role"] = "attendee"
         if email and not ent.get("email"):
             ent["email"] = email
-        if owner and (a.get("is_self") or ent["name"].strip().lower() == owner.name.split()[0].lower()):
+        if owner and (a.get("is_self") or _first_name_is_owner(owner, ent["name"], ent.get("email"))):
             ent.update(match_id=owner.id, action="link", ambiguous=False, is_self=True, candidates=[])
             continue
         if not ent["is_self"] and (ent["action"] == "create" or ent["ambiguous"]):

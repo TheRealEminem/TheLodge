@@ -340,3 +340,16 @@ def test_people_can_be_narrowed_by_each_kind_of_group_on_its_own(client, me):
     assert [(t["name"], t["count"]) for t in f["meeting_tags"]] == [("cold-chain", 1)]
     narrowed = client.get("/api/crm/people/facets", params={"org": acme["id"]}).json()
     assert {t["name"]: t["count"] for t in narrowed["tags"]} == {"investor": 2, "mentor": 1}
+
+
+# ── Review fixes ──────────────────────────────────────────────────────
+
+def test_an_invitee_with_the_owners_first_name_but_another_persons_email_is_not_the_owner(client, fake_structured, me):
+    guest = make(client, "person", "Alex Guest", attributes={"email": "alex.guest@elsewhere.example"})
+    fake_structured.reply = extraction([entity("p1", "Alex", role="attendee", email="alex.guest@elsewhere.example")])
+    made, _ = ingest.create_meeting_job(origin="trailmix", external_id="tm-own", title="Sync", started_at="2026-10-01T17:00:00Z", notes="Alex spoke.",
+                                        attendees=[{"name": "Alex", "email": "alex.guest@elsewhere.example"}], auto_apply=False)
+    jobs.drain()
+    ents = client.get(f"/api/crm/ingest/jobs/{made['id']}").json()["proposal"]["entities"]
+    assert all(not e["is_self"] and e["match_id"] != me["id"] for e in ents)
+    assert any(e["match_id"] == guest["id"] for e in ents)
