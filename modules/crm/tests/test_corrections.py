@@ -1,6 +1,6 @@
 """Putting right what an import got wrong: names that only look alike, a source on the wrong person, words the AI wrote
 about someone. And hats: who's in one, and meetings coming in from Trailmix under theirs."""
-from core.server import jobs
+from core.server import db, jobs
 
 from modules.crm.server import hats, ingest, resolve, store
 
@@ -353,3 +353,17 @@ def test_an_invitee_with_the_owners_first_name_but_another_persons_email_is_not_
     ents = client.get(f"/api/crm/ingest/jobs/{made['id']}").json()["proposal"]["entities"]
     assert all(not e["is_self"] and e["match_id"] != me["id"] for e in ents)
     assert any(e["match_id"] == guest["id"] for e in ents)
+
+
+def test_applying_a_proposal_does_not_link_back_to_a_record_blocked_for_that_name_by_its_email(client, fake_structured, me):
+    dana = make(client, "person", "Dana Whitfield", attributes={"email": "dana@harbor.example"})
+    db.execute("INSERT INTO crm_name_blocks (entity_id, name, created_at) VALUES (?, ?, ?)", (dana["id"], "dana whitfield", db.now()))
+    row = proposal_row(client, fake_structured, [entity("p1", "Dana Whitfield", role="attendee", email="dana@harbor.example")],
+                       text="Dana Whitfield gave the harbor update.", auto_apply=False)
+    proposal = row["proposal"]
+    for e in proposal["entities"]:
+        if e["ref"] == "p1":
+            e.update(action="create", match_id=None, ambiguous=False)
+    assert client.post(f"/api/crm/ingest/jobs/{row['id']}/apply", json={"proposal": proposal}).status_code == 200
+    made = client.get(f"/api/crm/ingest/jobs/{row['id']}").json()["result"]["entity_ids"]["p1"]
+    assert made != dana["id"]

@@ -750,12 +750,12 @@ def _validate(proposal: dict) -> None:
 
 def _existing_exact(c, kind: str, name: str, email: str | None):
     """Exact email or name/alias match: catches records created since the proposal was built."""
+    blocked = store.blocked_for(name, c)
     if email:
-        row = c.execute("SELECT * FROM crm_entities WHERE kind = ? AND lower(json_extract(attributes, '$.email')) = ? LIMIT 1",
-                        (kind, email.lower())).fetchone()
+        row = c.execute("SELECT * FROM crm_entities WHERE kind = ? AND lower(json_extract(attributes, '$.email')) = ? AND id NOT IN (SELECT value FROM json_each(?)) LIMIT 1",
+                        (kind, email.lower(), json.dumps(sorted(blocked)))).fetchone()
         if row:
             return store._entity(row)
-    blocked = store.blocked_for(name, c)
     rows = [r for r in c.execute("SELECT * FROM crm_entities WHERE kind = ? AND lower(name) = ?", (kind, name.lower())).fetchall()
             if r["id"] not in blocked]
     if len(rows) == 1:
