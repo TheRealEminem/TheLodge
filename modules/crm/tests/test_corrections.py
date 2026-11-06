@@ -395,3 +395,20 @@ def test_a_merge_carries_hat_placements_and_blocked_names_and_an_unmerge_puts_th
     store.unmerge(merge["id"])
     assert gone["id"] in hats.people_in(hat) and keep["id"] not in hats.people_in(hat)
     assert store.blocked_for("dana whitfield jr") == {gone["id"]}
+
+
+def test_a_value_you_had_before_an_import_repeated_it_stays_when_the_source_comes_off(client, fake_structured, me):
+    ana = make(client, "person", "Ana Ruiz", attributes={"title": "Pilot lead"}, tags=["pilots"])
+    store.update_entity(ana["id"], source="ai")
+    fake_structured.reply = extraction([entity("p1", "Ana Ruiz", title="Pilot lead", tags=["pilots"])], title="Doc", doc_type="document")
+    r = client.post("/api/crm/ingest/notes", json={"text": "Ana Ruiz runs pilots here."})
+    jobs.drain()
+    row = client.get(f"/api/crm/ingest/jobs/{r.json()['id']}").json()
+    if row["status"] == "review":
+        client.post(f"/api/crm/ingest/jobs/{row['id']}/apply", json={"proposal": row["proposal"]})
+        row = client.get(f"/api/crm/ingest/jobs/{row['id']}").json()
+    doc = row["result"]["record_id"]
+    assert client.get(f"/api/crm/entities/{ana['id']}/sources/{doc}").json()["fields"] == []
+    client.post(f"/api/crm/entities/{ana['id']}/sources/{doc}/detach", json={})
+    kept = store.get_entity(ana["id"])
+    assert kept.attributes["title"] == "Pilot lead" and kept.tags == ["pilots"]
