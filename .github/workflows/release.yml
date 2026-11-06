@@ -4,6 +4,10 @@
 #       -> builds, runs scripts/smoke-test.sh, publishes <Name>-0.2.0-arm64.dmg (+ .sha256, and <Name>-arm64.dmg for
 #          a download page; spaces left out of the names) as a pre-release
 #   Actions tab -> "Build Mac app" -> Run   -> builds and tests it, keeps it as a downloadable artifact only
+#     ... on main, with "Release it" ticked -> tags main as v<VERSION> and publishes it, as a pushed tag would
+#     ... and "To everyone" ticked too      -> also promotes it right away (scripts/promote-beta.sh), skipping the beta days
+# No terminal needed: the Run button works from the GitHub website or app. Releasing stays a person's call;
+# automation (Claude Code sessions included) shouldn't press it on its own.
 #
 # A pre-release reaches only the people with "Beta updates" on. promote.yml makes it the release everyone gets
 # after a few days, unless an open issue is labelled "blocks release". With no updateRepo in app.json, updates are
@@ -16,6 +20,15 @@ on:
   push:
     tags: ["v*"]
   workflow_dispatch:
+    inputs:
+      release:
+        description: "Release it: tag main as v<VERSION> and publish it as a beta (unticked: a test build only)"
+        type: boolean
+        default: false
+      everyone:
+        description: "To everyone: promote it right away instead of after 3 days as a beta (needs Release it)"
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -24,8 +37,8 @@ jobs:
   mac:
     runs-on: macos-15   # Apple silicon. Its Swift is older than a current Mac's: see ARCHITECTURE.md, "Gotchas".
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: 20
           cache: npm
@@ -34,17 +47,37 @@ jobs:
         run: |
           echo "name=$(jq -r .name app.json)" >>"$GITHUB_OUTPUT"
           echo "repo=$(jq -r '.updateRepo // ""' app.json)" >>"$GITHUB_OUTPUT"
-      - name: The tag matches VERSION
-        if: startsWith(github.ref, 'refs/tags/v')
+      # The release this run makes, if any: the pushed tag, or v<VERSION> when run with "Release it". Checked before
+      # the build, so a version that's already out (VERSION not bumped) stops here rather than after it.
+      - name: Which version this releases
+        id: release
+        env:
+          RELEASE: ${{ inputs.release && '1' || '0' }}
         run: |
+          tag=""
           version="$(tr -d '[:space:]' <VERSION)"
-          if [ "${GITHUB_REF_NAME#v}" != "$version" ]; then
-            echo "::error::The tag is $GITHUB_REF_NAME but VERSION says $version. Bump VERSION, commit, and tag that commit."
-            exit 1
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            tag="$GITHUB_REF_NAME"
+            if [ "${tag#v}" != "$version" ]; then
+              echo "::error::The tag is $tag but VERSION says $version. Bump VERSION, commit, and tag that commit."; exit 1
+            fi
+          elif [[ "$RELEASE" == 1 ]]; then
+            [[ "$GITHUB_REF" == refs/heads/main ]] || { echo "::error::Releases are made from main, not $GITHUB_REF_NAME"; exit 1; }
+            tag="v$version"
+            if git ls-remote --exit-code --tags origin "refs/tags/$tag" >/dev/null; then
+              echo "::error::$tag is already out. Bump VERSION first."; exit 1
+            fi
           fi
+          echo "tag=$tag" >>"$GITHUB_OUTPUT"
+          echo "${tag:-A test build: nothing is published}"
       - name: Build the app and the disk image
-        run: scripts/build-app.sh --dmg
-      - uses: actions/upload-artifact@v4
+        env:
+          TAG: ${{ steps.release.outputs.tag }}
+        run: |
+          # A test build gets a version newer than the release, so there is something to update to.
+          if [[ -z "$TAG" ]]; then export VERSION="$(tr -d '[:space:]' <VERSION).$GITHUB_RUN_NUMBER"; fi
+          scripts/build-app.sh --dmg
+      - uses: actions/upload-artifact@v7
         with:
           name: mac-app
           path: |
@@ -55,23 +88,33 @@ jobs:
           NAME: ${{ steps.app.outputs.name }}
         run: scripts/smoke-test.sh "dist-app/$NAME.app" dist-app/*-arm64.dmg
       - name: Publish the pre-release
-        if: startsWith(github.ref, 'refs/tags/v') && steps.app.outputs.repo != ''
+        if: steps.release.outputs.tag != '' && steps.app.outputs.repo != ''
         env:
           GH_TOKEN: ${{ secrets.RELEASE_TOKEN || secrets.GITHUB_TOKEN }}
           REPO: ${{ steps.app.outputs.repo }}
           NAME: ${{ steps.app.outputs.name }}
+          TAG: ${{ steps.release.outputs.tag }}
         # The files go up without spaces in their names (GitHub would turn "The Lodge" into "The.Lodge"), plus a copy
         # with a fixed name, so a download page can always link to releases/latest/download/<Name>-arm64.dmg
         # ("latest" skips pre-releases, so the page keeps offering the last promoted version). The updater only
         # takes the copy named with its version.
+        # --target makes the tag on this commit when the run was started with "Release it" (a tag made with this
+        # workflow's token doesn't start another run, so it isn't built twice). It only works in this repo.
         run: |
-          slug="${NAME// /}" version="${GITHUB_REF_NAME#v}"
+          slug="${NAME// /}" version="${TAG#v}"
           mkdir publish
           cp "dist-app/$NAME-$version-arm64.dmg" "publish/$slug-$version-arm64.dmg"
           cp "dist-app/$NAME-$version-arm64.dmg" "publish/$slug-arm64.dmg"
           (cd publish && shasum -a 256 "$slug-$version-arm64.dmg" >"$slug-$version-arm64.dmg.sha256")
-          gh release create "$GITHUB_REF_NAME" publish/* --repo "$REPO" \
+          target=(); [ "$REPO" = "$GITHUB_REPOSITORY" ] && target=(--target "$GITHUB_SHA")
+          gh release create "$TAG" publish/* --repo "$REPO" "${target[@]}" \
             --title "$NAME $version" --generate-notes --prerelease
+      - name: Give it to everyone
+        if: steps.release.outputs.tag != '' && steps.app.outputs.repo != '' && inputs.everyone
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_TOKEN || secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.release.outputs.tag }}
+        run: scripts/promote-beta.sh "$TAG"
       - name: Updates are off
-        if: startsWith(github.ref, 'refs/tags/v') && steps.app.outputs.repo == ''
+        if: steps.release.outputs.tag != '' && steps.app.outputs.repo == ''
         run: echo "::notice::app.json has no updateRepo, so nothing was published. The build is kept as the mac-app artifact."

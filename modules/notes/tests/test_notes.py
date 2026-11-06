@@ -34,7 +34,7 @@ def test_with_tasks_on_the_action_items_become_linked_tasks(client, fake_ai):
     note = client.get(f"/api/notes/{note_id}").json()
     tasks = [t for t in client.get("/api/tasks").json() if t["source_ref"] == f"notes:{note_id}"]
     assert sorted(t["text"] for t in tasks) == ["Book the venue", "Email Sam"]
-    assert tasks[0]["source"]["href"] == f"#/notes/{note_id}"
+    assert tasks[0]["came_from"]["href"] == f"#/notes/{note_id}"
     assert {link["title"] for link in note["links"]} == {"Book the venue", "Email Sam"}
 
 

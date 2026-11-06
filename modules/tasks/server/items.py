@@ -119,7 +119,26 @@ def create(text: str, *, project_id=None, milestone_id=None, parent_id=None, sta
     store.index("item", item_id, text, notes or "")
     if not quiet:
         store.changed(project_id, item_id=item_id)
+    if source != "linked":
+        offer(item_id)
     return item_id
+
+
+def offer(item_id: str) -> bool:
+    """New open work in a project that's linked somewhere: says so (contracts.WORK_ADDED), with everything it is, in
+    case whoever keeps that side was told to send a project's new work on its own. Nothing is asked for here; a
+    subtask, a closed task, one in no project or one that's linked already isn't offered. True when it was."""
+    row = db.one("SELECT * FROM tasks_items WHERE id = ?", (item_id,))
+    if (row is None or row["parent_id"] or not row["project_id"] or row["status"] not in vocab.OPEN
+            or db.one("SELECT 1 FROM tasks_synced WHERE item_id = ?", (item_id,))):
+        return False
+    project_ref = _ref(row["project_id"])
+    if not links.targets(project_ref, "synced"):
+        return False
+    local = _ref(item_id)
+    events.publish(contracts.WORK_ADDED, {"ref": local, "local_ref": local, "base": {}, "project_ref": project_ref,
+                                          "fields": {c: row[c] for c in contracts.WORK_FIELDS}})
+    return True
 
 
 def get(item_id: str) -> dict | None:
@@ -283,6 +302,7 @@ def update(item_id: str, changes: dict) -> dict:
     store.changed(fresh["project_id"], item_id=item_id)
     if fresh["project_id"] != row["project_id"]:
         store.changed(row["project_id"], item_id=item_id)
+        offer(item_id)
     return get(item_id)
 
 
@@ -322,6 +342,7 @@ def move(item_id: str, *, project_id=None, milestone_id=None, after_id: str | No
     store.changed(project_id, item_id=item_id)
     if project_id != row["project_id"]:
         store.changed(row["project_id"], item_id=item_id)
+        offer(item_id)
     return get(item_id)
 
 

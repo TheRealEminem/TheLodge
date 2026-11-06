@@ -62,7 +62,59 @@ CORE_MIGRATIONS = [
     );
     CREATE INDEX core_ai_usage_at ON core_ai_usage(at);
     """,
+    lambda conn: _one_ai_tally(conn),
 ]
+
+
+def _one_ai_tally(conn: sqlite3.Connection) -> None:
+    """core_ai_usage was created two ways before the family had one tally (the step above, from the apps that counted
+    tokens and dollars, and pricing.py's, from the app that logged each call with its job, cache reads, failures and
+    Lockdown stops). Both are at the same version, so this step looks at the table it finds and brings either to the one
+    shape pricing.write() fills (tokens_in and tokens_out stay readable, as generated columns). Dollars the first kind couldn't price were stored as 0 with priced = 0: those become
+    NULL (cost not known), as the second kind has them."""
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(core_ai_usage)")}
+    if "input_tokens" in cols:                                  # pricing.py's table: add what the other kind has
+        for name, spec in (("source", "TEXT NOT NULL DEFAULT ''"), ("searches", "INTEGER NOT NULL DEFAULT 0"),
+                           ("local", "INTEGER NOT NULL DEFAULT 0")):
+            if name not in cols:
+                conn.execute(f"ALTER TABLE core_ai_usage ADD COLUMN {name} {spec}")
+        conn.execute("UPDATE core_ai_usage SET local = 1 WHERE provider = 'ollama'")
+        for name, source in (("tokens_in", "input_tokens"), ("tokens_out", "output_tokens")):
+            if name not in cols:
+                conn.execute(f"ALTER TABLE core_ai_usage ADD COLUMN {name} INTEGER GENERATED ALWAYS AS (COALESCE({source}, 0)) VIRTUAL")
+        return
+    conn.executescript("""
+    BEGIN;
+    CREATE TABLE core_ai_usage_one (
+        id            TEXT PRIMARY KEY,
+        at            TEXT NOT NULL,   -- when it finished
+        module        TEXT NOT NULL,   -- whose job asked ("inbox"), "core" for Settings' Test button, "" for neither
+        job           TEXT NOT NULL,   -- that job's kind ("extract"), "test", or ""
+        call          TEXT NOT NULL,   -- complete | structured
+        provider      TEXT NOT NULL,
+        model         TEXT NOT NULL,   -- the one that answered, when the reply says
+        input_tokens  INTEGER,         -- NULL: the provider didn't say (or never answered)
+        cached_tokens INTEGER,         -- how many of input_tokens were read from the provider's cache
+        output_tokens INTEGER,         -- thinking included
+        cost          REAL,            -- US dollars; NULL when the price isn't known, or nothing was spent
+        failed        INTEGER NOT NULL DEFAULT 0,
+        error         TEXT,
+        source        TEXT NOT NULL DEFAULT '',   -- what the call was for ("Note summaries")
+        searches      INTEGER NOT NULL DEFAULT 0, -- web searches paid for
+        local         INTEGER NOT NULL DEFAULT 0, -- ran on this computer
+        -- what the apps that counted before there was one tally called them, for anything that still reads those names
+        tokens_in     INTEGER GENERATED ALWAYS AS (COALESCE(input_tokens, 0)) VIRTUAL,
+        tokens_out    INTEGER GENERATED ALWAYS AS (COALESCE(output_tokens, 0)) VIRTUAL
+    );
+    INSERT INTO core_ai_usage_one (id, at, module, job, call, provider, model, input_tokens, output_tokens, cost, source,
+                                   searches, local)
+        SELECT id, at, '', '', 'complete', provider, model, tokens_in, tokens_out, CASE WHEN priced = 1 THEN cost END,
+               source, searches, local FROM core_ai_usage;
+    DROP TABLE core_ai_usage;
+    ALTER TABLE core_ai_usage_one RENAME TO core_ai_usage;
+    CREATE INDEX core_ai_usage_at ON core_ai_usage(at);
+    COMMIT;
+    """)
 
 
 def new_id() -> str:
@@ -124,13 +176,17 @@ def _keep_private() -> None:
         pass  # e.g. a folder on a drive that has no permissions: nothing to protect there
 
 
-def migrate(module: str, steps: list[str]) -> None:
+def migrate(module: str, steps: list) -> None:
     """Applies the steps this database hasn't seen yet. Never edit or reorder a step once released; add a new one."""
     with connect() as conn:
         row = conn.execute("SELECT version FROM core_migrations WHERE module = ?", (module,)).fetchone()
         done = row["version"] if row else 0
         for i, sql in enumerate(steps[done:], start=done + 1):
-            conn.executescript(f"BEGIN; {sql}; COMMIT;")
+            if callable(sql):                       # a step that has to look at the database before it changes it
+                sql(conn)
+                conn.commit()
+            else:
+                conn.executescript(f"BEGIN; {sql}; COMMIT;")
             conn.execute(
                 "INSERT INTO core_migrations (module, version) VALUES (?, ?) "
                 "ON CONFLICT(module) DO UPDATE SET version = excluded.version",

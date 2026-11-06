@@ -20,6 +20,8 @@ BUNDLE_ID="$(field bundleId)"
 PREFIX="$(field envPrefix)"
 PORT="$(field port)"
 UPDATE_REPO="$(field updateRepo 2>/dev/null || true)"
+# Why the app reads your calendar, in macOS's words; an app without one never asks (mac/.../CalendarBridge.swift).
+CALENDAR_USE="$(field calendarUse 2>/dev/null | sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g' || true)"
 VERSION="${VERSION:-$(tr -d '[:space:]' <"$ROOT/VERSION")}"
 OUT="${OUT:-$ROOT/dist-app}"   # where the app (and disk image) go
 APP="$OUT/$NAME.app"
@@ -80,8 +82,10 @@ cat >"$APP/Contents/Info.plist" <<PLIST
   <key>FamilyEnvPrefix</key><string>$PREFIX</string>
   <key>FamilyPort</key><string>$PORT</string>
   <key>FamilyUpdateRepo</key><string>$UPDATE_REPO</string>
+$([ -n "$CALENDAR_USE" ] && printf '  <key>NSCalendarsFullAccessUsageDescription</key><string>%s</string>\n  <key>NSCalendarsUsageDescription</key><string>%s</string>' "$CALENDAR_USE" "$CALENDAR_USE")
 </dict></plist>
 PLIST
+plutil -lint -s "$APP/Contents/Info.plist" || die "Info.plist didn't come out right (check app.json's text)."
 
 # ── Python runtime ─────────────────────────────────────────────────────
 mkdir -p "$CACHE"

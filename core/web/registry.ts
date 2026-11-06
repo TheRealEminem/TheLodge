@@ -33,6 +33,17 @@ export interface ModuleWeb {
   settings?: ComponentType;
   /** One screen of the first run, after the host's own ("Bring your people in"). Call next() to go on; it can be skipped. */
   setupStep?: { title: string; view: ComponentType<{ next: () => void }> };
+  /**
+   * The first page of the day. Asked when the app opens at Home (and when its window comes back on a new day): a path
+   * to show instead, without "#/", or null. The first enabled module with an answer wins.
+   */
+  start?: () => Promise<string | null>;
+  /**
+   * Work the module does in the page while the app is open, on any screen: a component that renders nothing visible
+   * (e.g. sending what the Mac app's window can read to the module's server). Keep it light, and keep the module
+   * working without it, as it doesn't run in a server install nobody has open.
+   */
+  background?: ComponentType;
 }
 
 const found = import.meta.glob<{ default: ModuleWeb }>("../../modules/*/web/index.tsx", { eager: true });

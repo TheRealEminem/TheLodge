@@ -2,17 +2,19 @@
 // Every field saves as you leave it.
 import { useState } from "react";
 import type { ReactNode } from "react";
-import { LinkedList } from "@core/components/blocks";
-import { BackIcon, ChatIcon, TrashIcon } from "@core/components/icons";
+import { LinkedList, PersonPicker } from "@core/components/blocks";
+import type { PersonChoice } from "@core/api";
+import { BackIcon, ChatIcon, SparkleIcon, TrashIcon } from "@core/components/icons";
 import { ControlRow, Segmented, Select, Skeleton, StatusChip, useConfirm } from "@core/components/ui";
 import { formatDate, relativeTime } from "@core/format";
 import { useLive } from "@core/live";
 import type { RouteProps } from "@core/registry";
 import { navigate } from "@core/router";
-import { useShell } from "@core/shell";
+import { useSettings, useShell } from "@core/shell";
 import { tasksApi } from "./api";
 import type { Status, Task, TaskDetail } from "./api";
 import { formatMinutes, parseMinutes } from "./dates";
+import { BreakDownButton, BreakdownPanel, OfferUpdate, whoWrote } from "./Drafts";
 import { Field } from "./Field";
 import { SyncedPanel } from "./Synced";
 import { Check, TaskList } from "./TaskRow";
@@ -29,15 +31,30 @@ function Block({ title, children, action }: { title: string; children: ReactNode
   );
 }
 
+/** A stored ref and name as the picker shows them: you by your name (or "You"), someone else by theirs. */
+export function personChoice(ref: string | null, name: string | null, yourName: string): PersonChoice | null {
+  if (ref === "core:me") return { ref, name: yourName || "You" };
+  if (ref || name) return { ref, name: name || "Someone" };
+  return null;
+}
+
+/** What the picker chose, as the task's fields: your own name isn't stored (you're "core:me" wherever you're named). */
+function assigneeFields(who: PersonChoice | null): Partial<Task> {
+  if (!who) return { assignee_ref: null, assignee_name: null };
+  return { assignee_ref: who.ref, assignee_name: who.ref === "core:me" ? null : who.name };
+}
+
 export default function TaskPage({ params }: RouteProps) {
   const id = params.id;
   const { toast } = useShell();
+  const yourName = (useSettings().get<string>("core.your_name") ?? "").trim();
   const [confirm, dialog] = useConfirm();
   const { data: task, reload, error } = useLive<TaskDetail>(() => tasksApi.get(id), [id]);
   const { data: meta } = useLive(tasksApi.meta);
   const { data: projectList } = useLive(tasksApi.projects);
   const { data: project } = useLive(() => (task?.project_id ? tasksApi.project(task.project_id) : Promise.resolve(null)), [task?.project_id]);
   const { data: openTasks } = useLive(() => tasksApi.list({ status: "open", parent: "any" }));
+  const { data: breakdown, reload: reloadBreakdown } = useLive(() => tasksApi.breakdown(id), [id]);
   const [subtask, setSubtask] = useState("");
   const [comment, setComment] = useState("");
   const [notes, setNotes] = useState<string | null>(null);
@@ -61,6 +78,9 @@ export default function TaskPage({ params }: RouteProps) {
   if (!task) return <Skeleton className="h-64 w-full rounded-xl" />;
 
   const status = meta?.statuses.find((s) => s.value === task.status);
+  const proposedBy = typeof task.attributes?.written_by === "string" ? task.attributes.written_by : null;
+  const linked = task.synced && !task.synced.removed_at ? task.synced.source : null;
+  const changed = () => void Promise.all([reload(), reloadBreakdown()]);
   const blockable = (openTasks ?? []).filter((t) => t.id !== task.id && !task.blocked_by.some((b) => b.id === t.id));
   const remove = async () => {
     const ok = await confirm({
@@ -113,12 +133,19 @@ export default function TaskPage({ params }: RouteProps) {
               From {task.came_from.title}
             </a>
           )}
+          {proposedBy && (
+            <span className="inline-flex items-center gap-1">
+              <SparkleIcon size={13} className="text-ink-faint" />
+              Proposed by {proposedBy}
+              {task.attributes?.edited ? ", edited by you" : ""}
+            </span>
+          )}
           <span data-tip={formatDate(task.created_at)}>Added {relativeTime(task.created_at)}</span>
           {task.completed_at && <span>Done {relativeTime(task.completed_at)}</span>}
         </p>
       </header>
 
-      <SyncedPanel task={task} meta={meta ?? null} onChanged={() => void reload()} />
+      <SyncedPanel task={task} meta={meta ?? null} project={project ?? null} onChanged={() => void reload()} />
 
       <section className="panel mt-8 animate-enter divide-y divide-line px-5">
         <ControlRow label="Status">
@@ -155,13 +182,14 @@ export default function TaskPage({ params }: RouteProps) {
             />
           </ControlRow>
         )}
-        <ControlRow label="Assignee" hint="Empty: it's yours. A name: it's theirs, and shows under Waiting on others.">
-          <Field
+        <ControlRow label="Assignee" hint="No one named: it's yours. Someone else: it's theirs, and shows under Waiting on others.">
+          <PersonPicker
             label="Assignee"
             className="w-full sm:w-56"
             placeholder="You"
-            value={task.assignee_ref === "core:me" ? "" : task.assignee_name ?? ""}
-            onSave={(v) => void save({ assignee_ref: null, assignee_name: v.trim() || null })}
+            noneLabel="No one named (yours)"
+            value={personChoice(task.assignee_ref, task.assignee_name, yourName)}
+            onChange={(who) => void save(assigneeFields(who))}
           />
         </ControlRow>
         <ControlRow label="Due">
@@ -208,7 +236,11 @@ export default function TaskPage({ params }: RouteProps) {
         />
       </Block>
 
-      <Block title={`Subtasks${task.subtasks.length ? ` · ${task.subtasks.filter((s) => s.done).length} of ${task.subtasks.length} done` : ""}`}>
+      <Block
+        title={`Subtasks${task.subtasks.length ? ` · ${task.subtasks.filter((s) => s.done).length} of ${task.subtasks.length} done` : ""}`}
+        action={<BreakDownButton taskId={task.id} draft={breakdown} onChanged={changed} />}
+      >
+        <BreakdownPanel draft={breakdown} onChanged={changed} />
         {task.subtasks.length > 0 && (
           <div className="mb-2">
             <TaskList tasks={task.subtasks} meta={meta ?? null} onChanged={() => void reload()} label="Subtasks" />
@@ -274,9 +306,11 @@ export default function TaskPage({ params }: RouteProps) {
             {task.updates.map((u) => (
               <li key={u.id} className="inset-surface px-4 py-3">
                 <p className="whitespace-pre-wrap text-label leading-relaxed">{u.body}</p>
-                <p className="mt-1.5 text-meta text-ink-soft">
-                  {u.written_by ? `Written by ${u.written_by}` : u.author_ref === "core:me" || !u.author_name ? "You" : u.author_name} ·{" "}
-                  {relativeTime(u.created_at)}
+                <p className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-meta text-ink-soft">
+                  <span>
+                    {whoWrote(u)} · {relativeTime(u.created_at)}
+                  </span>
+                  <OfferUpdate update={u} targets={linked ? [task] : []} where={linked} onTask onChanged={changed} />
                 </p>
               </li>
             ))}

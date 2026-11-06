@@ -1,4 +1,5 @@
-// The sidebar: the app's mark, the main action, search across every module, and each module's navigation.
+// The sidebar: the app's mark, Lockdown's sign while it's on, the main action, search across every module, and each
+// module's navigation.
 import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { api } from "./api";
@@ -7,6 +8,7 @@ import { CloseIcon, HomeIcon, SearchIcon, SlidersIcon } from "./components/icons
 import { Logo } from "./components/illustrations";
 import type { ModuleWeb } from "./registry";
 import { useShell } from "./shell";
+import { LockdownSign } from "./views/Lockdown";
 
 function NavLink({ icon, label, href, active, badge }: { icon: ReactNode; label: string; href: string; active: boolean; badge?: ReactNode }) {
   return (
@@ -78,6 +80,8 @@ export default function Sidebar({ modules, path, opaque }: { modules: ModuleWeb[
           {app.tagline && <div className="mt-1.5 text-caption leading-none text-ink-faint">{app.tagline}</div>}
         </div>
       </a>
+
+      <LockdownSign />
 
       <div className="px-4">
         {primary && (
