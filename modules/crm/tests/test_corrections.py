@@ -381,3 +381,17 @@ def test_a_first_name_waits_when_a_second_person_by_that_name_is_in_the_hat_past
     jobs.drain()
     ent = next(e for e in client.get(f"/api/crm/ingest/jobs/{made['id']}").json()["proposal"]["entities"] if e["ref"] == "p1")
     assert ent["match_id"] is None and ent["ambiguous"]
+
+
+def test_a_merge_carries_hat_placements_and_blocked_names_and_an_unmerge_puts_them_back(client, me):
+    hat = hats.create("Parks Board")
+    keep, gone = make(client, "person", "Dana Whitfield"), make(client, "person", "D. Whitfield")
+    hats.place(hat, [gone["id"]], "you")
+    db.execute("INSERT INTO crm_name_blocks (entity_id, name, created_at) VALUES (?, ?, ?)", (gone["id"], "dana whitfield jr", db.now()))
+    store.merge_entities(gone["id"], keep["id"])
+    assert keep["id"] in hats.people_in(hat)
+    assert keep["id"] in store.blocked_for("dana whitfield jr")
+    merge = store.merges_into(keep["id"])[0]
+    store.unmerge(merge["id"])
+    assert gone["id"] in hats.people_in(hat) and keep["id"] not in hats.people_in(hat)
+    assert store.blocked_for("dana whitfield jr") == {gone["id"]}
