@@ -226,6 +226,12 @@ def stamp(event_id: str, hat_id: str, conn: sqlite3.Connection | None = None) ->
                   "ON CONFLICT(hat_id, entity_id) DO NOTHING", (hat_id, event_id, db.now()))
 
 
+def unstamp(event_id: str, conn: sqlite3.Connection | None = None) -> None:
+    """A meeting or document is no longer in any hat's workspace (a hat you put it in yourself stays)."""
+    with _use(conn) as c:
+        c.execute("DELETE FROM crm_hat_links WHERE entity_id = ? AND how = 'source'", (event_id,))
+
+
 def source_hat(event_id: str) -> str | None:
     row = db.one("SELECT hat_id FROM crm_hat_links WHERE entity_id = ? AND how = 'source' LIMIT 1", (event_id,))
     return row["hat_id"] if row else None
