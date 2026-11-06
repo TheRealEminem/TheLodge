@@ -367,3 +367,17 @@ def test_applying_a_proposal_does_not_link_back_to_a_record_blocked_for_that_nam
     assert client.post(f"/api/crm/ingest/jobs/{row['id']}/apply", json={"proposal": proposal}).status_code == 200
     made = client.get(f"/api/crm/ingest/jobs/{row['id']}").json()["result"]["entity_ids"]["p1"]
     assert made != dana["id"]
+
+
+def test_a_first_name_waits_when_a_second_person_by_that_name_is_in_the_hat_past_the_shortlist(client, fake_structured, me):
+    hat = hats.create("Parks Board")
+    for n in ("Theo Ames", "Theo Bell"):
+        make(client, "person", n)
+    members = [make(client, "person", n) for n in ("Theo Marsh", "Theo Zimmer")]
+    hats.place(hat, [m["id"] for m in members], "you")
+    fake_structured.reply = extraction([entity("p1", "Theo", role="attendee")])
+    made, _ = ingest.create_meeting_job(origin="trailmix", external_id="tm-4", title="Parks", started_at="2026-10-01T17:00:00Z", notes="Theo presented.",
+                                        hat_id=hat, auto_apply=False)
+    jobs.drain()
+    ent = next(e for e in client.get(f"/api/crm/ingest/jobs/{made['id']}").json()["proposal"]["entities"] if e["ref"] == "p1")
+    assert ent["match_id"] is None and ent["ambiguous"]

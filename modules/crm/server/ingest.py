@@ -503,12 +503,15 @@ def _first_name_is_owner(owner, name: str, email: str | None) -> bool:
     return not any(c.entity.id != owner.id for c in resolve.find_candidates("person", "", email))
 
 
-def _settled_by_hat(candidates: list[resolve.Candidate], hat_id: str | None) -> tuple[resolve.Candidate | None, bool]:
+def _settled_by_hat(candidates: list[resolve.Candidate], hat_id: str | None, name: str | None = None,
+                    email: str | None = None) -> tuple[resolve.Candidate | None, bool]:
     """A first name alone is settled when exactly one of the people it could be is someone you know in this hat: "Theo"
     in a Parks Board meeting is the Theo from Parks Board. Otherwise it waits for you."""
     if not hat_id:
         return None, True
     members = hats.people_in(hat_id)
+    if name:   # the shortlist is cut to a few: "only one in this hat" has to be true of everyone it could be
+        candidates = resolve.find_candidates("person", name, email, limit=1000)
     near = [c for c in candidates if c.fit == "partial" and c.entity.id in members]
     return (near[0], False) if len(near) == 1 else (None, True)
 
@@ -544,7 +547,7 @@ def build_proposal(row: dict, extraction: Extraction, warnings: list[str], *, br
         candidates = resolve.find_candidates(ent.kind, ent.name, ent.email)
         match, ambiguous = resolve.pick_match(candidates, MATCH_THRESHOLD)
         if ambiguous:
-            match, ambiguous = _settled_by_hat(candidates, hat_id)
+            match, ambiguous = _settled_by_hat(candidates, hat_id, ent.name, ent.email)
         if is_owner:
             match_id, ambiguous = owner.id, False
         elif forced_id and ent.ref == subject:
@@ -687,7 +690,7 @@ def _merge_invitees(row: dict, entities: list[dict], kinds_by_ref: dict[str, str
             candidates = resolve.find_candidates("person", ent["name"], ent.get("email"))
             match, ambiguous = resolve.pick_match(candidates, MATCH_THRESHOLD)
             if ambiguous:
-                match, ambiguous = _settled_by_hat(candidates, row["payload"].get("hat_id"))
+                match, ambiguous = _settled_by_hat(candidates, row["payload"].get("hat_id"), ent["name"], ent.get("email"))
             if match:
                 ent.update(match_id=match.entity.id, action="link", ambiguous=ambiguous)
             elif ambiguous:
