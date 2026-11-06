@@ -46,7 +46,7 @@ jobs:
       slug: ${{ steps.p.outputs.slug }}
       repo: ${{ steps.p.outputs.repo }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - id: p
         env:
           SEL: ${{ inputs.platforms || 'all' }}
@@ -87,7 +87,7 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           workspaces: desktop/src-tauri
@@ -110,15 +110,15 @@ jobs:
       ARCH: ${{ matrix.arch }}
       VERSION: ${{ needs.plan.outputs.version }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: 20
           cache: npm
           cache-dependency-path: |
             package-lock.json
             desktop/package-lock.json
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
@@ -126,7 +126,7 @@ jobs:
           workspaces: desktop/src-tauri
           key: windows-${{ matrix.arch }}
           save-if: ${{ github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/') }}
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         with:
           path: build/cache
           key: python-runtime-windows-${{ matrix.arch }}-${{ hashFiles('scripts/build-windows.py') }}
@@ -135,7 +135,7 @@ jobs:
       - name: "Smoke test: a fresh install"
         shell: pwsh
         run: python scripts/smoke-test-windows.py (Get-Item "dist-app/*-windows-$env:ARCH.exe").FullName
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: windows-${{ matrix.arch }}
           retention-days: 7
@@ -143,7 +143,7 @@ jobs:
             dist-app/*.exe
             dist-app/*.sha256
             dist-app/*.png
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: failure()
         with:
           name: failed-windows-${{ matrix.arch }}
@@ -168,7 +168,7 @@ jobs:
       REPO: ${{ needs.plan.outputs.repo }}
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: The current release's installer
         id: current
         shell: bash
@@ -181,7 +181,7 @@ jobs:
             echo "found=false" >>"$GITHUB_OUTPUT"
             echo "No release has a Windows installer yet: building this code again as 0.0.1 to update from"
           fi
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         if: steps.current.outputs.found == 'false'
         with:
           node-version: 20
@@ -189,7 +189,7 @@ jobs:
           cache-dependency-path: |
             package-lock.json
             desktop/package-lock.json
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         if: steps.current.outputs.found == 'false'
         with:
           python-version: "3.12"
@@ -199,7 +199,7 @@ jobs:
           workspaces: desktop/src-tauri
           key: windows-${{ matrix.arch }}
           save-if: false
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         if: steps.current.outputs.found == 'false'
         with:
           path: build/cache
@@ -210,7 +210,7 @@ jobs:
           VERSION: 0.0.1
           OUT: previous
         run: python scripts/build-windows.py
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: windows-${{ matrix.arch }}-previous
           retention-days: 3
@@ -228,15 +228,15 @@ jobs:
     env:
       ARCH: ${{ matrix.arch }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: windows-${{ matrix.arch }}
           path: dist-app
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: windows-${{ matrix.arch }}-previous
           path: previous
@@ -258,11 +258,11 @@ jobs:
     env:
       ARCH: ${{ matrix.arch }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: windows-${{ matrix.arch }}
           path: dist-app
@@ -286,11 +286,11 @@ jobs:
       VERSION: ${{ needs.plan.outputs.version }}
       TAG: ${{ github.ref_name }}
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: windows-x64
           path: dist-app
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: windows-arm64
           path: dist-app

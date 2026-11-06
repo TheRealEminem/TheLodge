@@ -1,6 +1,6 @@
 {
-  "commit": "f4c8932653ab3d72e7213b6eb207d8ab53af14ea",
-  "subject": "Tests never reach a real model server: Ollama's address points at nothing, so a queued job fails at once",
+  "commit": "118e656b5cdc8e1dc530ab8b1f3248af194e9597",
+  "subject": "Windows and Linux builds: the same newer actions as the other workflows",
   "synced_on": "2026-11-05",
   "note": "The TrailmixFamily commit this app's shared code comes from. Change it with scripts/sync-family."
 }
