@@ -212,16 +212,14 @@ def move_report(entity_id: str, inbox_id: str, *, to_id: str | None = None, new_
         for n in notes:
             c.execute("UPDATE crm_notes SET entity_id = ? WHERE id = ?", (target.id, n["id"]))
         names = {e["name"].strip().lower() for e in ents if len((e.get("name") or "").split()) > 1 and e["name"].strip().lower() != target.name.strip().lower()}
-        block = None
-        for name in names:
-            if c.execute("INSERT OR IGNORE INTO crm_name_blocks (entity_id, name, created_at) VALUES (?, ?, ?)", (entity_id, name, db.now())).rowcount:
-                block = name
+        blocks = [name for name in sorted(names) if c.execute(
+            "INSERT OR IGNORE INTO crm_name_blocks (entity_id, name, created_at) VALUES (?, ?, ?)", (entity_id, name, db.now())).rowcount]
         given = _take_planted(entity, target, planted, c)
         new_result = {**result, "entity_ids": {ref: (target.id if eid == entity_id else eid) for ref, eid in held.items()}}
         if result.get("subject_id") == entity_id:
             new_result["subject_id"] = target.id
         c.execute("UPDATE crm_inbox SET result = ? WHERE id = ?", (json.dumps(new_result), inbox_id))
-        snap = {"edges": kept, "notes": notes, "block": block, "created": bool(new_name and not to_id), "created_name": target.name if new_name and not to_id else None, "planted": planted, "given": given,
+        snap = {"edges": kept, "notes": notes, "blocks": blocks, "created": bool(new_name and not to_id), "created_name": target.name if new_name and not to_id else None, "planted": planted, "given": given,
                 "report": {"inbox_id": inbox_id, "result": original}}
         cid = db.new_id()
         c.execute("INSERT INTO crm_corrections (id, entity_id, evidence_id, to_id, name, snapshot, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
@@ -391,8 +389,8 @@ def undo(correction_id: str) -> dict:
             if not c.execute("UPDATE crm_notes SET entity_id = ? WHERE id = ?", (row["entity_id"], note["id"])).rowcount:
                 cols = list(note)
                 c.execute(f"INSERT OR IGNORE INTO crm_notes ({', '.join(cols)}) VALUES ({', '.join('?' for _ in cols)})", [note[k] for k in cols])
-        if snap.get("block"):
-            c.execute("DELETE FROM crm_name_blocks WHERE entity_id = ? AND name = ?", (row["entity_id"], snap["block"]))
+        for name in [snap["block"]] if snap.get("block") else snap.get("blocks") or []:
+            c.execute("DELETE FROM crm_name_blocks WHERE entity_id = ? AND name = ?", (row["entity_id"], name))
         _put_planted_back(row, snap, c)
         if snap.get("report"):
             c.execute("UPDATE crm_inbox SET result = ? WHERE id = ?", (json.dumps(snap["report"]["result"]), snap["report"]["inbox_id"]))
