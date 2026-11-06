@@ -208,7 +208,7 @@ def sync() -> dict:
             for row in listed:
                 hat_id = hat_of.get(row.get("workspace_id"))
                 left_out = (row.get("workspace_id") or 0) in skip or bool(only_tags and not only_tags & set(normalize_tags(row.get("tags") or [])))
-                uid = _carry_over(client, row, hat_id, uids, on_file, left_out)
+                _carry_over(client, row, hat_id, uids, on_file, left_out)
                 when = parse_dt(row.get("created_at"))
                 if since and when and when < since:
                     continue

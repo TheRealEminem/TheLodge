@@ -17,7 +17,6 @@ import logging
 import os
 import json
 import re
-import threading
 import time
 from datetime import date, datetime, time as dtime, timedelta, timezone
 from difflib import SequenceMatcher

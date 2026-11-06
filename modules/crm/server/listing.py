@@ -3,7 +3,7 @@ from datetime import UTC, datetime
 
 from . import resolve, views
 from .kinds import EVENT_KINDS, RELATIONSHIP_KINDS
-from .model import Entity, iso
+from .model import Entity
 from .schemas import EntityDetail, EntityOut, RelationshipView
 
 

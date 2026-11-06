@@ -226,7 +226,7 @@ class Views:
                 people.append(
                     PersonLink(person=self.summary(other), relation=_label(edge, edge.source_id == other), tier=self.tier(other))  # type: ignore[arg-type]
                 )
-        people.sort(key=lambda l: (-TIER_RANK[l.tier], l.person.name.lower()))
+        people.sort(key=lambda link: (-TIER_RANK[link.tier], link.person.name.lower()))
         return EntityContext(
             people=people,
             meetings=self._events("meeting", meetings, set()),
@@ -277,7 +277,7 @@ class Views:
         for other, edge in ix.ties.get(p.id, []):
             add(other, _label(edge, edge.source_id == p.id), (edge.properties or {}).get("context"))
         met: dict[str, int] = {}
-        for meeting_id, present in ix.attendees.items():
+        for present in ix.attendees.values():
             if p.id in present:
                 for other in present - {p.id}:
                     met[other] = met.get(other, 0) + 1
@@ -289,7 +289,7 @@ class Views:
             s = self.orgs.get(org_id)
             for colleague in s.members if s else ():
                 add(colleague, f"colleague at {ents[org_id].name}")
-        people = sorted(links.values(), key=lambda l: (-TIER_RANK[l.tier], l.person.name.lower()))
+        people = sorted(links.values(), key=lambda link: (-TIER_RANK[link.tier], link.person.name.lower()))
 
         meetings: dict[str, str] = {}
         for mid, present in ix.attendees.items():
@@ -335,7 +335,7 @@ class Views:
                         person=self.summary(pid), relation=relation, detail=_role_at(edge, o.name), current=current, tier=self.tier(pid)  # type: ignore[arg-type]
                     )
                 )
-        links.sort(key=lambda l: (not l.current, -TIER_RANK[l.tier], l.person.name.lower()))
+        links.sort(key=lambda link: (not link.current, -TIER_RANK[link.tier], link.person.name.lower()))
 
         relations: dict[str, list[str]] = {}
         for other, edge in ix.org_links.get(o.id, []):
@@ -343,7 +343,7 @@ class Views:
             if label not in relations.setdefault(other, []):
                 relations[other].append(label)
         orgs = [OrgLink(org=self.summary(other), relation=" · ".join(labels)) for other, labels in relations.items()]
-        orgs.sort(key=lambda l: (l.relation, l.org.name.lower()))
+        orgs.sort(key=lambda link: (link.relation, link.org.name.lower()))
 
         staff = s.members | s.past
         meetings: dict[str, str] = {}
@@ -395,8 +395,8 @@ class Views:
                     people.append(PersonLink(person=self.summary(i), relation=relation, tier=self.tier(i)))  # type: ignore[arg-type]
                 elif kind == "organization":
                     orgs.append(OrgLink(org=self.summary(i), relation=relation))
-        people.sort(key=lambda l: (l.relation not in ("attended", "authored"), not l.person.is_self, -TIER_RANK[l.tier], l.person.name.lower()))
-        orgs.sort(key=lambda l: l.org.name.lower())
+        people.sort(key=lambda link: (link.relation not in ("attended", "authored"), not link.person.is_self, -TIER_RANK[link.tier], link.person.name.lower()))
+        orgs.sort(key=lambda link: link.org.name.lower())
         return EntityContext(people=people, orgs=orgs, topics=self._topics(ev.id))
 
 
