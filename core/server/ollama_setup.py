@@ -40,6 +40,9 @@ INSTALL_DIRS = [Path("/Applications"), Path.home() / "Applications"]   # the fir
 OLLAMA_SETUP_EXE = "https://ollama.com/download/OllamaSetup.exe"
 OLLAMA_WINDOWS_SIGNER = "ollama"  # must be in the signer certificate's subject
 
+START_SECONDS = 60          # how long Ollama gets to answer after it's opened
+SERVE_AFTER_SECONDS = 30    # Windows: then its server is started directly
+
 LINUX_INSTALL_COMMAND = "curl -fsSL https://ollama.com/install.sh | sh"
 LINUX_INSTALL_PAGE = "https://ollama.com/download/linux"
 LINUX_SERVICE_FILES = [Path("/etc/systemd/system/ollama.service"), Path("/usr/lib/systemd/system/ollama.service"),
@@ -123,6 +126,8 @@ def _linux_commands(installed: bool) -> dict:
 
 
 def _reachable(url: str) -> bool:
+    if not lockdown.may_reach(url):     # asking another machine's Ollama leaves this computer too
+        return False
     try:
         return httpx.get(f"{url}/api/version", timeout=2).status_code == 200
     except httpx.HTTPError:
@@ -132,7 +137,7 @@ def _reachable(url: str) -> bool:
 def status() -> dict:
     """Everything the setup card shows: installed, running, which models, what to get, and any work in progress."""
     cfg = settings.section("ai")
-    tags = ai._ollama_tags(cfg)
+    tags = ai._ollama_tags(cfg, fresh=True)     # a model that just finished downloading must show, or the card stops looking
     with _lock:
         pull, install = dict(_pull), dict(_install)
     installed = app_path() is not None
@@ -219,10 +224,12 @@ def _run_install(url: str) -> None:
             app = _download_and_install_windows() if sys.platform == "win32" else _download_and_install()
         _set(status="Starting Ollama", progress=None)
         _open(app)
-        for _ in range(60):
+        for second in range(START_SECONDS):
             if _reachable(url):
                 _set(active=False, status="ready", progress=1.0)
                 return
+            if second == SERVE_AFTER_SECONDS and sys.platform == "win32":
+                _serve(app)
             time.sleep(1)
         raise RuntimeError(f"Ollama was installed but didn't start. Open it from {computer.word('apps')}.")
     except Exception as e:  # noqa: BLE001 - shown on the card
@@ -236,8 +243,23 @@ def _open(app: Path) -> None:
         flags = getattr(subprocess, "DETACHED_PROCESS", 0) | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
         subprocess.Popen([str(app)], creationflags=flags, close_fds=True, stdin=subprocess.DEVNULL,
                          stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    elif sys.platform.startswith("linux"):
+        subprocess.Popen([str(app), "serve"], start_new_session=True, close_fds=True, stdin=subprocess.DEVNULL,
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     else:
         subprocess.run(["/usr/bin/open", "-g", str(app)], check=True, timeout=20)   # -g: don't steal focus
+
+
+def _serve(app: Path) -> None:
+    """On Windows the tray app runs the server. When it hasn't after a while (on GitHub's Windows on ARM machines it
+    never did), run the server itself."""
+    server = app.with_name("ollama.exe")
+    if not server.exists():
+        return
+    log.info("Ollama's tray app hasn't started its server, so starting %s serve", server)
+    flags = getattr(subprocess, "CREATE_NO_WINDOW", 0) | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
+    subprocess.Popen([str(server), "serve"], creationflags=flags, close_fds=True, stdin=subprocess.DEVNULL,
+                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 
 def _download(url: str, target: Path) -> None:

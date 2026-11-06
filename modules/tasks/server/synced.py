@@ -23,7 +23,7 @@ its things have a copy here without reading this module's tables; a project is l
 import json
 import logging
 
-from core.server import contracts, db, events, links, module
+from core.server import config, contracts, db, events, links, module
 
 from . import items, projects, store, vocab
 
@@ -251,7 +251,7 @@ def share(item_id: str) -> dict:
                    "base": {}, "project_ref": project_ref}
     events.publish(contracts.WORK_SHARE_REQUESTED, payload)
     if not links.targets(local, "share"):
-        raise ValueError("Nothing took it. The part of Traverse that sends it there may be turned off.")
+        raise ValueError(f"Nothing took it. The part of {config.NAME} that sends it there may be turned off.")
     store.changed(item["project_id"], item_id=item_id)
     return {"fields": groups, "new": row is None}
 
@@ -319,7 +319,7 @@ def comment(update_id: str, item_id: str | None = None) -> dict:
         "written_by": update["written_by"]})
     waiting = [d for d in (module.describe(r) for r in links.targets(ref, "share")) if d]
     if not waiting:
-        raise ValueError("Nothing took it. The part of Traverse that sends it there may be turned off.")
+        raise ValueError(f"Nothing took it. The part of {config.NAME} that sends it there may be turned off.")
     item = db.one("SELECT project_id FROM tasks_items WHERE id = ?", (item_id,))
     store.changed(update["project_id"] or item["project_id"], update_id=update_id)
     return {"title": waiting[0]["title"], "href": waiting[0]["href"]}

@@ -49,10 +49,12 @@ export function keepFilters(path: string) {
 }
 
 /** Where you are in your history, and the way back and forward through it. `returned()` says the last move was one. */
+const wasReturned = () => returned;   // one function for good: the scroll memory's effect depends on it
+
 export function useHistoryPlace() {
   const place = useSyncExternalStore(subscribe, () => `${at}/${furthest}`);
   const [here, end] = place.split("/").map(Number);
-  return { at: here, canBack: here > 0, canForward: here < end, returned: () => returned };
+  return { at: here, canBack: here > 0, canForward: here < end, returned: wasReturned };
 }
 
 /** The current path without "#/", e.g. "notes/3f2a…" ("" is Home). */

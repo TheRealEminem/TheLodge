@@ -122,6 +122,8 @@ def _ollama(cfg: dict, system: str, prompt: str, schema: type[BaseModel], meter:
     wait_for_memory(cfg)
     model = meter.model = model_for("ollama", cfg)
     url = cfg["ollama_url"]
+    if not model:
+        raise AIError(f"Ollama isn't reachable at {url} (or has no models installed)", provider_down=True)
     body = {
         "model": model,
         "messages": ([{"role": "system", "content": system}] if system else []) + [{"role": "user", "content": prompt}],

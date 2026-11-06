@@ -81,7 +81,7 @@ def local_model(monkeypatch):
     cfg = dict(ai.DEFAULTS, provider="ollama")
     real_section = ai.settings.section
     monkeypatch.setattr(ai.settings, "section", lambda namespace: cfg if namespace == "ai" else real_section(namespace))
-    monkeypatch.setattr(ai, "_ollama_tags", lambda c: [{"name": "qwen2.5:7b", "size": 6 * GB, "details": {"parameter_size": "7B"}}])
+    monkeypatch.setattr(ai, "_ollama_tags", lambda c, fresh=False: [{"name": "qwen2.5:7b", "size": 6 * GB, "details": {"parameter_size": "7B"}}])
     monkeypatch.setattr(ai, "_ollama_loaded", lambda c, m: False)
     calls = []
 

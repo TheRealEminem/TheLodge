@@ -333,6 +333,8 @@ def _ollama_tags(cfg: dict, fresh: bool = False) -> list[dict]:
     hears of, so one answer (or one failure to answer, which can take the whole timeout when the address is a machine
     that's off) stands for TAGS_SECONDS. fresh: ask now whatever was kept (a button someone just pressed)."""
     url = cfg["ollama_url"]
+    if not lockdown.may_reach(url):     # an Ollama on another machine is beyond this computer too
+        return []
     now = time.monotonic()
     with _tags_lock:
         kept = _tags.get(url)

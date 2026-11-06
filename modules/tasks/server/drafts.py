@@ -1,4 +1,4 @@
-"""What the AI drafts for you to look over (Traverse PLAN.md chunk 12): a project's status update, and a task broken
+"""What the AI drafts for you to look over: a project's status update, and a task broken
 down into subtasks. Nothing it writes counts until you say so.
 
 - "Draft a status" runs the tasks/draft job, which reads the project (how far along it is, its milestones, what got

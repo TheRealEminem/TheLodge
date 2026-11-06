@@ -70,8 +70,8 @@ def lockdown_on():
     settings.update({lockdown.KEY: True})
     yield
     jobs.drain()
-    settings.update({lockdown.KEY: False})
     db.execute("DELETE FROM core_jobs WHERE status = 'waiting' AND wait_reason LIKE ?", (lockdown.REASON + "%",))
+    settings.update({lockdown.KEY: False})      # after the delete: turning it off is what sends parked work on its way
 
 
 @pytest.fixture

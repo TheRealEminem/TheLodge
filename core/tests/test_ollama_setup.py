@@ -1,5 +1,6 @@
 """Ollama from inside the app: what's installed, the model this Mac should get, and the downloads, with the network faked."""
 import json
+from pathlib import Path
 
 import pytest
 
@@ -26,12 +27,12 @@ def test_the_model_follows_the_macs_memory(monkeypatch, ram, model):
 
 def test_status_says_what_is_there(client, monkeypatch):
     monkeypatch.setattr(ollama_setup, "app_path", lambda: None)
-    monkeypatch.setattr(ai, "_ollama_tags", lambda c: [])
+    monkeypatch.setattr(ai, "_ollama_tags", lambda c, fresh=False: [])
     monkeypatch.setattr(ollama_setup, "_reachable", lambda url: False)
     s = client.get("/api/ollama").json()
     assert s["installed"] is False and s["reachable"] is False and s["models"] == [] and s["recommended"].startswith("qwen3.5")
     monkeypatch.setattr(ollama_setup, "app_path", lambda: "/Applications/Ollama.app")
-    monkeypatch.setattr(ai, "_ollama_tags", lambda c: [{"name": "qwen2.5:7b", "details": {"parameter_size": "7B"}}])
+    monkeypatch.setattr(ai, "_ollama_tags", lambda c, fresh=False: [{"name": "qwen2.5:7b", "details": {"parameter_size": "7B"}}])
     s = client.get("/api/ollama").json()
     assert s["installed"] and s["reachable"] and s["models"] == ["qwen2.5:7b"] and s["using"] == "qwen2.5:7b"
 
@@ -135,6 +136,73 @@ def test_a_check_that_says_nothing_is_refused_and_logs_why(tmp_path, monkeypatch
     assert "the module could not be loaded" in caplog.text
 
 
+def test_under_lockdown_nothing_asks_another_machines_ollama(lockdown_on, monkeypatch):
+    """Another machine is beyond this computer too, even to ask what it has or whether it's there."""
+    def no_network(*args, **kwargs):
+        raise AssertionError(f"reached the network: {args}")
+
+    monkeypatch.setattr(ollama_setup.httpx, "get", no_network)
+    far = "http://studio.local:11434"
+    assert ollama_setup._reachable(far) is False
+    assert ollama_setup.ai._ollama_tags({"ollama_url": far}, fresh=True) == []
+
+
+def test_the_setup_card_sees_a_model_that_just_finished(monkeypatch):
+    """The card stops looking when the download ends, so what it reads then has to be Ollama's list as it is now."""
+    from core.server import settings as settings_
+    answers = [[], [{"name": "qwen3:8b", "details": {}}]]
+
+    class Reply:
+        status_code = 200
+
+        def __init__(self, models):
+            self.models = models
+
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return {"models": self.models}
+
+    monkeypatch.setattr(ai.httpx, "get", lambda url, **kw: Reply(answers[0] if "tags" in url else []))
+    settings_.update({"ai.ollama_url": "http://localhost:11434"})
+    try:
+        ai._tags.clear()
+        assert ollama_setup.status()["models"] == []
+        answers.pop(0)      # the download finishes, within the seconds an answer is kept for
+        assert ollama_setup.status()["models"] == ["qwen3:8b"]
+    finally:
+        ai._tags.clear()
+
+
+def test_on_windows_the_server_is_started_directly_when_the_tray_app_doesnt(tmp_path, monkeypatch):
+    app = tmp_path / "ollama app.exe"
+    app.touch()
+    (tmp_path / "ollama.exe").touch()
+    started = []
+
+    def popen(cmd, **kw):
+        started.append(cmd)
+
+    monkeypatch.setattr(ollama_setup.sys, "platform", "win32")
+    monkeypatch.setattr(ollama_setup, "app_path", lambda: app)
+    monkeypatch.setattr(ollama_setup, "_open", lambda _: None)
+    monkeypatch.setattr(ollama_setup, "_reachable", lambda _: bool(started))
+    monkeypatch.setattr(ollama_setup.subprocess, "Popen", popen)
+    monkeypatch.setattr(ollama_setup.time, "sleep", lambda _: None)
+    ollama_setup._run_install("http://localhost:11434")
+    assert started == [[str(tmp_path / "ollama.exe"), "serve"]]
+    assert ollama_setup._install["status"] == "ready" and not ollama_setup._install["active"]
+
+
+def test_opening_ollama_on_linux_starts_its_server(monkeypatch):
+    started = []
+    monkeypatch.setattr(ollama_setup.sys, "platform", "linux")
+    monkeypatch.setattr(ollama_setup.subprocess, "Popen", lambda cmd, **kw: started.append(cmd))
+    ollama_setup._open(Path("/usr/local/bin/ollama"))
+    assert started == [["/usr/local/bin/ollama", "serve"]]
+
+
 # ── Offering a newer model ──────────────────────────────────────────────
 
 def tag(name, size="7B"):
@@ -179,7 +247,7 @@ def test_a_different_recommendation_is_offered_again_after_not_now(big_mac, monk
 
 def test_the_status_carries_the_offer_and_not_now_is_remembered(client, monkeypatch, big_mac):
     monkeypatch.setattr(ollama_setup, "app_path", lambda: "/Applications/Ollama.app")
-    monkeypatch.setattr(ai, "_ollama_tags", lambda c: [tag("qwen2.5:7b")])
+    monkeypatch.setattr(ai, "_ollama_tags", lambda c, fresh=False: [tag("qwen2.5:7b")])
     assert client.get("/api/ollama").json()["suggestion"] == {"model": "qwen3.5:9b", "replaces": "qwen2.5:7b"}
     assert client.post("/api/ollama/dismiss-suggestion", json={"model": "qwen3.5:9b"}).json() == {"ok": True}
     assert client.get("/api/ollama").json()["suggestion"] is None

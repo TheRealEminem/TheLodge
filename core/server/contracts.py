@@ -42,7 +42,7 @@ class WorkProjectArrived(TypedDict):
     source: str              # where it lives, for the screen ("Plane")
 
 
-# Something elsewhere should become a local, linked copy ("Bring into Traverse"). It goes into the local project
+# Something elsewhere should become a local, linked copy ("Bring into this app"). It goes into the local project
 # synced with project_ref, and is linked "tasks:<id>" → ref, kind "synced". Arriving again is an update.
 # With local_ref, it's something that was made there from here (WORK_SHARE_REQUESTED for a new one): the local thing
 # becomes the linked copy, with these values as both sides' starting point, instead of a new copy being made.

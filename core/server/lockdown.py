@@ -6,7 +6,7 @@ it on in every family app on this Mac that shares keys and preferences. While it
 - **AI:** only models on this Mac answer (Ollama, or an OpenAI-compatible server, at a local address). ai.configured()
   says why the others aren't ready, and ai.attempt() stops them before anything is sent; the usage log shows each stop,
   at no cost.
-- **Updates:** the app makes no update checks of its own. The Mac app asks GET /api/lockdown before it checks for or
+- **Updates:** the app makes no update checks of its own. The desktop apps ask GET /api/lockdown before they check for or
   downloads an update, and doesn't while it's on (or while the server can't say).
 - **Ollama and its models** aren't downloaded, and every module's feature that talks to the outside stops. A module
   asks before each such thing:
