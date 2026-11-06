@@ -53,15 +53,15 @@ def test_a_first_name_alone_waits_for_you_instead_of_joining_a_stranger(client, 
 
 def test_a_first_name_links_when_its_the_one_person_by_that_name_in_this_hat(client, fake_structured, me):
     hat = hats.create("Parks Board")
-    chad = make(client, "person", "Theo Marsh")
+    theo = make(client, "person", "Theo Marsh")
     make(client, "person", "Theo Elsewhere")
-    hats.place(hat, [chad["id"]], "you")
+    hats.place(hat, [theo["id"]], "you")
     fake_structured.reply = extraction([entity("p1", "Theo", role="attendee")])
     made, _ = ingest.create_meeting_job(origin="trailmix", external_id="tm-2", title="Parks", started_at="2026-10-01T17:00:00Z", notes="Theo presented.", hat_id=hat)
     jobs.drain()
     row = client.get(f"/api/crm/ingest/jobs/{made['id']}").json()
     assert row["status"] == "applied"
-    assert next(e for e in row["proposal"]["entities"] if e["ref"] == "p1")["match_id"] == chad["id"]
+    assert next(e for e in row["proposal"]["entities"] if e["ref"] == "p1")["match_id"] == theo["id"]
     assert row["result"]["record_id"] in {e.id for e in store.all_entities("meeting")}
     assert hats.source_hat(row["result"]["record_id"]) == hat
 
@@ -285,24 +285,24 @@ def people(client, **params):
 
 
 def test_a_hat_is_a_lens_on_one_book(client, me):
-    parks, cold = hats.create("Parks Board"), hats.create("Frostline")
-    chad, eli, both = make(client, "person", "Theo"), make(client, "person", "Eli"), make(client, "person", "Both")
+    parks, frost = hats.create("Parks Board"), hats.create("Frostline")
+    theo, ivy, both = make(client, "person", "Theo"), make(client, "person", "Ivy"), make(client, "person", "Both")
     nobody = make(client, "person", "Nobody")
     city = make(client, "organization", "City of Alderton")
-    link(client, chad, "works_at", city)
+    link(client, theo, "works_at", city)
     meeting = make(client, "meeting", "Parks meeting")
-    link(client, chad, "attended", meeting)
+    link(client, theo, "attended", meeting)
     link(client, both, "attended", meeting)
     hats.stamp(meeting["id"], parks)
-    hats.place(cold, [eli["id"], both["id"]], "you")
+    hats.place(frost, [ivy["id"], both["id"]], "you")
 
     assert people(client, hat=parks) == {"Theo", "Both"}
-    assert people(client, hat=cold) == {"Eli", "Both"}
+    assert people(client, hat=frost) == {"Ivy", "Both"}
     assert people(client, hat="none") == {"Nobody"}
     assert nobody["name"] in people(client) and nobody["name"] in people(client, hat="all")
     orgs = client.get("/api/crm/organizations", params={"hat": parks, "scope": "all"}).json()["items"]
     assert [o["org"]["name"] for o in orgs] == ["City of Alderton"]
-    assert client.get("/api/crm/entities", params={"kind": "meeting", "hat": cold}).json()["total"] == 0
+    assert client.get("/api/crm/entities", params={"kind": "meeting", "hat": frost}).json()["total"] == 0
 
     # Wearing one: "active" follows it, and a new person belongs to it.
     client.put("/api/crm/hats/active", json={"id": parks})
