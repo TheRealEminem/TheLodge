@@ -164,6 +164,9 @@ def _carry_over(client: httpx.Client, row: dict, hat_id: str | None, uids: dict[
     if hat_id and hats.source_hat(record.id) != hat_id:
         hats.stamp(record.id, hat_id)
         store._touch()
+    elif hat_id is None and row.get("workspace_id") is None and hats.source_hat(record.id):
+        hats.unstamp(record.id)   # moved to no workspace (not just a workspace we couldn't look up): it leaves its old hat
+        store._touch()
     tags = normalize_tags(row.get("tags") or [])
     attrs = record.attributes or {}
     carried = attrs.get("trailmix_tags") or []

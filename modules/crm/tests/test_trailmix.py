@@ -143,6 +143,17 @@ def test_a_workspace_is_a_hat_and_a_meeting_wears_it_with_its_tags(client, fake_
     assert "cold-chain" not in m["tags"] and {"pilot", "renewal"} <= set(m["tags"])
 
 
+def test_a_meeting_moved_to_no_workspace_leaves_its_old_hat(client, fake_trailmix, fake_structured, me):  # noqa: F811
+    fake_trailmix.add()
+    fake_structured.reply = extraction([entity("p1", "Priya Nair", role="attendee")], title="Helio pilot sync")
+    run()
+    [m] = meetings(client)
+    assert hats.source_hat(m["id"])
+    fake_trailmix.meetings[1].update(workspace_id=None)
+    run()
+    assert hats.source_hat(m["id"]) is None
+
+
 def test_only_the_tags_and_workspaces_you_chose_come_in(client, fake_trailmix, fake_structured, me):  # noqa: F811
     fake_trailmix.add(1, title="Tagged")
     fake_trailmix.meetings[1]["tags"] = ["parks"]
