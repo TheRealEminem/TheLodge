@@ -170,7 +170,8 @@ def relevant_known_entities(text_: str, cap: int = 150) -> list[tuple[str, str]]
         n = e.name.lower()
         parts = re.findall(r"[\w'-]{4,}", n)
         if e.kind == "person" and len(n.split()) > 1:
-            parts = parts[-1:]
+            surname = n.split()[-1]
+            parts = [surname] if len(surname) >= 4 and surname in parts else []   # a short surname alone matches nothing; the first name must not stand in
         if n in lowered or any(part in words for part in parts):
             hits.append((e.name, e.kind))
             if len(hits) >= cap:

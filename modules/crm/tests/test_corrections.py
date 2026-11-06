@@ -481,3 +481,12 @@ def test_undoing_a_move_lifts_every_name_it_blocked(client, fake_structured, me)
     assert store.blocked_for("jo reed") == {sam["id"]} and store.blocked_for("joanne reed") == {sam["id"]}
     client.post(f"/api/crm/corrections/{done['id']}/undo")
     assert store.blocked_for("jo reed") == set() and store.blocked_for("joanne reed") == set()
+
+
+def test_a_known_person_with_a_short_surname_is_not_offered_to_the_ai_on_their_first_name(client, me):
+    make(client, "person", "David Lee")
+    make(client, "person", "Dana Whitfield")
+    names = lambda text: [n for n, _ in ingest.relevant_known_entities(text)]  # noqa: E731
+    assert names("David gave the update.") == []
+    assert names("David Lee gave the update.") == ["David Lee"]
+    assert names("Whitfield gave the update.") == ["Dana Whitfield"]
