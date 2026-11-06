@@ -465,3 +465,19 @@ def test_undo_keeps_the_person_it_made_once_you_have_edited_them(client, fake_st
     again = client.post(f"/api/crm/entities/{dana['id']}/sources/{doc}/detach", json={"new_name": "Dana H."}).json()
     client.post(f"/api/crm/corrections/{again['id']}/undo")
     assert store.get_entity(again["to"]["id"]) is None
+
+
+def test_undoing_a_move_lifts_every_name_it_blocked(client, fake_structured, me):
+    sam = make(client, "person", "Sam Reed")
+    fake_structured.reply = extraction([entity("p1", "Jo Reed", role="subject"), entity("p2", "Joanne Reed")], doc_type="person_profile", subject_ref="p1")
+    r = client.post("/api/crm/ingest/notes", json={"text": "A full report about Jo Reed and Joanne Reed."})
+    jobs.drain()
+    row = client.get(f"/api/crm/ingest/jobs/{r.json()['id']}").json()
+    proposal = row["proposal"]
+    for e in proposal["entities"]:
+        e.update(action="link", match_id=sam["id"], ambiguous=False)
+    assert client.post(f"/api/crm/ingest/jobs/{row['id']}/apply", json={"proposal": proposal}).status_code == 200
+    done = client.post(f"/api/crm/entities/{sam['id']}/reports/{row['id']}/move", json={"new_name": "Someone Else"}).json()
+    assert store.blocked_for("jo reed") == {sam["id"]} and store.blocked_for("joanne reed") == {sam["id"]}
+    client.post(f"/api/crm/corrections/{done['id']}/undo")
+    assert store.blocked_for("jo reed") == set() and store.blocked_for("joanne reed") == set()
