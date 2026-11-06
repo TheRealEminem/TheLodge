@@ -702,6 +702,9 @@ def merge_entities(source_id: str, target_id: str) -> Entity:
             "edge_evidence": [r["id"] for r in c.execute("SELECT id FROM crm_relationships WHERE evidence_id = ?", (source_id,))],
             "questions": [r["id"] for r in c.execute("SELECT id FROM crm_questions WHERE entity_id = ?", (source_id,))],
             "overview": _row(c.execute("SELECT * FROM crm_overviews WHERE entity_id = ?", (source_id,)).fetchone()),
+            "hat_links": [dict(r) for r in c.execute("SELECT * FROM crm_hat_links WHERE entity_id = ?", (source_id,))],
+            "name_blocks": [dict(r) for r in c.execute("SELECT * FROM crm_name_blocks WHERE entity_id = ?", (source_id,))],
+            "hat_orgs": [r["id"] for r in c.execute("SELECT id FROM crm_hats WHERE org_id = ?", (source_id,))],
         }
 
         for row in c.execute("SELECT * FROM crm_relationships WHERE source_id = ? OR target_id = ?", (source_id, source_id)).fetchall():
@@ -728,6 +731,13 @@ def merge_entities(source_id: str, target_id: str) -> Entity:
         c.execute("UPDATE crm_notes SET evidence_id = ? WHERE evidence_id = ?", (target_id, source_id))
         c.execute("UPDATE crm_relationships SET evidence_id = ? WHERE evidence_id = ?", (target_id, source_id))
         c.execute("UPDATE crm_questions SET entity_id = ? WHERE entity_id = ?", (target_id, source_id))
+        # Hat placements and the names it isn't go with it (the kept record's own say wins), or deleting the source drops them.
+        snap["hat_links_moved"] = [r for r in snap["hat_links"] if c.execute(
+            "INSERT OR IGNORE INTO crm_hat_links (hat_id, entity_id, how, created_at) VALUES (?, ?, ?, ?)",
+            (r["hat_id"], target_id, r["how"], r["created_at"])).rowcount]
+        snap["name_blocks_moved"] = [r for r in snap["name_blocks"] if c.execute(
+            "INSERT OR IGNORE INTO crm_name_blocks (entity_id, name, created_at) VALUES (?, ?, ?)", (target_id, r["name"], r["created_at"])).rowcount]
+        c.execute("UPDATE crm_hats SET org_id = ? WHERE org_id = ?", (target_id, source_id))
         # The kept record takes the other's picture if it has none of its own (a copy: the other record is deleted below).
         c.execute("INSERT OR IGNORE INTO crm_pictures (entity_id, mime, data, source, updated_at) "
                   "SELECT ?, mime, data, source, updated_at FROM crm_pictures WHERE entity_id = ?", (target_id, source_id))
@@ -822,6 +832,15 @@ def unmerge(merge_id: str) -> Entity:
         back("crm_notes", "evidence_id", snap["note_evidence"])
         back("crm_relationships", "evidence_id", snap["edge_evidence"])
         back("crm_questions", "entity_id", snap["questions"])
+        for r in snap.get("hat_links_moved") or []:   # what the merge copied onto the kept record goes again; the source's own come back
+            c.execute("DELETE FROM crm_hat_links WHERE hat_id = ? AND entity_id = ? AND how = ?", (r["hat_id"], tid, r["how"]))
+        for r in snap.get("name_blocks_moved") or []:
+            c.execute("DELETE FROM crm_name_blocks WHERE entity_id = ? AND name = ?", (tid, r["name"]))
+        for r in snap.get("hat_links") or []:
+            c.execute("INSERT OR IGNORE INTO crm_hat_links (hat_id, entity_id, how, created_at) VALUES (?, ?, ?, ?)", (r["hat_id"], sid, r["how"], r["created_at"]))
+        for r in snap.get("name_blocks") or []:
+            c.execute("INSERT OR IGNORE INTO crm_name_blocks (entity_id, name, created_at) VALUES (?, ?, ?)", (sid, r["name"], r["created_at"]))
+        back("crm_hats", "org_id", snap.get("hat_orgs") or [])
         if (ov := snap.get("overview")) and not c.execute("SELECT 1 FROM crm_overviews WHERE entity_id = ?", (sid,)).fetchone():
             cols = list(ov)
             c.execute(f"INSERT OR IGNORE INTO crm_overviews ({', '.join(cols)}) VALUES ({', '.join('?' for _ in cols)})", [ov[k] for k in cols])
