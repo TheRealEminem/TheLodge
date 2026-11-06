@@ -452,3 +452,16 @@ def test_a_report_filed_on_a_record_that_was_merged_away_can_still_be_moved(clie
     assert done.status_code == 200, done.text
     assert client.get(f"/api/crm/people/{sam['id']}/research").json()["reports"] == []
     assert any(n.body == "Sold a company in 1999." for n in store.notes_of(done.json()["to"]["id"]))
+
+
+def test_undo_keeps_the_person_it_made_once_you_have_edited_them(client, fake_structured, me):
+    dana, _, doc = wrong_link(client, fake_structured)
+    done = client.post(f"/api/crm/entities/{dana['id']}/sources/{doc}/detach", json={"new_name": "Dana W. (Harbor)"}).json()
+    other = done["to"]["id"]
+    client.patch(f"/api/crm/entities/{other}", json={"attributes": {"email": "dana.w@harbor.example"}})
+    assert client.post(f"/api/crm/corrections/{done['id']}/undo").status_code == 200
+    assert store.get_entity(other).attributes["email"] == "dana.w@harbor.example"
+    # One nobody touched still goes, as before.
+    again = client.post(f"/api/crm/entities/{dana['id']}/sources/{doc}/detach", json={"new_name": "Dana H."}).json()
+    client.post(f"/api/crm/corrections/{again['id']}/undo")
+    assert store.get_entity(again["to"]["id"]) is None

@@ -221,7 +221,7 @@ def move_report(entity_id: str, inbox_id: str, *, to_id: str | None = None, new_
         if result.get("subject_id") == entity_id:
             new_result["subject_id"] = target.id
         c.execute("UPDATE crm_inbox SET result = ? WHERE id = ?", (json.dumps(new_result), inbox_id))
-        snap = {"edges": kept, "notes": notes, "block": block, "created": bool(new_name and not to_id), "planted": planted, "given": given,
+        snap = {"edges": kept, "notes": notes, "block": block, "created": bool(new_name and not to_id), "created_name": target.name if new_name and not to_id else None, "planted": planted, "given": given,
                 "report": {"inbox_id": inbox_id, "result": original}}
         cid = db.new_id()
         c.execute("INSERT INTO crm_corrections (id, entity_id, evidence_id, to_id, name, snapshot, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
@@ -299,7 +299,7 @@ def detach(entity_id: str, evidence_id: str, *, to_id: str | None = None, new_na
             added_block = c.execute("INSERT OR IGNORE INTO crm_name_blocks (entity_id, name, created_at) VALUES (?, ?, ?)",
                                     (entity_id, blocked, db.now())).rowcount > 0
         given = _take_planted(entity, target, planted, c)
-        snap = {"edges": kept, "notes": notes, "block": blocked if added_block else None, "created": bool(new_name and target),
+        snap = {"edges": kept, "notes": notes, "block": blocked if added_block else None, "created": bool(new_name and target), "created_name": target.name if new_name and target else None,
                 "planted": planted, "given": given}
         cid = db.new_id()
         c.execute("INSERT INTO crm_corrections (id, entity_id, evidence_id, to_id, name, snapshot, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
@@ -398,8 +398,13 @@ def undo(correction_id: str) -> dict:
             c.execute("UPDATE crm_inbox SET result = ? WHERE id = ?", (json.dumps(snap["report"]["result"]), snap["report"]["inbox_id"]))
         if snap.get("created") and row["to_id"]:
             # The record made for it goes again, if nothing else has come to it since.
+            made = store.get_entity(row["to_id"], c)
             busy = (c.execute("SELECT 1 FROM crm_relationships WHERE source_id = ? OR target_id = ?", (row["to_id"], row["to_id"])).fetchone()
-                    or c.execute("SELECT 1 FROM crm_notes WHERE entity_id = ?", (row["to_id"],)).fetchone())
+                    or c.execute("SELECT 1 FROM crm_notes WHERE entity_id = ?", (row["to_id"],)).fetchone()
+                    or c.execute("SELECT 1 FROM crm_hat_links WHERE entity_id = ?", (row["to_id"],)).fetchone()
+                    or c.execute("SELECT 1 FROM crm_pictures WHERE entity_id = ?", (row["to_id"],)).fetchone()
+                    # edited since: anything on the record that this correction didn't put there, or a name changed
+                    or (made is not None and (made.attributes or made.tags or made.summary or (snap.get("created_name") and made.name != snap["created_name"]))))
             if not busy:
                 c.execute("DELETE FROM crm_entities WHERE id = ?", (row["to_id"],))
                 c.execute("DELETE FROM crm_fts WHERE id = ?", (row["to_id"],))
