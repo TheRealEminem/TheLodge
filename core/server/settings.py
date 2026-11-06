@@ -8,7 +8,7 @@ Secrets (names ending in _api_key, _token or _secret) are write-only from the we
 sent back, only a hint of what's stored ("…1234").
 
 A few settings are shared with the other family apps on this Mac (family.py: the AI settings, your name, the
-appearance): reading one gives the family's value, and saving one saves it for every family app as well as here.
+appearance, Lockdown): reading one gives the family's value, and saving one saves it for every family app as well as here.
 """
 import json
 import os

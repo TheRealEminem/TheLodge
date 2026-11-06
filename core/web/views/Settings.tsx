@@ -1,5 +1,6 @@
-// Settings: the host's own sections (appearance, you, AI, the app), then one section per module.
-import { useEffect, useState } from "react";
+// Settings: the host's own sections (appearance, you, AI, the app), then one section per module, then the connections
+// to outside tools (Connect a tool).
+import { useEffect, useRef, useState } from "react";
 import { api, can, inApp, quitApp, sendUpdates, words } from "../api";
 import type { FamilyStatus, ProviderId, ProviderInfo, SystemInfo, UpdateReport } from "../api";
 import { Section, SecretSetting, TextSetting } from "../components/blocks";
@@ -10,9 +11,13 @@ import { CheckIcon, AlertIcon, BackIcon, DownloadIcon, LaptopIcon, LockIcon, Mon
 import { ControlRow, PageHeader, Segmented, Select, Spinner, StatusChip, SwitchRow } from "../components/ui";
 import { useLive } from "../live";
 import { modulesFor } from "../registry";
+import { useQueryParams } from "../router";
 import { useSettings, useShell } from "../shell";
 import type { ThemePref } from "../theme";
 import { UsageRows } from "./Usage";
+import AIUsage from "./AIUsage";
+import ClaudeAccess from "./ClaudeAccess";
+import { useLockdown } from "./Lockdown";
 import YourData from "./YourData";
 
 function ProviderFields({ id, values, hints, save }: { id: ProviderId; values: Record<string, unknown>; hints: Record<string, string | null>; save: (c: Record<string, string>) => void }) {
@@ -114,19 +119,29 @@ function ChooseWhereAiRuns() {
 
 /** Lockdown: one switch, shared by the family apps on this Mac. */
 function Privacy({ on, onChange }: { on: boolean; onChange: (on: boolean) => void }) {
+  const status = useLockdown();
+  const [params] = useQueryParams();
+  const here = useRef<HTMLDivElement>(null);
+  const asked = params.get("section") === "lockdown";
+  useEffect(() => {
+    if (asked) here.current?.scrollIntoView({ block: "start" });
+  }, [asked]);
+  const parked = status?.parked ?? 0;
   return (
-    <Section icon={<LockIcon size={16} />} title="Privacy" blurb={`Everything is kept on ${words.here}. Lockdown makes sure nothing is sent out either.`}>
-      <SwitchRow
-        label="Lockdown"
-        hint={
-          on
-            ? `On: only AI that runs on ${words.here} is used. No update checks of its own, no downloads, and anything that talks to another service (a research service, a note app, a calendar, a shared Sheet, picture look-ups) is switched off.`
-            : "Off: you choose which services to use, and each is described where you turn it on. Turn this on to switch them all off at once."
-        }
-        checked={on}
-        onChange={onChange}
-      />
-    </Section>
+    <div ref={here} className="scroll-mt-6">
+      <Section icon={<LockIcon size={16} />} title="Privacy" blurb={`Everything is kept on ${words.here}. Lockdown makes sure nothing is sent out either.`}>
+        <SwitchRow
+          label="Lockdown"
+          hint={
+            on
+              ? `On: only AI that runs on ${words.here} is used. No update checks of its own, no downloads, and anything that talks to another service (a research service, a note app, a calendar, a shared Sheet, picture look-ups) is switched off.${parked ? ` ${parked} ${parked === 1 ? "thing waits" : "things wait"} for it to be off, and will go ahead by itself.` : ""}`
+              : "Off: you choose which services to use, and each is described where you turn it on. Turn this on to switch them all off at once."
+          }
+          checked={on}
+          onChange={onChange}
+        />
+      </Section>
+    </div>
   );
 }
 
@@ -192,7 +207,6 @@ function useUpdates() {
  *  has the same; this is them in the window, for the Mac app only. */
 function Updates() {
   const { app } = useShell();
-  const { get } = useSettings();
   const u = useUpdates();
   const blurb = `New versions install from here or from ${words.tray}, in about a minute. Your data stays.`;
   if (!can("updates") || !u || !u.enabled) {
@@ -215,9 +229,8 @@ function Updates() {
     case "checking": status = "Checking for updates…"; break;
     case "offline": status = "Couldn't reach GitHub to check. It tries again in a few hours."; break;
     case "up-to-date": status = `You have the newest version${u.beta ? ", betas included" : ""}.`; break;
-    default: status = get<boolean>("core.lockdown")
-      ? "Lockdown is on, so it doesn't check by itself. Check for updates still works when you press it."
-      : `${app.name} checks for updates a few times a day.`;
+    case "locked-down": status = "Lockdown is on, so nothing checks for updates or downloads them."; break;
+    default: status = `${app.name} checks for updates a few times a day.`;
   }
   return (
     <Section icon={<DownloadIcon size={16} />} title="Updates" blurb={blurb}>
@@ -279,7 +292,15 @@ export default function Settings() {
   const { data: providers } = useLive<ProviderInfo[]>(api.providers);
   const { data: family } = useLive<FamilyStatus>(api.family);
   const [setup, setSetup] = useState<ProviderId | null>(null);
-  const modules = modulesFor(app.modules.map((m) => m.id)).filter((m) => m.settings);
+  const [params] = useQueryParams();
+  const connect = useRef<HTMLDivElement>(null);
+  const asked = params.get("section") === "connect";
+  useEffect(() => {
+    if (asked && values) connect.current?.scrollIntoView({ block: "start" });
+  }, [asked, values]);
+  const modules = modulesFor(app.modules.filter((m) => !m.optional).map((m) => m.id)).filter((m) => m.settings);
+  const connections = modulesFor(app.modules.filter((m) => m.optional).map((m) => m.id)).filter((m) => m.settings);
+  const connected = app.modules.filter((m) => m.optional && m.active).map((m) => m.name);
   if (!values) return null;
   const options = (providers ?? []).map((p) => ({ value: p.id, label: p.label, hint: p.kind === "local" ? `Runs on ${words.here}` : "Cloud" }));
   const primary = values["ai.provider"] as ProviderId;
@@ -341,12 +362,38 @@ export default function Settings() {
 
       <Privacy on={!!values["core.lockdown"]} onChange={(on) => void save({ "core.lockdown": on })} />
 
+      <AIUsage />
+
+      <ClaudeAccess />
+
       <FamilyApps data={family ?? null} onSharing={(on) => void save({ "core.share_with_family": on })} />
 
       {modules.map((m) => {
         const ModuleSettings = m.settings!;
         return <ModuleSettings key={m.id} />;
       })}
+
+      {connections.length > 0 && (
+        <div ref={connect} className="scroll-mt-6">
+          <Section
+            icon={<NetworkIcon size={16} />}
+            title="Connect a tool"
+            blurb={
+              connected.length
+                ? `${app.name} reads your project tool and sends changes only when you approve them.`
+                : `${app.name} works on its own. To keep your team's project tool as the shared place, set one up below.`
+            }
+          >
+            <p className="py-3.5 text-hint text-ink-soft">
+              {connected.length ? `Connected: ${connected.join(", ")}.` : `Not connected yet. Available: ${connections.map((m) => m.name).join(", ")}.`}
+            </p>
+          </Section>
+          {connections.map((m) => {
+            const ModuleSettings = m.settings!;
+            return <ModuleSettings key={m.id} />;
+          })}
+        </div>
+      )}
 
       <YourData />
 

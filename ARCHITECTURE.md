@@ -79,7 +79,8 @@ These keep modules combinable. Breaking one now means a rewrite when the apps me
    up where it left off.
 7. **Nothing is written inside the app bundle at runtime.** That would break its signature. All data goes in `DATA_DIR`.
 8. **Works offline and locally by default.** Cloud services are optional and chosen in Settings, and local AI
-   models are unloaded after use.
+   models are unloaded after use. **Lockdown** (Settings, shared with the family) stops every call beyond this Mac at
+   once, so anything that reaches out asks `lockdown.check(url)` first (§7).
 9. **Shared code has one copy: the family's, and each app pins a version of it.** `core/`, `mac/`, the shared
    scripts, the shared modules (`tasks`, `notes`) and the build setup live in `~/Code/TrailmixFamily`.
    `scripts/sync-family` copies a family commit into the app and records it in `family.lock`, so every app is
@@ -105,11 +106,15 @@ core/
     settings.py           namespaced settings, secrets never sent back
     jobs.py               resumable background jobs, approval and "wait" gates
     ai.py                 AI providers (Ollama, Claude, OpenAI, Gemini, DeepSeek, OpenAI-compatible)
+    lockdown.py           Lockdown: one switch, shared with the family, that stops every call beyond this Mac
     events.py             publish/subscribe between modules, plus the change counter
     contracts.py          ★ shared events any module can publish or listen to
     links.py              links between things in different modules
     search.py             one search across every module
+    briefing.py           the day's briefing: every module's today, waiting, moved and ahead, gathered like search
     auth.py               optional token sign-in for server installs
+    mcp.py                the MCP server at /mcp: Claude Code and Claude Desktop use the modules' tools, with a token
+    mcp_bridge.py         the command Claude Desktop runs: passes its messages on to /mcp (standard library only)
   web/                    the host's web app (React + Tailwind 3, built by Vite)
     registry.ts           ★ the module contract (web half)
     App.tsx, Sidebar.tsx  the shell: sidebar, narrow-window drawer, routing
@@ -138,7 +143,7 @@ scripts/
   check                   everything CI checks (tests, types, build, style rules)
   build-app.sh            build the Mac app (and the disk image with --dmg)
   install-app.sh          check, build, back up, and swap the new app into /Applications, with a rollback
-  smoke-test.sh           try a built app's updater end to end: update, go back, beta updates, busy, skip
+  smoke-test.sh           try a built app's updater end to end: update, go back, beta updates, busy, Lockdown, skip
   promote-beta.sh         make the newest beta the release everyone gets, once it's been tried
   new-module              start a module from scripts/module-template
   sync-family             take a family version and pin it (--check: warn about drift; --push: send a change back)
@@ -158,6 +163,7 @@ Dockerfile                the server for Linux
   "envPrefix": "STARTER",          // environment overrides: STARTER_DATA_DIR, STARTER_AI_PROVIDER…
   "port": 8790,                    // must differ between family apps that might run at the same time
   "updateRepo": "",                // "owner/repo" on GitHub for self-updates; empty = no updates
+  "calendarUse": "",               // optional: why the Mac app reads your calendar, as macOS asks; absent = it never does
   "modules": ["notes", "tasks"]    // in sidebar order
 }
 ```
@@ -196,6 +202,8 @@ the 8780–8799 range, and keep a list here:
 | `count` | `(a database) -> {"people": 381}`: what it holds, read from any copy of the database, to label backups in Settings, Your data. |
 | `offers` | `{"people.search": handler(args)}`: questions other family apps on this Mac may ask it (§8, the family link). A handler gets a dict and returns plain data. |
 | `people` | `(q, limit) -> [{id, name, email?, detail?, is_self?}]`: its part of the people directory (`core/server/people.py`, `GET /api/people`, `PersonPicker`). Refs come back as `<id>:<person id>`; `is_self` comes back as `core:me`. |
+| `tools` | `[mcp.Tool(name, title, description, handler, params, required, writes)]`: what Claude may do here, through the host's MCP server (§8). Claude sees `<id>_<name>`. A handler gets the arguments as a dict and returns plain data, or raises `ValueError` with a sentence. |
+| `brief` | `(since, today) -> {"today"\|"waiting"\|"moved"\|"ahead": [entries]}`: its part of the day's briefing (`core/server/briefing.py`, `GET /api/briefing`). An entry is `{id, what, title?, href?, who?, when?, project?, kind?, tone?, minutes?, url?}`; the host makes its ref and fills a missing title and href from `describe`. "moved" is what happened since `since` (a moment); a module that fails is left out. A page that starts the day (Traverse's Muster) reads every module through it. A meeting is `kind` "meeting" with `when` (its start, this computer's time) and `minutes` (its length); "event" is one that doesn't take your time (all day: `when` is a day; or shown as free). Traverse's calendar module gives them, so a page can plan around meetings without knowing where they're kept. |
 
 ### Web half: `modules/<id>/web/index.tsx` default-exports a `ModuleWeb`
 
@@ -207,6 +215,8 @@ the 8780–8799 range, and keep a list here:
 | `primary` | The sidebar's big button `{label, icon, run}`. The first enabled module with one gets it. |
 | `home` | A card on Home. In the unified app, Home is where every module shows what's new. |
 | `settings` | A section on the Settings page (use `Section` and `useSettings()`). |
+| `start` | `() => Promise<path \| null>`: the first page of the day. Asked when the app opens at Home (and when its window comes back on a new day); the first module with a path wins. Traverse's Muster answers until you've looked at it today. |
+| `background` | A component the host keeps mounted while the app is open, on every screen, rendering nothing: work a module does in the page, such as Traverse's calendar sending what the Mac app's window can read to its server. The module must work without it (a server install nobody has open). |
 
 Modules import the host's web code as `@core/...` (`@core/components/ui`, `@core/live`, `@core/shell`…), never
 another module's.
@@ -219,13 +229,16 @@ another module's.
 | Files | `config.DATA_DIR / "<id>"` | Never inside the app bundle. |
 | A setting | `Module.settings` + `settings.section("<id>")` | Secrets end in `_api_key`/`_token`; they're write-only and preset from `<PREFIX>_<ID>_<NAME>`. |
 | Slow work | `jobs.enqueue(id, kind, target, approve=…)` | One worker by default (a "cloud" lane runs four side by side), resumable. `approve=True` parks it as "Needs you". A handler can `raise jobs.Wait("reason")` to park itself (low memory…), and the user can force past that. `job.stage("…")` shows progress. |
-| AI | `ai.complete(prompt, system)` → `(text, provider)` | Uses the app-wide provider and fallback from Settings → AI. Raises `ai.AIError` with readable reasons. `ai.local_first()` tells you whether it would run on this Mac. |
+| AI | `ai.complete(prompt, system)` → `(text, provider)` | Uses the app-wide provider and fallback from Settings → AI. Raises `ai.AIError` with readable reasons. `ai.local_first()` tells you whether it would run on this Mac. Every call is logged with its tokens and cost (`core/server/pricing.py`, shown in Settings → AI usage; AI paid for outside `ai.py` reports itself with `usage.record`, into the same table, and `ai.complete(purpose=…)` names what a call was for), put down to the job that made it, so call AI from a job. While Lockdown is on only AI on this Mac answers: a cloud provider raises `ai.Locked`, which parks the job until it's off. |
+| Reach beyond this Mac | `lockdown.check(url)` right before the request; `lockdown.may_reach(url)` to ask | While Lockdown is on, `check` raises `lockdown.Blocked` (a `jobs.Wait`) unless the address is this Mac: a job parks as "Lockdown mode is on" and goes again by itself when it's off; a request to the API gets 409. A module that talks to an outside service checks before every request. `lockdown.blocked("What it does")` is the same question as a sentence for a person, or None. |
 | Tell others | `events.publish("<id>.thing.happened", {...})` | Handlers run immediately and must be quick. Every publish also refreshes open screens. |
 | A shared meaning | `contracts.py` (`ACTIONS_FOUND`, `ITEM_DELETED`, the `WORK_*` ones for work kept elsewhere too) | Add a contract when a second module cares about the same kind of thing. |
 | Point at something elsewhere | `links.add(from_ref, to_ref, kind)`, `links.linked(ref)` | The host stores the pair; each side's module describes its own things. |
 | Be searchable | `Module.search` | Results are merged into the sidebar search. |
 | Fresh screens | `useLive(load, deps)` | Refetches whenever anything changes on the server: every 2s while visible, and at once after the app's own changes. |
 | Feedback | `useShell().toast / confirm`, `JobStatus`, `JobChip`, `LinkedList`, `Section` | See `DESIGN.md` for the visual rules. |
+| Be in the day's briefing | `Module.brief` (`core/server/briefing.py`) | What's on today, what waits on you, what moved since a moment, what's ahead. Read only; quick (it runs when the page loads). |
+| Let Claude use it | `Module.tools` (`core/server/mcp.py`) | Tools add and propose; they never approve. While one runs, `jobs.go` and `jobs.retry` refuse, and `mcp.calling()` lets your own code refuse too. |
 | Ask another family app | `family.call("people.search", q="ana")` | Its own modules first, then a running family app that offers it. Raises `family.Unavailable` with a sentence for the screen ("Open The Lodge to see this here"). Only from server code, and never as a substitute for events between modules in one app. |
 
 Backups (`core/server/backup.py`) are the host's: SQLite online backups in `<data folder>/backups/` that **roll over**
@@ -310,12 +323,13 @@ What happens when you summarize a note:
 - **Search/describe:** making your things findable and nameable elsewhere.
 - **Offer:** a question another family *app* on the same Mac may ask (`Module.offers`, answered over localhost
   with the family token). Use it for data that lives in another app, such as The Lodge's people seen from Traverse.
+- **Tool:** something Claude may do (`Module.tools`), through the MCP server (below).
 - **Never:** importing another module, querying its tables, or calling its HTTP API from the server.
 
 **The family link** (`core/server/family.py`). Family apps installed on one Mac share some settings and ask each
 other for data, while each stays its own app:
 
-- *Shared settings:* the AI settings, your name and the appearance live in `family.db` in the family folder
+- *Shared settings:* the AI settings, your name, the appearance and Lockdown live in `family.db` in the family folder
   (`~/Library/Application Support/Trailmix Family/`), which every family app opens directly, so they're there even
   while the other apps are closed. Each app also keeps its own copy, and Settings → Your family apps → "Share keys
   and preferences" turns sharing off for one app. An app joining fills in what the family lacks, and never
@@ -329,6 +343,19 @@ other for data, while each stays its own app:
   `TRAILMIX_FAMILY_DIR` names a folder (`off` turns it off); tests use a throwaway one. A development copy beside
   the installed app sets `<PREFIX>_PORT` so it registers its own port.
 
+**The MCP server** (`core/server/mcp.py`). Claude Code and Claude Desktop use the app through its modules' tools:
+
+- *Transport:* MCP's streamable HTTP at `POST /mcp`, each JSON-RPC message answered as JSON: no sessions and no stream
+  from the server (`GET` is 405). Claude Desktop starts servers as commands, so it runs `mcp_bridge.py` with the app's
+  own Python, which passes each message on.
+- *Who may ask:* off until you make a token in Settings → Claude (`core.mcp_token`, a write-only secret: the page sees
+  it once, inside the command and the config to copy). Every request carries `Authorization: Bearer <token>`; a request
+  from a web page (an `Origin` that isn't this Mac) is refused. `/mcp` is outside the sign-in; `/api/mcp` (Settings) is
+  behind it.
+- *What tools may do:* read, add things in this app, and propose. Never approve: while a tool runs, `jobs.go` and
+  `jobs.retry` raise `PermissionError`, and a module refuses its own approvals the same way (`mcp.calling()`), so
+  whatever waits for "Needs you" keeps waiting for you.
+
 ## 9. Screens and navigation
 
 - **Routes** are the URL hash (`#/notes/<id>`), so a link anywhere (including from the Mac app's menu) can open any page.
@@ -337,15 +364,29 @@ other for data, while each stays its own app:
   than one module), each module's nav items with badges, and Settings at the bottom. Below 1024px it becomes a
   drawer behind a frosted top bar.
 - **Settings:** Appearance (Day/Dusk/System), your name, AI (provider, fallback, key, model picker, a connection
-  test), then one section per module, then Quit.
+  test), Claude (the MCP server's token, with the command for Claude Code and the config for Claude Desktop to copy),
+  your family apps, then one section per module, then Your data and Quit.
 - **Look and copy** follow `DESIGN.md`. `scripts/check` enforces the mechanical rules.
 
 ## 10. The Mac app (`mac/`)
 
-- `HostApp.swift`: the menu bar item (Open, updates, Open at login, Quit). It starts the server, then opens the window.
+- `HostApp.swift`: the menu bar item (Open, the sidebar's sections, updates, Open at login, Quit). It starts the
+  server, then opens the window. The sections are the enabled modules' nav items: the page sends them through the
+  bridge each time it loads (`menu:`), and the app keeps the last list, so a launch at login has them too.
 - `BundledServer.swift`: runs `python -m uvicorn core.server.app:app` from `Resources/app` with `<PREFIX>_DATA_DIR`,
   `_UI_DIR` and `_PARENT_PID` set, restarts it up to three times in two minutes, then explains the failure in the menu.
 - `MainWindow.swift`: the WebKit window, the `app` bridge, the Edit/View/Window menus, and external links opening in the browser.
+- `CalendarBridge.swift`: your Mac's Calendar for the page, read-only, through a second bridge, `calendar`, which
+  answers (`window.webkit.messageHandlers.calendar.postMessage({ask})` returns a promise; `macCalendar` in
+  `core/web/api.ts`): whether it may read it, asking macOS once, a span's events (every account the Calendar app has,
+  without declined or cancelled ones), and opening System Settings' Calendars pane. Only the window's own page may
+  ask, and nothing is kept. An app whose `app.json` has no `calendarUse` gets no reason in its Info.plist, so the
+  bridge answers "unavailable" and never touches EventKit (asking without a reason would end the app). It's a script
+  message handler rather than a local endpoint: macOS asks when you choose to add the calendar, not at a launch at
+  login, and there's no port another process or a web page could reach. A module that wants the events on its server
+  has its page send them: Traverse's calendar module keeps "This Mac's Calendar" as one source among others (a
+  calendar's private iCal address, which its server reads itself, works on any computer), and its `background`
+  component sends the next week's events while the window is open.
 - `Updater.swift`: GitHub releases → checksum check → same bundle ID and valid signature → swap in place, keeping
   the old version for Go back → relaunch; beta updates and skipping a version. Its decisions are in `UpdateRules/` (§11).
 - `Mark.swift`: the menu bar icon. Each app draws its own motif there.
@@ -400,6 +441,9 @@ by `mac/Checks/UpdateChecks` with the Command Line Tools alone):
   "before-update" backup first. A fresh install has nothing to go back to.
 - **Not while busy:** before starting, and again just before swapping (waiting up to a minute), it asks the server,
   `GET /api/jobs/busy` (background jobs queued or running). While the app is busy it says so and offers Try again.
+- **Not in Lockdown:** before every check and download it asks `GET /api/lockdown`, and neither checks nor downloads
+  while Lockdown is on, or while the server can't say ("Lockdown is on · Check again" in the menu). Going back needs no
+  download, so it still works.
 - Your choices are in `updates.noindex/choices.json` in the data folder, so `<PREFIX>_DATA_DIR` keeps a test apart
   from the real app. For tests: `<PREFIX>_UPDATE_URL` (a stand-in release list), `_UPDATE_DELAY`,
   `_UPDATE_NO_RELAUNCH`, and `_UPDATE_TEST=install` or `go-back` (does that after the first check, and writes each

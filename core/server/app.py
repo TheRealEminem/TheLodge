@@ -9,6 +9,7 @@ import signal
 import threading
 import time
 from contextlib import asynccontextmanager
+from datetime import date, datetime
 
 from fastapi import APIRouter, FastAPI, HTTPException, Request
 from fastapi.concurrency import run_in_threadpool
@@ -16,7 +17,8 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import ai, auth, backup, computer, config, db, events, family, jobs, links, lockdown, module, ollama_setup, people, resources, schedule, search, settings, usage
+from . import (ai, auth, backup, briefing, computer, config, db, events, family, jobs, links, lockdown, mcp, module, ollama_setup,
+                people, resources, schedule, search, settings)
 from . import setup as first_run
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -25,6 +27,7 @@ log = logging.getLogger("core")
 # Shared by every module. your_name: "You" in anything that names people. appearance: Day, Dusk or the system's.
 # share_with_family: whether this app shares keys and preferences with the other family apps on this Mac (family.py).
 # lockdown: nothing leaves this computer (lockdown.py); shared with the family like the AI settings.
+# setup_done: whether first run has been answered (setup.py). This app's own, never shared.
 CORE_SETTINGS = {"your_name": "", "appearance": "system", "share_with_family": True, "lockdown": False, "setup_done": False}
 CORE_CHOICES = {"appearance": ("system", "light", "dusk")}
 
@@ -51,6 +54,7 @@ def setup() -> list[module.Module]:
     settings.declare("core", CORE_SETTINGS, CORE_CHOICES)
     ai.declare()
     first_run.mark_existing()                   # once, before anything else is saved: was this app in use before first-run setup?
+    mcp.declare()
     jobs.register("core", "backup", backup.handle_hourly, lane="cloud")
     schedule.register("core", "backup", 3600)
     loaded = module.load(config.enabled_modules())
@@ -67,6 +71,7 @@ async def lifespan(_: FastAPI):
     _exit_with_parent()
     jobs.recover()
     schedule.start()
+    lockdown.watch()                            # work Lockdown parked goes again once it's off, here or in another app
     try:
         family.register()                       # other family apps on this Mac can find this one now
         family.start_heartbeat()
@@ -92,8 +97,15 @@ def create_app() -> FastAPI:
             return JSONResponse({"detail": "Sign in required"}, status_code=401)
         return await call_next(request)
 
+    @app.exception_handler(lockdown.Blocked)
+    async def blocked(_: Request, e: lockdown.Blocked):
+        """A request that would have reached the cloud while Lockdown is on (a job parks instead)."""
+        return JSONResponse({"detail": lockdown.SENTENCE}, status_code=409)
+
     app.include_router(core_router, prefix="/api")
     app.include_router(backup.router, prefix="/api")
+    app.include_router(mcp.api_router, prefix="/api")
+    app.include_router(mcp.router)              # /mcp: Claude, with its own token (mcp.py), outside the sign-in
     for m in loaded:
         if m.router:
             app.include_router(m.router, prefix=f"/api/{m.id}", tags=[m.name])
@@ -138,9 +150,10 @@ class LinkBody(BaseModel):
 def app_info():
     """Who this app is and what it's made of; the web app builds its navigation from this."""
     return {"id": config.APP_ID, "name": config.NAME, "tagline": config.IDENTITY.get("tagline", ""),
-            "version": config.VERSION, "modules": [{"id": m.id, "name": m.name} for m in module.all_modules()],
-            "auth_required": auth.required(), "lockdown": lockdown.on(), "setup_done": first_run.done(),
-            "computer": computer.info()}
+            "version": config.VERSION, "auth_required": auth.required(), "lockdown": lockdown.on(), "setup_done": first_run.done(),
+            "computer": computer.info(),
+            "modules": [{"id": m.id, "name": m.name, "optional": m.active is not None, "active": module.is_active(m)}
+                        for m in module.all_modules()]}
 
 
 @core_router.get("/auth")
@@ -227,7 +240,16 @@ def put_settings(changes: dict):
     except ValueError as e:
         raise HTTPException(400, str(e)) from e
     events.publish("core.settings.changed", {"keys": list(changes)})
+    if lockdown.KEY in changes:
+        lockdown.resume()                       # turned off: what it parked goes now, not on the next look
     return out
+
+
+@core_router.get("/lockdown")
+def lockdown_status():
+    """Whether Lockdown is on and how much work waits for it: for the app's chrome, and for the Mac app, which doesn't
+    check for updates while it's on."""
+    return lockdown.status()
 
 
 @core_router.get("/ai/providers")
@@ -257,7 +279,7 @@ async def ai_test(pid: str, model: str = ""):
 
 @core_router.get("/ai/usage")
 async def ai_usage():
-    return await run_in_threadpool(usage.summary)
+    return await run_in_threadpool(ai.usage_report)
 
 
 class PathBody(BaseModel):
@@ -338,6 +360,19 @@ async def system():
 @core_router.get("/search")
 def search_all(q: str = "", limit: int = 8):
     return search.search(q, limit)
+
+
+@core_router.get("/briefing")
+def briefing_all(since: str = "", today: str = ""):
+    """The day's briefing (briefing.py): every module's today, waiting, moved (since `since`, a moment; the last day
+    when it's left out) and ahead. `today` is a day, YYYY-MM-DD; this computer's when it's left out."""
+    try:
+        day = date.fromisoformat(today) if today else None
+        if since:
+            datetime.fromisoformat(since.replace("Z", "+00:00"))
+    except ValueError as e:
+        raise HTTPException(400, "since is a moment like 2026-10-21T07:30:00Z, and today a day like 2026-10-21") from e
+    return briefing.gather(since or None, day)
 
 
 @core_router.get("/people")

@@ -99,7 +99,7 @@ def main() -> int:
         for crash in (1, 2):
             old = server_pids()[0]
             os.kill(old, signal.SIGKILL)
-            back = wait(lambda: answering() and server_pids() and server_pids()[0] != old, 20)
+            back = wait(lambda was=old: answering() and server_pids() and server_pids()[0] != was, 20)
             ok(back, f"crash {crash} of 3: the server is started again")
         os.kill(server_pids()[0], signal.SIGKILL)
         time.sleep(6)
@@ -134,7 +134,10 @@ def main() -> int:
         time.sleep(6)
         oldest, newest = min(app_pids(app)), max(app_pids(app))
         os.kill(oldest, signal.SIGTERM)
-        owner = lambda: int(sh("ps", "-o", "ppid=", "-p", str(server_pids()[0]))) if server_pids() else None
+
+        def owner():
+            return int(sh("ps", "-o", "ppid=", "-p", str(server_pids()[0]))) if server_pids() else None
+
         ok(wait(lambda: answering() and owner() == newest, 30), "when the first copy quits, the second starts its own server")
     finally:
         for pid in app_pids(app):

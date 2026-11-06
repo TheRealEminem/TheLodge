@@ -6,7 +6,8 @@
                         /chat/completions: json_schema, then json_object, then plain text, one repair retry
 
 Each takes plain values and returns a validated schema object or raises ai.AIError (see ai.py for what
-provider_down means). Lessons that cost a debugging round in DynaCRM are marked ⚑.
+provider_down means), and reports the tokens of every request the provider answered to the meter it's given
+(pricing.py), failed ones included. Lessons that cost a debugging round in DynaCRM are marked ⚑.
 """
 import json
 import logging
@@ -15,9 +16,9 @@ from urllib.parse import urlparse
 import httpx
 from pydantic import BaseModel, ValidationError
 
-from .ai import (AIError, PROVIDERS, TIMEOUT, _CLAUDE_FALLBACK_MODELS, _error_text, claude_error, configured, label,
-                 model_for, note_usage, too_long, wait_for_memory)
-from . import model_catalog
+from . import model_catalog, pricing
+from .ai import (AIError, PROVIDERS, TIMEOUT, _CLAUDE_FALLBACK_MODELS, _error_text, claude_error, claude_usage, label,
+                 model_for, ollama_usage, openai_usage, require, too_long, wait_for_memory)
 from .ai_schema import blank_to_none, parse_json_text, portable_schema, strict_schema
 
 log = logging.getLogger("core.ai")
@@ -33,15 +34,15 @@ GEMINI_OPENAI_BASE = "https://generativelanguage.googleapis.com/v1beta/openai"
 
 
 def generate_structured(pid: str, cfg: dict, prompt: str, system: str | None, schema: type[BaseModel],
-                        max_tokens: int | None) -> BaseModel:
-    ok, why = configured(pid, cfg)
-    if not ok:
-        raise AIError(why, provider_down=True)
+                        max_tokens: int | None, meter: pricing.Meter | None = None) -> BaseModel:
+    """meter: where the tokens are reported (ai.attempt gives one; without it they aren't recorded)."""
+    meter = meter or pricing.Meter(pid)
+    require(pid, cfg)
     system = system or ""
     if pid == "anthropic":
-        return _claude(cfg, system, prompt, schema, max_tokens or CLAUDE_MAX_TOKENS)
+        return _claude(cfg, system, prompt, schema, max_tokens or CLAUDE_MAX_TOKENS, meter)
     if pid == "ollama":
-        return _ollama(cfg, system, prompt, schema)
+        return _ollama(cfg, system, prompt, schema, meter)
     if pid == "gemini":
         base, key = GEMINI_OPENAI_BASE, cfg["gemini_api_key"]
     elif pid == "custom":
@@ -53,7 +54,7 @@ def generate_structured(pid: str, cfg: dict, prompt: str, system: str | None, sc
         budget = min(budget, DEEPSEEK_MAX_TOKENS)
     return _openai_compatible(base, key, model_for(pid, cfg), system, prompt, schema, budget,
                               budget_key="max_completion_tokens" if pid == "openai" else "max_tokens",
-                              who=label(pid, cfg), pid=pid)
+                              who=label(pid, cfg), meter=meter)
 
 
 def _validate(schema: type[BaseModel], text: str, who: str) -> BaseModel:
@@ -72,10 +73,11 @@ def _final_text(message) -> str:
     return "".join(b.text for b in blocks[last_fallback + 1:] if b.type == "text")
 
 
-def _claude(cfg: dict, system: str, prompt: str, schema: type[BaseModel], max_tokens: int) -> BaseModel:
+def _claude(cfg: dict, system: str, prompt: str, schema: type[BaseModel], max_tokens: int,
+            meter: pricing.Meter) -> BaseModel:
     import anthropic
 
-    model = model_for("anthropic", cfg)
+    model = meter.model = model_for("anthropic", cfg)
     client = anthropic.Anthropic(api_key=cfg["anthropic_api_key"], timeout=900, max_retries=2)
     params = {
         "model": model,
@@ -97,15 +99,12 @@ def _claude(cfg: dict, system: str, prompt: str, schema: type[BaseModel], max_to
             message = s.get_final_message()
     except anthropic.APIError as e:
         raise claude_error(e, model) from e
-    note_usage("anthropic", model, message.usage.input_tokens, message.usage.output_tokens)
+    claude_usage(message, meter)
     if message.stop_reason == "refusal":
         raise AIError("Claude declined to process this text")
     if message.stop_reason == "max_tokens":
         raise AIError("Claude ran out of output space before it finished")
-    result = _validate(schema, _final_text(message), "Claude")
-    usage = message.usage
-    log.info("claude %s %s: in=%s out=%s", model, message.id, usage.input_tokens, usage.output_tokens)
-    return result
+    return _validate(schema, _final_text(message), "Claude")
 
 
 # ── Ollama ─────────────────────────────────────────────────────────────
@@ -119,9 +118,9 @@ def ollama_context(chars: int) -> int:
     return min(ctx, OLLAMA_MAX_CONTEXT)
 
 
-def _ollama(cfg: dict, system: str, prompt: str, schema: type[BaseModel]) -> BaseModel:
+def _ollama(cfg: dict, system: str, prompt: str, schema: type[BaseModel], meter: pricing.Meter) -> BaseModel:
     wait_for_memory(cfg)
-    model = model_for("ollama", cfg)
+    model = meter.model = model_for("ollama", cfg)
     url = cfg["ollama_url"]
     body = {
         "model": model,
@@ -143,7 +142,7 @@ def _ollama(cfg: dict, system: str, prompt: str, schema: type[BaseModel]) -> Bas
     if r.status_code >= 400:
         raise AIError(f"Ollama error {r.status_code}: {r.text[:300]}", provider_down=True)
     data = r.json()
-    note_usage("ollama", model, data.get("prompt_eval_count"), data.get("eval_count"))
+    ollama_usage(data, meter)
     if data.get("done_reason") == "length":
         raise AIError("The local model ran out of output space before it finished")
     return _validate(schema, (data.get("message") or {}).get("content", ""), "The local model")
@@ -160,7 +159,8 @@ def _chat(base: str, key: str, body: dict) -> httpx.Response:
 
 
 def _openai_compatible(base: str, key: str, model: str, system: str, prompt: str, schema: type[BaseModel],
-                       max_tokens: int, budget_key: str, who: str, pid: str) -> BaseModel:
+                       max_tokens: int, budget_key: str, who: str, meter: pricing.Meter) -> BaseModel:
+    meter.model = model
     host = urlparse(base).netloc
     json_schema = portable_schema(schema)
     user = {"role": "user", "content": prompt}
@@ -195,12 +195,8 @@ def _openai_compatible(base: str, key: str, model: str, system: str, prompt: str
         text = _error_text(r)
         raise AIError(f"{who} error {r.status_code}: {text}", provider_down=not too_long(text))
 
-    def note(resp: httpx.Response) -> None:
-        used = resp.json().get("usage") or {}
-        note_usage(pid, model, used.get("prompt_tokens"), used.get("completion_tokens"))
-
-    note(r)
     for attempt in range(2):  # ⚑ one repair retry: the model sees what was wrong with its own answer
+        openai_usage(r.json(), meter)
         choice = (r.json().get("choices") or [{}])[0]
         content = (choice.get("message") or {}).get("content") or ""
         if choice.get("finish_reason") == "length":
@@ -218,6 +214,5 @@ def _openai_compatible(base: str, key: str, model: str, system: str, prompt: str
             r = _chat(base, key, repair)
             if r.status_code >= 400:
                 text = _error_text(r)
-                raise AIError(f"{who} error {r.status_code}: {text}", provider_down=not too_long(text))
-            note(r)
+                raise AIError(f"{who} error {r.status_code}: {text}", provider_down=not too_long(text)) from e
     raise AIError("unreachable")

@@ -1,10 +1,12 @@
 #!/usr/bin/env bash
-# Everything CI checks: server tests, type checks, the web build, and the family's style rules.
+# Everything CI checks: Python style, server tests, type checks, the web build, and the family's style rules.
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 PY="${PY:-$([ -x .venv/bin/python ] && echo .venv/bin/python || echo python3)}"
 
+echo "› Python style (ruff.toml)"
+"$PY" -m ruff check core modules scripts conftest.py
 echo "› Server tests"
 "$PY" -m pytest
 echo "› Types and web build"

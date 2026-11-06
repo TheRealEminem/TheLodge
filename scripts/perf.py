@@ -84,7 +84,7 @@ with db.connect() as c:
     c.execute("INSERT INTO crm_notes (id, entity_id, body, occurred_at, source, created_at) SELECT lower(hex(randomblob(16))), id, 'A note', created_at, 'manual', created_at FROM crm_entities WHERE kind = 'person' LIMIT 20000")
 print(f"built {len(rows):,} records, {len(edges):,} lines in {time.perf_counter() - t:.1f}s (database {Path(db.DB_PATH).stat().st_size / 1e6:.0f} MB)\n")
 
-from modules.crm.server import research, snapshot, store, views  # noqa: E402
+from modules.crm.server import snapshot, store, views  # noqa: E402
 
 
 def timed(label, fn):

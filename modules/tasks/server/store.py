@@ -6,8 +6,9 @@ milestones, work items (the to-dos that came before, grown up) with subtasks and
 live in items.py and projects.py; hooks.py is what the host calls (contracts, describe, search, export).
 
 Step 2 is the Lodge guide's schema/tasks-v2-projects.sql, with priorities on Plane's five-level scale (D7). Step 3 adds
-tasks_synced: items that are also kept somewhere else (synced.py). Once a step has shipped, never edit it: later changes
-are step 4, 5… and are made only in TrailmixFamily (the one-lineage rule).
+tasks_synced: items that are also kept somewhere else (synced.py). Step 4 adds tasks_drafts: what the AI drafted for you
+to look over, a project's status update or a task's subtasks (drafts.py). Once a step has shipped, never edit it: later
+changes are step 5, 6… and are made only in TrailmixFamily (the one-lineage rule).
 """
 import json
 import re
@@ -129,6 +130,26 @@ MIGRATIONS = [
         synced_at   TEXT NOT NULL,                     -- when it last heard from there
         created_at  TEXT NOT NULL
     );
+    """,
+    """
+    CREATE TABLE tasks_drafts (
+        id          TEXT PRIMARY KEY,
+        kind        TEXT NOT NULL,                     -- status (a project's status update) | breakdown (a task's subtasks)
+        project_id  TEXT REFERENCES tasks_projects(id) ON DELETE CASCADE,
+        item_id     TEXT REFERENCES tasks_items(id) ON DELETE CASCADE,
+        status      TEXT NOT NULL DEFAULT 'drafting',  -- drafting (its job runs, or failed) | ready
+        body        TEXT NOT NULL DEFAULT '',          -- status: the update, markdown
+        health      TEXT,                              -- status: the health it suggests
+        why         TEXT,                              -- status: why that health, in a sentence
+        proposals   TEXT NOT NULL DEFAULT '[]',        -- breakdown: JSON [{id, text, estimate_min, state, item_id}]
+        written_by  TEXT,                              -- the AI that wrote it ("Claude · claude-sonnet-5-5")
+        edited      INTEGER NOT NULL DEFAULT 0,        -- you've changed what it wrote
+        created_at  TEXT NOT NULL,
+        updated_at  TEXT NOT NULL,
+        CHECK ((project_id IS NULL) <> (item_id IS NULL))
+    );
+    CREATE UNIQUE INDEX tasks_drafts_one ON tasks_drafts(kind, coalesce(project_id, item_id));
+    ALTER TABLE tasks_updates ADD COLUMN edited INTEGER NOT NULL DEFAULT 0;   -- written by AI (written_by), then changed by its author
     """,
 ]
 

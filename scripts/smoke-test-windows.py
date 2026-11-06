@@ -75,7 +75,7 @@ def app_info() -> dict | None:
     try:
         with urllib.request.urlopen(f"{URL}/api/app", timeout=2) as r:
             return json.loads(r.read()) if r.status == 200 else None
-    except Exception:
+    except Exception:  # noqa: BLE001 - a server still starting can fail any way; the caller just asks again
         return None
 
 
@@ -389,7 +389,7 @@ def main(argv: list[str]) -> int:
         try:
             second.wait(timeout=30)
         except subprocess.TimeoutExpired:
-            raise Failure("a second launch kept running instead of handing over to the first")
+            raise Failure("a second launch kept running instead of handing over to the first") from None
         if app.poll() is not None or app_info() is None:
             raise Failure("a second launch stopped the first one")
         print("a second launch handed over to the first")

@@ -6,6 +6,9 @@ when it fails are app-wide settings ("ai.*"), chosen once in Settings → AI. A 
 one of its jobs (choice="anthropic"), and a model per provider for it (models={"anthropic": "claude-sonnet-5-5"});
 "auto" and a provider not named in models mean the app-wide ones.
 Local models are unloaded right after use (keep_alive 0) so they don't sit in memory.
+Every provider's attempt goes through attempt(), which writes what it used and cost to the usage log (pricing.py).
+While Lockdown is on (lockdown.py), only providers on this Mac are ready (configured()), and attempt() stops the
+others before anything is sent: it raises Locked, which a job parks on until Lockdown is off.
 
 Failures come in two kinds (AIError.provider_down). A *provider* failure says nothing about the text: no credit,
 a wrong key or model, a rate limit, unreachable, any server error. Every other request would fail the same
@@ -14,13 +17,14 @@ refused, ran out of output, or answered in the wrong shape) is about this text o
 """
 import os
 import re
+import threading
 import time
 from urllib.parse import urlparse
 
 import httpx
 from pydantic import BaseModel
 
-from . import lockdown, model_catalog, resources, settings, usage
+from . import lockdown, model_catalog, module, pricing, resources, settings, usage
 
 OLLAMA_KEEP_ALIVE = os.getenv("OLLAMA_KEEP_ALIVE", "0")  # "0" = unload right after the last call
 TIMEOUT = httpx.Timeout(600, connect=8)
@@ -81,6 +85,14 @@ class AIError(Exception):
         self.provider_down = provider_down
 
 
+class Locked(AIError, lockdown.Blocked):
+    """Lockdown stopped a call to a cloud provider before anything was sent. Also a jobs.Wait: a job that meets it
+    parks with this reason and goes again when Lockdown is off."""
+
+
+LOCKED_OUT = lockdown.WHY
+
+
 # ── For modules ────────────────────────────────────────────────────────
 
 def complete(prompt: str, system: str | None = None, choice: str = "auto", purpose: str | None = None,
@@ -90,7 +102,7 @@ def complete(prompt: str, system: str | None = None, choice: str = "auto", purpo
     models: a model to use instead of the app-wide one, by provider id (see with_models)."""
     cfg = with_models(settings.section("ai"), models)
     with usage.purpose(purpose):
-        return run_chain(choice, cfg, lambda pid: generate(pid, cfg, prompt, system))
+        return run_chain(choice, cfg, "complete", lambda pid, meter: generate(pid, cfg, prompt, system, meter=meter))
 
 
 def structured(prompt: str, system: str | None, schema: type[BaseModel], choice: str = "auto",
@@ -103,7 +115,8 @@ def structured(prompt: str, system: str | None, schema: type[BaseModel], choice:
 
     cfg = with_models(settings.section("ai"), models)
     with usage.purpose(purpose):
-        return run_chain(choice, cfg, lambda pid: ai_adapters.generate_structured(pid, cfg, prompt, system, schema, max_tokens))
+        return run_chain(choice, cfg, "structured",
+                         lambda pid, meter: ai_adapters.generate_structured(pid, cfg, prompt, system, schema, max_tokens, meter))
 
 
 def resolve(choice: str, weight: str = "light") -> str:
@@ -161,32 +174,38 @@ def local_first() -> bool:
 # ── Provider facts ─────────────────────────────────────────────────────
 
 def label(pid: str, cfg: dict) -> str:
-    return (cfg.get("custom_name") or "OpenAI-compatible") if pid == "custom" else PROVIDERS[pid]["label"]
-
-
-def note_usage(pid: str, model: str, tokens_in: int | None, tokens_out: int | None) -> None:
-    """Adds one answer to the usage tally, from the token counts the provider reported."""
-    usage.record(pid, model, tokens_in or 0, tokens_out or 0, local=runs_here(pid, settings.section("ai")))
+    if pid == "custom":
+        return cfg.get("custom_name") or "OpenAI-compatible"
+    return PROVIDERS[pid]["label"] if pid in PROVIDERS else pid
 
 
 def is_local(pid: str, cfg: dict) -> bool:
-    if pid != "ollama":
-        return False
-    return (urlparse(cfg["ollama_url"]).hostname or "") in ("localhost", "127.0.0.1", "::1")
+    return pid == "ollama" and lockdown.local(cfg["ollama_url"])
+
+
+def is_free(pid: str, cfg: dict) -> bool:
+    """Costs nothing per call: Ollama, wherever it runs, or an OpenAI-compatible server on this machine."""
+    return pid == "ollama" or (pid == "custom" and lockdown.local(cfg.get("custom_base_url", "")))
 
 
 def runs_here(pid: str, cfg: dict) -> bool:
-    """Does this provider's work stay on this computer? Ollama here, or an OpenAI-compatible server here (LM Studio)."""
+    """The model runs on this Mac: Ollama or an OpenAI-compatible server, at a local address. Only these answer while
+    Lockdown is on (an Ollama on another machine is beyond this Mac too)."""
     if pid == "ollama":
-        return is_local(pid, cfg)
-    return pid == "custom" and lockdown.on_this_computer(cfg.get("custom_base_url", ""))
+        return lockdown.local(cfg.get("ollama_url"))
+    return pid == "custom" and lockdown.local(cfg.get("custom_base_url"))
+
+
+def locked_out(pid: str, cfg: dict) -> bool:
+    """Lockdown is on and this provider is beyond this Mac."""
+    return not runs_here(pid, cfg) and lockdown.on()
 
 
 def configured(pid: str, cfg: dict) -> tuple[bool, str]:
-    """(ready, reason-if-not). Cheap: no network call except Ollama's model list. Under Lockdown only a provider
-    that runs on this computer is ready."""
-    if not runs_here(pid, cfg) and lockdown.on():
-        return False, lockdown.WHY
+    """(ready, reason-if-not). Cheap: no network call except Ollama's model list. The one choke point: while Lockdown
+    is on, a provider beyond this Mac is never ready."""
+    if locked_out(pid, cfg):
+        return False, LOCKED_OUT
     if pid == "ollama":
         return (True, "") if _ollama_tags(cfg) else (False, f"Ollama isn't reachable at {cfg['ollama_url']} (or has no models)")
     if pid == "custom":
@@ -198,6 +217,13 @@ def configured(pid: str, cfg: dict) -> tuple[bool, str]:
     if not cfg[f"{pid}_api_key"]:
         return False, f"Add an API key for {PROVIDERS[pid]['label']} in Settings"
     return True, ""
+
+
+def require(pid: str, cfg: dict) -> None:
+    """Raises unless pid can take a call now: Locked when Lockdown stops it, AIError for anything else."""
+    ok, why = configured(pid, cfg)
+    if not ok:
+        raise (Locked if why == LOCKED_OUT else AIError)(why, provider_down=True)
 
 
 def model_for(pid: str, cfg: dict) -> str:
@@ -234,50 +260,93 @@ def chain(choice: str, cfg: dict) -> list[str]:
     return out
 
 
-def run_chain(choice: str, cfg: dict, fn) -> tuple[object, str]:
-    """Calls fn(provider) for each provider in the chain until one succeeds. Returns (result, provider)."""
+def run_chain(choice: str, cfg: dict, call: str, fn) -> tuple[object, str]:
+    """Calls fn(provider, meter) for each provider in the chain until one succeeds. Returns (result, provider)."""
     errors: list[AIError] = []
     reasons = []
     for pid in chain(choice, cfg):
         try:
-            return fn(pid), pid
+            return attempt(pid, cfg, call, fn), pid
+        except Locked as e:
+            errors.append(e)
         except AIError as e:
             errors.append(e)
             reasons.append(f"{label(pid, cfg)}: {e}")
+    if any(isinstance(e, Locked) for e in errors):
+        # A provider Lockdown stopped might have answered: the job waits for Lockdown to be off rather than failing.
+        raise Locked("; ".join([LOCKED_OUT, *reasons]), provider_down=True)
     # Provider-down only if every provider tried failed for reasons that have nothing to do with the text.
     raise AIError("; ".join(reasons), provider_down=all(e.provider_down for e in errors))
 
 
+def attempt(pid: str, cfg: dict, call: str, fn, asker: tuple[str, str] | None = None):
+    """One provider's go at a call ("complete" or "structured"): fn(pid, meter) does it and reports the tokens.
+    The one place AI calls are counted: what it used and cost go in the usage log, whether it worked or not.
+    asker: (module, job) when it isn't the job running in this thread. While Lockdown is on, a provider beyond this
+    Mac is stopped here, before fn runs: the log shows it, at no cost, and Locked is raised."""
+    meter = pricing.Meter(pid, cfg.get(f"{pid}_model", ""), free=is_free(pid, cfg), asker=asker)
+    if locked_out(pid, cfg):
+        meter.record(call, error=LOCKED_OUT, stopped=True)
+        raise Locked(LOCKED_OUT, provider_down=True)
+    try:
+        result = fn(pid, meter)
+    except Exception as e:
+        meter.record(call, error=str(e) or type(e).__name__)
+        raise
+    meter.record(call)
+    return result
+
+
 # ── Calls ──────────────────────────────────────────────────────────────
 
-def generate(pid: str, cfg: dict, prompt: str, system: str | None = None, keep_alive: str | None = None) -> str:
-    ok, why = configured(pid, cfg)
-    if not ok:
-        raise AIError(why, provider_down=True)
+def generate(pid: str, cfg: dict, prompt: str, system: str | None = None, keep_alive: str | None = None,
+             meter: pricing.Meter | None = None) -> str:
+    """meter: where the tokens are reported (attempt() gives one; without it they aren't recorded)."""
+    meter = meter or pricing.Meter(pid)
+    require(pid, cfg)
     if pid == "ollama":
         wait_for_memory(cfg)
-        text = _ollama(cfg, prompt, system, keep_alive or OLLAMA_KEEP_ALIVE)
+        text = _ollama(cfg, prompt, system, keep_alive or OLLAMA_KEEP_ALIVE, meter)
     elif pid == "anthropic":
-        text = _anthropic(cfg, prompt, system)
+        text = _anthropic(cfg, prompt, system, meter)
     elif pid == "gemini":
-        text = _gemini(cfg, prompt, system)
+        text = _gemini(cfg, prompt, system, meter)
     elif pid == "custom":
-        text = _openai_compatible(cfg["custom_base_url"], cfg["custom_api_key"], model_for(pid, cfg), prompt, system, pid)
+        text = _openai_compatible(cfg["custom_base_url"], cfg["custom_api_key"], model_for(pid, cfg), prompt, system, pid,
+                                  meter)
     else:
-        text = _openai_compatible(PROVIDERS[pid]["base"], cfg[f"{pid}_api_key"], model_for(pid, cfg), prompt, system, pid)
+        text = _openai_compatible(PROVIDERS[pid]["base"], cfg[f"{pid}_api_key"], model_for(pid, cfg), prompt, system, pid,
+                                  meter)
     text = text.strip()
     if not text:
         raise AIError(f"{label(pid, cfg)} returned an empty response")  # about this text, not the provider
     return text
 
 
-def _ollama_tags(cfg: dict) -> list[dict]:
+TAGS_SECONDS = 10           # how long one answer from Ollama's model list stands in for the next
+_tags: dict[str, tuple[float, list[dict]]] = {}   # Ollama address -> (when asked, its models); a miss is kept too
+_tags_lock = threading.Lock()
+
+
+def _ollama_tags(cfg: dict, fresh: bool = False) -> list[dict]:
+    """Ollama's installed models. Asked for by every readiness check, which the web app makes on every change it
+    hears of, so one answer (or one failure to answer, which can take the whole timeout when the address is a machine
+    that's off) stands for TAGS_SECONDS. fresh: ask now whatever was kept (a button someone just pressed)."""
+    url = cfg["ollama_url"]
+    now = time.monotonic()
+    with _tags_lock:
+        kept = _tags.get(url)
+        if kept and not fresh and now - kept[0] < TAGS_SECONDS:
+            return kept[1]
     try:
-        r = httpx.get(f"{cfg['ollama_url']}/api/tags", timeout=2)
+        r = httpx.get(f"{url}/api/tags", timeout=2)
         r.raise_for_status()
-        return r.json().get("models", [])
+        models = r.json().get("models", [])
     except (httpx.HTTPError, ValueError):
-        return []
+        models = []
+    with _tags_lock:
+        _tags[url] = (now, models)
+    return models
 
 
 def ollama_size_gb(cfg: dict, model: str) -> float:
@@ -321,8 +390,8 @@ def memory_ready() -> bool:
     return memory_reason(settings.section("ai")) is None
 
 
-def _ollama(cfg: dict, prompt: str, system: str | None, keep_alive: str) -> str:
-    model = model_for("ollama", cfg)
+def _ollama(cfg: dict, prompt: str, system: str | None, keep_alive: str, meter: pricing.Meter) -> str:
+    model = meter.model = model_for("ollama", cfg)
     if not model:
         raise AIError(f"Ollama isn't reachable at {cfg['ollama_url']} (or has no models installed)", provider_down=True)
     body = {"model": model, "prompt": prompt, "stream": False, "keep_alive": keep_alive,
@@ -332,8 +401,43 @@ def _ollama(cfg: dict, prompt: str, system: str | None, keep_alive: str) -> str:
     if system:
         body["system"] = system
     data = _post(f"{cfg['ollama_url']}/api/generate", json=body, timeout=OLLAMA_TIMEOUT).json()
-    note_usage("ollama", model, data.get("prompt_eval_count"), data.get("eval_count"))
+    ollama_usage(data, meter)
     return data.get("response") or ""
+
+
+# Reading a reply's token counts never fails the call: a count that isn't a number is left unknown.
+_n = pricing.count
+
+
+def ollama_usage(data: dict, meter: pricing.Meter) -> None:
+    meter.add(_n(data.get("prompt_eval_count")), _n(data.get("eval_count")))
+
+
+def openai_usage(data: dict, meter: pricing.Meter) -> None:
+    """Tokens from an OpenAI-style reply. Output is everything billed past the prompt, so thinking counts even
+    where a server reports it only in total_tokens. Cache reads: OpenAI's and Gemini's cached_tokens, DeepSeek's
+    prompt_cache_hit_tokens."""
+    usage = data.get("usage") if isinstance(data.get("usage"), dict) else {}
+    prompt, out, total = _n(usage.get("prompt_tokens")), _n(usage.get("completion_tokens")), _n(usage.get("total_tokens"))
+    if prompt is not None and total is not None:
+        out = max(out or 0, total - prompt)
+    details = usage.get("prompt_tokens_details") if isinstance(usage.get("prompt_tokens_details"), dict) else {}
+    cached = _n(details.get("cached_tokens")) or _n(usage.get("prompt_cache_hit_tokens")) or 0
+    meter.add(prompt, out, cached, model=data.get("model"))
+
+
+def claude_usage(message, meter: pricing.Meter) -> None:
+    """Claude's tokens. After a refusal fell back, usage.iterations has one entry per model that ran (the top-level
+    usage is only the one that answered): the declined attempts ran on the model asked for, the rest on the model
+    that answered. Cache reads and writes are input too (this app doesn't ask Claude to cache, so there are none)."""
+    usage = getattr(message, "usage", None)
+    answered = getattr(message, "model", None)
+    for it in getattr(usage, "iterations", None) or [usage]:
+        cached = _n(getattr(it, "cache_read_input_tokens", 0)) or 0
+        written = _n(getattr(it, "cache_creation_input_tokens", 0)) or 0
+        inp = _n(getattr(it, "input_tokens", None))
+        ran = getattr(it, "model", None) or (meter.model if getattr(it, "type", "") == "message" else answered)
+        meter.add(None if inp is None else inp + cached + written, _n(getattr(it, "output_tokens", None)), cached, model=ran)
 
 
 def _post(url: str, timeout: httpx.Timeout = TIMEOUT, **kw) -> httpx.Response:
@@ -382,11 +486,11 @@ def claude_error(e, model: str) -> AIError:
     return AIError(f"Couldn't reach the Claude API: {e}", provider_down=True)
 
 
-def _anthropic(cfg: dict, prompt: str, system: str | None) -> str:
+def _anthropic(cfg: dict, prompt: str, system: str | None, meter: pricing.Meter) -> str:
     import anthropic
 
     client = anthropic.Anthropic(api_key=cfg["anthropic_api_key"], timeout=600, max_retries=2)
-    model = model_for("anthropic", cfg)
+    model = meter.model = model_for("anthropic", cfg)
     params = {"model": model, "max_tokens": MAX_TOKENS, "messages": [{"role": "user", "content": prompt}]}
     if system:
         params["system"] = system
@@ -398,13 +502,15 @@ def _anthropic(cfg: dict, prompt: str, system: str | None) -> str:
             msg = client.messages.create(**params)
     except anthropic.APIError as e:
         raise claude_error(e, model) from e
-    note_usage("anthropic", model, msg.usage.input_tokens, msg.usage.output_tokens)
+    claude_usage(msg, meter)
     if msg.stop_reason == "refusal":
         raise AIError("Claude declined this request")
     return "".join(b.text for b in msg.content if b.type == "text")
 
 
-def _openai_compatible(base: str, key: str, model: str, prompt: str, system: str | None, pid: str) -> str:
+def _openai_compatible(base: str, key: str, model: str, prompt: str, system: str | None, pid: str,
+                       meter: pricing.Meter) -> str:
+    meter.model = model
     messages = ([{"role": "system", "content": system}] if system else []) + [{"role": "user", "content": prompt}]
     body: dict = {"model": model, "messages": messages}
     if pid == "openai":
@@ -414,28 +520,37 @@ def _openai_compatible(base: str, key: str, model: str, prompt: str, system: str
     headers = {"Authorization": f"Bearer {key}"} if key else {}
     r = _post(f"{base}/chat/completions", json=body, headers=headers)
     try:
-        used = r.json().get("usage") or {}
-        note_usage(pid, model, used.get("prompt_tokens"), used.get("completion_tokens"))
-        return r.json()["choices"][0]["message"]["content"] or ""
+        data = r.json()
+        openai_usage(data, meter)
+        return data["choices"][0]["message"]["content"] or ""
     except (KeyError, IndexError, ValueError) as e:
         raise AIError(f"Unexpected response from {base}") from e
 
 
-def _gemini(cfg: dict, prompt: str, system: str | None) -> str:
+def _gemini(cfg: dict, prompt: str, system: str | None, meter: pricing.Meter) -> str:
+    model = meter.model = model_for("gemini", cfg)
     body: dict = {"contents": [{"role": "user", "parts": [{"text": prompt}]}]}
     if system:
         body["systemInstruction"] = {"parts": [{"text": system}]}
-    model = model_for("gemini", cfg)
     r = _post(f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent",
               json=body, headers={"x-goog-api-key": cfg["gemini_api_key"]})
     try:
-        used = r.json().get("usageMetadata") or {}
-        note_usage("gemini", model, used.get("promptTokenCount"),
-                   (used.get("candidatesTokenCount") or 0) + (used.get("thoughtsTokenCount") or 0))
-        parts = r.json()["candidates"][0]["content"]["parts"]
+        data = r.json()
+        gemini_usage(data, meter)
+        parts = data["candidates"][0]["content"]["parts"]
     except (KeyError, IndexError, ValueError) as e:
         raise AIError("Gemini returned no text (it may have blocked the request)") from e
     return "".join(p.get("text", "") for p in parts)
+
+
+def gemini_usage(data: dict, meter: pricing.Meter) -> None:
+    """Gemini's own API counts thinking apart from the answer; both are billed as output."""
+    usage = data.get("usageMetadata") if isinstance(data.get("usageMetadata"), dict) else {}
+    out, thoughts = _n(usage.get("candidatesTokenCount")), _n(usage.get("thoughtsTokenCount"))
+    if out is not None or thoughts is not None:
+        out = (out or 0) + (thoughts or 0)
+    meter.add(_n(usage.get("promptTokenCount")), out, _n(usage.get("cachedContentTokenCount")) or 0,
+              model=data.get("modelVersion"))
 
 
 # ── Settings screen: model lists and connection tests ─────────────────
@@ -451,10 +566,10 @@ def providers() -> list[dict]:
 
 def list_models(pid: str) -> list[str]:
     cfg = settings.section("ai")
-    if not runs_here(pid, cfg) and lockdown.on():
-        raise AIError(lockdown.WHY, provider_down=True)
+    if locked_out(pid, cfg):
+        raise Locked(LOCKED_OUT, provider_down=True)
     if pid == "ollama":
-        tags = _ollama_tags(cfg)
+        tags = _ollama_tags(cfg, fresh=True)
         if not tags:
             raise AIError(f"Ollama isn't reachable at {cfg['ollama_url']}", provider_down=True)
         return [m["name"] for m in tags if "embed" not in m["name"].lower()]
@@ -491,6 +606,29 @@ def list_models(pid: str) -> list[str]:
     return sorted(m["id"] for m in r.json().get("data", []))
 
 
+def usage_report() -> dict:
+    """Settings → AI: the one tally (core_ai_usage) in both its views. usage.summary(): this month and last, by purpose,
+    model and day. pricing.summary(): the last 30 days by provider and by module, and the latest calls, with the names
+    to show."""
+    cfg = settings.section("ai")
+    data = {**usage.summary(), **pricing.summary()}
+
+    def provider(pid: str) -> str:
+        return label(pid, cfg) if pid in PROVIDERS else pid
+
+    def asker(mid: str) -> str:
+        found = module.get(mid)
+        return found.name if found else {"core": "Settings", "": "Outside a job"}.get(mid, mid)
+
+    for row in data["last_30_days"]["by_provider"]:
+        row["label"] = provider(row["id"])
+    for row in data["last_30_days"]["by_module"]:
+        row["label"] = asker(row["id"])
+    for row in data["recent"]:
+        row["provider_label"], row["module_label"] = provider(row["provider"]), asker(row["module"])
+    return data
+
+
 class _Probe(BaseModel):
     answer: str
     number: int
@@ -503,8 +641,9 @@ def test(pid: str, model: str = "") -> str:
 
     cfg = with_models(settings.section("ai"), {pid: model})
     started = time.perf_counter()
-    got = ai_adapters.generate_structured(pid, cfg, "Set answer to the word OK and number to 7.",
-                                          "You answer in the JSON format you are given.", _Probe, None)
+    got = attempt(pid, cfg, "structured", lambda p, meter: ai_adapters.generate_structured(
+        p, cfg, "Set answer to the word OK and number to 7.", "You answer in the JSON format you are given.", _Probe,
+        None, meter), asker=("core", "test"))
     seconds = time.perf_counter() - started
     return (f"{label(pid, cfg)} · {model_for(pid, cfg)} answered in {seconds:.1f} s "
             f"({'structured output works' if got.number == 7 else 'it replied, but not exactly as asked'})")

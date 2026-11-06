@@ -91,6 +91,50 @@ def test_only_a_download_signed_by_ollama_is_installed(tmp_path, monkeypatch):
     ollama_setup._verify(app)
 
 
+def windows_check(monkeypatch, stdout="", stderr="", returncode=0):
+    """Runs _verify_windows against a stand-in for PowerShell; gives back what it was started with."""
+    seen = {}
+
+    class Done:
+        def __init__(self):
+            self.stdout, self.stderr, self.returncode = stdout, stderr, returncode
+
+    def run(cmd, **kw):
+        seen.update(cmd=cmd, **kw)
+        return Done()
+
+    monkeypatch.setattr(ollama_setup.subprocess, "run", run)
+    return seen
+
+
+def test_windows_powershell_gets_no_module_path_from_powershell_7(tmp_path, monkeypatch):
+    """Started from PowerShell 7, the app inherits a PSModulePath Windows PowerShell can't load its Security module from."""
+    monkeypatch.setenv("PSModulePath", r"C:\Program Files\PowerShell\7\Modules")
+    seen = windows_check(monkeypatch, stdout="Valid\nCN=Ollama Inc.\n")
+    ollama_setup._verify_windows(tmp_path / "OllamaSetup.exe")
+    assert not any(name.upper() == "PSMODULEPATH" for name in seen["env"])
+    assert seen["env"].get("PATH") == ollama_setup.os.environ.get("PATH")
+
+
+def test_a_windows_download_is_only_run_when_valid_and_ollamas(tmp_path, monkeypatch):
+    setup = tmp_path / "OllamaSetup.exe"
+    windows_check(monkeypatch, stdout="Valid\nCN=Ollama Inc.\n")
+    ollama_setup._verify_windows(setup)
+    windows_check(monkeypatch, stdout="Valid\nCN=Someone Else\n")
+    with pytest.raises(RuntimeError, match="isn't signed by Ollama"):
+        ollama_setup._verify_windows(setup)
+    windows_check(monkeypatch, stdout="HashMismatch\nCN=Ollama Inc.\n")
+    with pytest.raises(RuntimeError, match="failed its signature check"):
+        ollama_setup._verify_windows(setup)
+
+
+def test_a_check_that_says_nothing_is_refused_and_logs_why(tmp_path, monkeypatch, caplog):
+    windows_check(monkeypatch, stderr="the module could not be loaded", returncode=1)
+    with pytest.raises(RuntimeError, match="failed its signature check"), caplog.at_level("WARNING", logger="core.ollama"):
+        ollama_setup._verify_windows(tmp_path / "OllamaSetup.exe")
+    assert "the module could not be loaded" in caplog.text
+
+
 # ── Offering a newer model ──────────────────────────────────────────────
 
 def tag(name, size="7B"):

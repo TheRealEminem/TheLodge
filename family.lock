@@ -1,6 +1,6 @@
 {
-  "commit": "36288ec7e8b11a798362170765300487b6675bd8",
-  "subject": "Settings: Run setup again, to reopen the first-run screens on an existing install",
-  "synced_on": "2026-10-24",
+  "commit": "f4c8932653ab3d72e7213b6eb207d8ab53af14ea",
+  "subject": "Tests never reach a real model server: Ollama's address points at nothing, so a queued job fails at once",
+  "synced_on": "2026-11-05",
   "note": "The TrailmixFamily commit this app's shared code comes from. Change it with scripts/sync-family."
 }

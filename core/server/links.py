@@ -59,6 +59,17 @@ def targets(source: str, kind: str | None = None) -> list[str]:
     return [r["to_ref"] for r in db.query("SELECT to_ref FROM core_links WHERE from_ref = ?", (source,))]
 
 
+def targets_of(sources: list[str], kind: str) -> dict[str, list[str]]:
+    """targets() for many sources at once: {source: [to_refs]} of one kind (a list page asking about its rows)."""
+    out: dict[str, list[str]] = {}
+    for chunk in (sources[i:i + 500] for i in range(0, len(sources), 500)):
+        marks = ",".join("?" * len(chunk))
+        for r in db.query(f"SELECT from_ref, to_ref FROM core_links WHERE kind = ? AND from_ref IN ({marks}) "
+                          f"ORDER BY created_at", (kind, *chunk)):
+            out.setdefault(r["from_ref"], []).append(r["to_ref"])
+    return out
+
+
 def pairs(kind: str, to_module: str) -> dict[str, str]:
     """Every link of one kind into one module's things: {to_ref: from_ref} ("plane:<item>" → "tasks:<id>")."""
     rows = db.query("SELECT from_ref, to_ref FROM core_links WHERE kind = ? AND to_ref LIKE ? ESCAPE '\\'",

@@ -1,6 +1,8 @@
 """Linked tasks: work kept elsewhere too arrives through the shared work.* contracts and follows the other side for
 fields you haven't changed, flags the ones you have, and is never deleted by it. Nothing here knows about Plane:
 the tests publish the contracts the way any module would."""
+import pytest
+
 from core.server import contracts, db, events, links
 from modules.tasks.server import items, projects, synced
 
@@ -39,10 +41,10 @@ def test_a_project_and_its_work_arrive_as_a_linked_project_and_task():
 
 def test_untouched_fields_follow_the_other_side():
     item_id = _arrive(project_ref=None)
-    _there(text="Share the repos with Sam", due_on="2026-10-31", assignee_ref="elsewhere:mick", assignee_name="Mickey")
+    _there(text="Share the repos with Dale", due_on="2026-10-31", assignee_ref="elsewhere:sam", assignee_name="Sam")
     task = items.get(item_id)
     assert (task["text"], task["due_on"], task["assignee_ref"], task["assignee_name"]) == \
-        ("Share the repos with Sam", "2026-10-31", "elsewhere:mick", "Mickey")
+        ("Share the repos with Dale", "2026-10-31", "elsewhere:sam", "Sam")
     assert _about(item_id)["conflicts"] == [] and _about(item_id)["edited"] == []
 
 
@@ -122,3 +124,91 @@ def test_the_api_shows_linked_tasks_and_takes_choices(client):
     assert client.post(f"/api/tasks/{item_id}/synced", json={"field": "text", "keep": "theirs"}).status_code == 400
     assert client.delete(f"/api/tasks/{item_id}/synced").json()["synced"] is None
     assert client.delete(f"/api/tasks/{item_id}/synced").status_code == 404
+
+
+# ── Sending your changes (contracts.WORK_SHARE_REQUESTED) ──────────────
+
+@pytest.fixture
+def listener(monkeypatch, probe_item):
+    """Stands in for the module that sends elsewhere: records each request and links the task to a waiting request
+    (kind "share"), as the contract asks."""
+    asked: list[dict] = []
+
+    def take(payload):
+        asked.append(payload)
+        links.add(payload["local_ref"], probe_item("Waiting to send it"), "share")
+
+    monkeypatch.setitem(events._subscribers, contracts.WORK_SHARE_REQUESTED, [take])
+    return asked
+
+
+def test_send_asks_for_only_what_you_changed_with_its_base(listener, client):
+    item_id = _arrive()
+    items.update(item_id, {"due_on": "2026-11-07", "assignee_ref": "elsewhere:sam", "assignee_name": "Sam"})
+    r = client.post(f"/api/tasks/{item_id}/share")
+    assert r.status_code == 200 and r.json()["asked"] == {"fields": ["due_on", "assignee"], "new": False}
+    [asked] = listener
+    project = links.sources("elsewhere:proj1", "synced")
+    assert asked == {"ref": "elsewhere:item1", "local_ref": f"tasks:{item_id}",
+                     "fields": {"due_on": "2026-11-07", "assignee_ref": "elsewhere:sam", "assignee_name": "Sam"},
+                     "base": {"due_on": "2026-10-24", "assignee_ref": "core:me", "assignee_name": None},
+                     "project_ref": project[0] if project else None}
+    assert r.json()["sharing"] == [{"title": "Waiting to send it", "href": r.json()["sharing"][0]["href"]}]
+
+
+def test_send_says_why_when_theres_nothing_to_send(listener, client):
+    item_id = _arrive(project_ref=None)
+    r = client.post(f"/api/tasks/{item_id}/share")
+    assert r.status_code == 400 and "Nothing to send" in r.json()["detail"]
+    items.update(item_id, {"due_on": "2026-11-07"})
+    _there(due_on="2026-10-31")
+    r = client.post(f"/api/tasks/{item_id}/share")                    # only a flagged field: choose first
+    assert r.status_code == 400 and "Choose between" in r.json()["detail"]
+    events.publish(contracts.WORK_REMOVED_ELSEWHERE, {"ref": "elsewhere:item1", "source": "Elsewhere"})
+    assert "no longer in Elsewhere" in client.post(f"/api/tasks/{item_id}/share").json()["detail"]
+    assert listener == []
+
+
+def test_a_task_in_a_linked_project_asks_to_be_made_there(listener, client):
+    events.publish(contracts.WORK_PROJECT_ARRIVED, {"ref": "elsewhere:proj1", "name": "Software", "source": "Elsewhere"})
+    pid = projects.query()[0]["id"]
+    item_id = items.create("Write the docs", project_id=pid, due_on="2026-11-06")
+    r = client.post(f"/api/tasks/{item_id}/share")
+    assert r.json()["asked"] == {"fields": ["text", "status", "due_on"], "new": True}
+    [asked] = listener
+    assert asked["ref"] == asked["local_ref"] == f"tasks:{item_id}" and asked["base"] == {}
+    assert asked["project_ref"] == f"tasks:{pid}" and set(asked["fields"]) == set(contracts.WORK_FIELDS)
+    sub = items.create("A part of it", parent_id=item_id)
+    assert "subtask" in client.post(f"/api/tasks/{sub}/share").json()["detail"]
+    mine = items.create("Private", project_id=projects.create("Just mine"))
+    assert "isn't linked anywhere" in client.post(f"/api/tasks/{mine}/share").json()["detail"]
+
+    # Made there: the task becomes the linked copy, agreeing with what arrived (nothing new is made)
+    events.publish(contracts.WORK_ARRIVED, {"ref": "elsewhere:item9", "fields": {**FIELDS, "text": "Write the docs",
+                                            "due_on": "2026-11-06", "status": "todo", "notes": "", "priority": 0,
+                                            "assignee_ref": None}, "project_ref": "elsewhere:proj1",
+                                            "source": "Elsewhere", "url": "https://example.test/9",
+                                            "local_ref": f"tasks:{item_id}"})
+    assert len([i for i in items.query() if i["text"] == "Write the docs"]) == 1
+    about = _about(item_id)
+    assert about["ref"] == "elsewhere:item9" and about["edited"] == [] and about["url"] == "https://example.test/9"
+    assert links.targets(f"tasks:{item_id}", "synced") == ["elsewhere:item9"]
+
+
+def test_send_with_nothing_listening_says_so(client, monkeypatch):
+    monkeypatch.setitem(events._subscribers, contracts.WORK_SHARE_REQUESTED, [])
+    item_id = _arrive()
+    items.update(item_id, {"priority": 1})
+    r = client.post(f"/api/tasks/{item_id}/share")
+    assert r.status_code == 400 and "Nothing took it" in r.json()["detail"]
+
+
+def test_a_field_you_chose_theirs_for_over_there_follows(client):
+    item_id = _arrive(project_ref=None)
+    items.update(item_id, {"due_on": "2026-11-07", "priority": 1})
+    events.publish(contracts.WORK_UPDATED_ELSEWHERE, {"ref": "elsewhere:item1", "source": "Elsewhere",
+                                                      "fields": {**FIELDS, "due_on": "2026-10-31", "priority": 4},
+                                                      "take": ["due_on"]})
+    task, about = items.get(item_id), _about(item_id)
+    assert task["due_on"] == "2026-10-31" and task["priority"] == 1                 # taken; still yours
+    assert [c["field"] for c in about["conflicts"]] == ["priority"] and about["edited"] == []

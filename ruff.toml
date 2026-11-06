@@ -1,0 +1,18 @@
+# Python style for the family's server code: scripts/check runs `ruff check`. The rules are the plain ones (errors,
+# unused names, bugbear) plus the two the code already answers with `# noqa`: a bare `except Exception` must say why
+# (BLE001) and a name mustn't shadow a builtin (A). Lines run long on purpose: the comments read as prose.
+line-length = 125
+target-version = "py311"
+extend-exclude = ["node_modules", "dist", "build", ".venv", "mac"]
+
+[lint]
+select = ["E", "F", "W", "B", "BLE", "A"]
+ignore = [
+  "E501",   # line length: the limit above is the rule; this leaves prose comments alone when a URL runs past it
+  "B008",   # fastapi's Body(...) and Query(...) defaults are how its routes are written
+  "B905",   # zip() without strict=: the pairs zipped here are built together and always the same length
+]
+
+[lint.per-file-ignores]
+"conftest.py" = ["E402"]            # tests set the environment before the app is imported, on purpose
+"**/tests/*" = ["B", "A", "F811"]      # a fixture imported from another test module is named again as a parameter

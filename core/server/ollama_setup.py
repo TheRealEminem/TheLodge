@@ -322,11 +322,18 @@ def _verify_windows(setup: Path) -> None:
     path = str(setup).replace("'", "''")
     script = (f"$s = Get-AuthenticodeSignature -LiteralPath '{path}'; $s.Status.ToString(); "
               "if ($s.SignerCertificate) { $s.SignerCertificate.Subject } else { '' }")
+    # Windows' own PowerShell looks for its modules in PSModulePath. An app started from PowerShell 7 inherits PowerShell
+    # 7's value, whose copy of the Security module Windows PowerShell can't load: the check then prints nothing at all,
+    # which read as a bad signature on a good download. Without the variable it uses its own folders.
+    env = {name: value for name, value in os.environ.items() if name.upper() != "PSMODULEPATH"}
     done = subprocess.run([_powershell(), "-NoProfile", "-NonInteractive", "-Command", script],
-                          capture_output=True, text=True, timeout=120)
+                          capture_output=True, text=True, timeout=120, env=env)
     lines = [line.strip() for line in done.stdout.splitlines() if line.strip()]
-    problem = signature_problem(lines[0] if lines else "", lines[1] if len(lines) > 1 else "")
+    status, subject = lines[0] if lines else "", lines[1] if len(lines) > 1 else ""
+    problem = signature_problem(status, subject)
     if problem:
+        log.warning("Ollama's signature: status %r, signer %r, exit %s, PowerShell said: %s",
+                    status, subject, done.returncode, (done.stderr or "").strip()[:500])
         raise RuntimeError(problem)
 
 

@@ -47,7 +47,8 @@ struct HostApp: App {
     }
 }
 
-/// The menu bar menu. Native features a module needs (hotkeys, recording…) get their items here.
+/// The menu bar menu: the app, then the sidebar's sections (each enabled module's nav, from the page).
+/// Native features a module needs (hotkeys, recording…) get their items here.
 struct MenuContent: View {
     @ObservedObject var host: Host
     @ObservedObject var updater: Updater
@@ -55,8 +56,10 @@ struct MenuContent: View {
     var body: some View {
         Button("Open \(AppConfig.name)") { host.openWindow() }
             .keyboardShortcut("o")
-        Button("Inbox") { host.openWindow(page: "crm/inbox") }  // what's waiting for you to look over
-            .disabled(!host.ready)
+        ForEach(host.sections, id: \.self) { section in
+            Button(section.label) { host.openWindow(page: section.path) }
+                .disabled(!host.ready)
+        }
         if let failure = host.failure {
             Text(failure)
         } else if !host.ready {
@@ -98,6 +101,8 @@ struct UpdateItems: View {
             Text("Checking for updates…")
         case .offline:
             Button("Couldn’t reach GitHub · Try again") { Task { await updater.check(manual: true) } }
+        case .lockedDown:
+            Button("Lockdown is on · Check again") { Task { await updater.check(manual: true) } }
         case .upToDate:
             Button("Up to date · Check again") { Task { await updater.check(manual: true) } }
         case .idle:
@@ -130,14 +135,33 @@ struct UpdateItems: View {
     }
 }
 
+/// A section of the app as the menu lists it: a module's nav item from the sidebar, without its icon.
+struct NavItem: Codable, Hashable {
+    let label: String
+    let path: String  // a route without "#/", e.g. "inbox"
+}
+
 /// Starts (or finds) the server, then shows the window when it answers.
 @MainActor
 final class Host: ObservableObject {
     static let shared = Host()
+    private static let sectionsKey = "menuSections"
 
     @Published private(set) var ready = false
     @Published private(set) var failure: String?
     @Published private(set) var openAtLogin = SMAppService.mainApp.status == .enabled
+    /// The sidebar's sections, which the page sends whenever it loads. Kept, so the menu has them on a launch
+    /// that opens no window (at login); a module turned on or off shows up the next time the window opens.
+    @Published private(set) var sections: [NavItem] = UserDefaults.standard.data(forKey: Host.sectionsKey)
+        .flatMap { try? JSONDecoder().decode([NavItem].self, from: $0) } ?? []
+
+    func setSections(fromJSON data: Data) {
+        guard let sent = try? JSONDecoder().decode([NavItem].self, from: data) else { return }
+        let usable = Array(sent.filter { !$0.label.isEmpty && !$0.path.isEmpty }.prefix(20))
+        guard usable != sections else { return }
+        sections = usable
+        UserDefaults.standard.set(try? JSONEncoder().encode(usable), forKey: Self.sectionsKey)
+    }
 
     func begin(openWindow: Bool) {
         Task {

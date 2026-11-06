@@ -100,6 +100,14 @@ public enum UpdateRules {
         return json["busy"] as? Bool ?? false
     }
 
+    /// The server's answer to GET /api/lockdown: true while Lockdown is on (nothing leaves this Mac, so no update
+    /// checks or downloads), false when it's off, nil when the server couldn't say. Unlike busy, not knowing isn't
+    /// a no: the updater doesn't reach GitHub until it hears a clear "off".
+    public static func lockedDown(status: Int, body: Data) -> Bool? {
+        guard status == 200, let json = try? JSONSerialization.jsonObject(with: body) as? [String: Any] else { return nil }
+        return json["on"] as? Bool
+    }
+
     /// Whether version a is higher than b: "0.10.0" is higher than "0.9.1", and "1.0" is the same as "1.0.0". A
     /// leading "v", and anything after a part's digits ("1-beta"), are ignored.
     public static func isNewer(_ a: String, than b: String) -> Bool {
