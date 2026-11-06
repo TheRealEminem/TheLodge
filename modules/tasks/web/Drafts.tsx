@@ -1,4 +1,4 @@
-// What the AI drafts for you (chunk 12): a project's status update, and a task's subtasks. Each says which AI wrote
+// What the AI drafts for you: a project's status update, and a task's subtasks. Each says which AI wrote
 // it, and nothing counts until you post or accept it. An update can also be offered, as a new comment, where a linked
 // task lives too (named by the module that keeps it, task.synced.source); it then waits for your approval there.
 import { useEffect, useState } from "react";

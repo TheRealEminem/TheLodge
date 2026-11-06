@@ -72,16 +72,19 @@ def _one_ai_tally(conn: sqlite3.Connection) -> None:
     Lockdown stops). Both are at the same version, so this step looks at the table it finds and brings either to the one
     shape pricing.write() fills (tokens_in and tokens_out stay readable, as generated columns). Dollars the first kind couldn't price were stored as 0 with priced = 0: those become
     NULL (cost not known), as the second kind has them."""
-    cols = {r[1] for r in conn.execute("PRAGMA table_info(core_ai_usage)")}
+    # table_xinfo, not table_info, which leaves generated columns out: a step cut off before its version was noted runs
+    # again, and must find the columns it already added.
+    cols = {r[1] for r in conn.execute("PRAGMA table_xinfo(core_ai_usage)")}
     if "input_tokens" in cols:                                  # pricing.py's table: add what the other kind has
         for name, spec in (("source", "TEXT NOT NULL DEFAULT ''"), ("searches", "INTEGER NOT NULL DEFAULT 0"),
                            ("local", "INTEGER NOT NULL DEFAULT 0")):
             if name not in cols:
                 conn.execute(f"ALTER TABLE core_ai_usage ADD COLUMN {name} {spec}")
         conn.execute("UPDATE core_ai_usage SET local = 1 WHERE provider = 'ollama'")
-        for name, source in (("tokens_in", "input_tokens"), ("tokens_out", "output_tokens")):
+        for name, value in (("tokens_in", "COALESCE(input_tokens, 0)"), ("tokens_out", "COALESCE(output_tokens, 0)"),
+                            ("priced", "cost IS NOT NULL")):
             if name not in cols:
-                conn.execute(f"ALTER TABLE core_ai_usage ADD COLUMN {name} INTEGER GENERATED ALWAYS AS (COALESCE({source}, 0)) VIRTUAL")
+                conn.execute(f"ALTER TABLE core_ai_usage ADD COLUMN {name} INTEGER GENERATED ALWAYS AS ({value}) VIRTUAL")
         return
     conn.executescript("""
     BEGIN;
@@ -102,9 +105,11 @@ def _one_ai_tally(conn: sqlite3.Connection) -> None:
         source        TEXT NOT NULL DEFAULT '',   -- what the call was for ("Note summaries")
         searches      INTEGER NOT NULL DEFAULT 0, -- web searches paid for
         local         INTEGER NOT NULL DEFAULT 0, -- ran on this computer
-        -- what the apps that counted before there was one tally called them, for anything that still reads those names
+        -- what the apps that counted before there was one tally called them, for anything that still reads those names,
+        -- such as the version before this one after Go back
         tokens_in     INTEGER GENERATED ALWAYS AS (COALESCE(input_tokens, 0)) VIRTUAL,
-        tokens_out    INTEGER GENERATED ALWAYS AS (COALESCE(output_tokens, 0)) VIRTUAL
+        tokens_out    INTEGER GENERATED ALWAYS AS (COALESCE(output_tokens, 0)) VIRTUAL,
+        priced        INTEGER GENERATED ALWAYS AS (cost IS NOT NULL) VIRTUAL
     );
     INSERT INTO core_ai_usage_one (id, at, module, job, call, provider, model, input_tokens, output_tokens, cost, source,
                                    searches, local)

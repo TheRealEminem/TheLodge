@@ -118,6 +118,32 @@ def test_a_table_made_by_the_logging_app_gains_what_the_other_kind_has():
     assert conn.execute("SELECT module, job, source, local, tokens_in, tokens_out FROM core_ai_usage").fetchone() == ("inbox", "extract", "", 1, 10, 5)
 
 
+@pytest.mark.parametrize("shape", [FAMILY_SHAPE, PRICING_SHAPE])
+def test_a_step_cut_off_before_its_version_was_noted_can_run_again(shape):
+    """The step's changes are committed before db.migrate notes the version, so a stop in between repeats it."""
+    import sqlite3
+    conn = sqlite3.connect(":memory:")
+    conn.executescript(shape)
+    db._one_ai_tally(conn)
+    db._one_ai_tally(conn)
+    assert {"input_tokens", "source", "local"} <= set(_columns(conn))
+    conn.execute("SELECT tokens_in, tokens_out, priced FROM core_ai_usage")
+
+
+@pytest.mark.parametrize("shape", [FAMILY_SHAPE, PRICING_SHAPE])
+def test_the_version_before_can_still_read_the_table_after_go_back(shape):
+    """Go back runs the older code on this table: its reports read tokens_in, tokens_out and priced."""
+    import sqlite3
+    conn = sqlite3.connect(":memory:")
+    conn.executescript(shape)
+    db._one_ai_tally(conn)
+    conn.execute("INSERT INTO core_ai_usage (id, at, module, job, call, provider, model, input_tokens, output_tokens, cost) "
+                 "VALUES ('known', 't', '', '', 'complete', 'openai', 'm', 10, 5, 0.1), "
+                 "('unknown', 't', '', '', 'complete', 'custom', 'm', 10, 5, NULL)")
+    assert conn.execute("SELECT id, tokens_in, tokens_out, priced FROM core_ai_usage ORDER BY id").fetchall() == [
+        ("known", 10, 5, 1), ("unknown", 10, 5, 0)]
+
+
 def test_the_two_views_read_the_same_rows(monkeypatch):
     values = {**ai.DEFAULTS, "provider": "openai", "openai_api_key": "k"}
     monkeypatch.setattr(ai.settings, "section", lambda namespace: values)

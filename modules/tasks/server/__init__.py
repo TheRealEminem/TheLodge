@@ -1,5 +1,5 @@
 """Tasks: all of your work, from anywhere. Projects with milestones, work items with subtasks and blockers, and
-updates (since step 2; Traverse PLAN.md chunk 2). It listens for the shared "actions.found" contract, so any module
+updates (since step 2). It listens for the shared "actions.found" contract, so any module
 that finds action items (notes today, meetings tomorrow) feeds it without either knowing about the other, and it
 links each task back to where it came from. Work kept somewhere else too (a Plane work item) arrives and follows
 through the shared work.* contracts (synced.py), again without this module knowing where that is. The AI drafts a

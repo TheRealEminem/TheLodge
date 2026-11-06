@@ -1,4 +1,4 @@
-"""AI in the app (chunk 12), with the fake AI: drafting a project's status update and breaking a task down. The AI runs
+"""AI in the app, with the fake AI: drafting a project's status update and breaking a task down. The AI runs
 only in the tasks/draft job, what it wrote always says which AI wrote it, and nothing counts until you post or accept
 it. Posting an update where a linked task also lives only asks, through the shared contract; the tests stand in for
 whoever takes it, the way any module would."""

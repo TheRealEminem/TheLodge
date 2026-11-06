@@ -1,6 +1,6 @@
 {
-  "commit": "118e656b5cdc8e1dc530ab8b1f3248af194e9597",
-  "subject": "Windows and Linux builds: the same newer actions as the other workflows",
+  "commit": "a019ae23acbf38aa0ea1f5d048060b2de34c8f33",
+  "subject": "AI usage table: its step can run twice, and the version before can still read it after Go back",
   "synced_on": "2026-11-05",
   "note": "The TrailmixFamily commit this app's shared code comes from. Change it with scripts/sync-family."
 }

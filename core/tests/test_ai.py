@@ -222,7 +222,7 @@ def http(monkeypatch):
 
 @pytest.fixture
 def ollama(monkeypatch, cfg):
-    monkeypatch.setattr(ai, "_ollama_tags", lambda c: [{"name": "qwen3:8b", "details": {"parameter_size": "8B"}}])
+    monkeypatch.setattr(ai, "_ollama_tags", lambda c, fresh=False: [{"name": "qwen3:8b", "details": {"parameter_size": "8B"}}])
     cfg(provider="ollama")
 
 

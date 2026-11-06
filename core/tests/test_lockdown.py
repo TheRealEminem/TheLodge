@@ -71,7 +71,7 @@ def another_app_saves(changes: dict) -> None:
 # ── AI: the choke point ───────────────────────────────────────────────
 
 def test_cloud_ai_isnt_ready_and_ai_on_this_mac_is(lockdown_on, monkeypatch):
-    monkeypatch.setattr(ai, "_ollama_tags", lambda cfg: [{"name": "qwen2.5:7b"}])
+    monkeypatch.setattr(ai, "_ollama_tags", lambda cfg, fresh=False: [{"name": "qwen2.5:7b"}])
     cfg = cloud_cfg()
     assert ai.configured("anthropic", cfg) == (False, ai.LOCKED_OUT)
     assert not ai.configured("openai", cfg)[0] and not ai.configured("gemini", cfg)[0]
@@ -343,7 +343,7 @@ def test_settings_say_why_each_provider_is_off(locked, client):
 
 def test_a_model_on_this_mac_still_answers(locked, monkeypatch):
     settings.update({"ai.provider": "ollama", "ai.ollama_url": "http://localhost:11434"})
-    monkeypatch.setattr(ai, "_ollama_tags", lambda c: [{"name": "qwen2.5:7b", "details": {"parameter_size": "7B"}}])
+    monkeypatch.setattr(ai, "_ollama_tags", lambda c, fresh=False: [{"name": "qwen2.5:7b", "details": {"parameter_size": "7B"}}])
     monkeypatch.setattr(ai, "_ollama", lambda cfg, prompt, system, keep, meter: "hello from here")
     assert ai.complete("hi") == ("hello from here", "ollama")
     settings.update({"ai.custom_base_url": "http://localhost:1234/v1"})            # LM Studio on this Mac is also here

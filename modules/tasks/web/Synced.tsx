@@ -101,7 +101,7 @@ export function SyncedPanel({
   project?: ProjectDetail | null;
   onChanged: () => void;
 }) {
-  const { toast } = useShell();
+  const { toast, app } = useShell();
   const [confirm, dialog] = useConfirm();
   const synced = task.synced;
   if (!synced) return <NotSentYet task={task} project={project ?? null} onChanged={onChanged} />;
@@ -159,7 +159,7 @@ export function SyncedPanel({
           <div role="status" className="mt-3 rounded-lg border border-line bg-surface-subtle px-4 py-3 text-label">
             <div className="font-semibold">Removed in {where}</div>
             <p className="mt-0.5 text-ui text-ink-soft">
-              It's no longer in what Traverse reads from {where}: deleted, archived, or moved to a project Traverse doesn't read. Your copy stays as
+              It's no longer in what {app.name} reads from {where}: deleted, archived, or moved to a project {app.name} doesn't read. Your copy stays as
               it is. If it comes back, this goes away.
             </p>
           </div>
@@ -172,7 +172,7 @@ export function SyncedPanel({
               <div>
                 <div className="text-label font-semibold text-sun-deep">Changed in {where}</div>
                 <p className="mt-0.5 text-ui text-ink-soft">
-                  You changed {synced.conflicts.length === 1 ? "this" : "these"} here too, so Traverse kept yours. Choose which to keep.
+                  You changed {synced.conflicts.length === 1 ? "this" : "these"} here too, so {app.name} kept yours. Choose which to keep.
                 </p>
               </div>
             </div>
@@ -220,7 +220,7 @@ function NotSentYet({ task, project, onChanged }: { task: TaskDetail; project: P
         <p className="min-w-0 flex-1 basis-64">
           {task.sharing.length
             ? `${task.sharing[0].title}.`
-            : `Only in Traverse so far. ${project.name} is linked to ${target.title} in ${where}, so you can add it there.`}
+            : `Only in ${app.name} so far. ${project.name} is linked to ${target.title} in ${where}, so you can add it there.`}
         </p>
         <SendRow task={task} label={`Send to ${where}`} onChanged={onChanged} />
       </div>

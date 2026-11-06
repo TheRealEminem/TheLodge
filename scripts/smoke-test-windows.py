@@ -167,6 +167,7 @@ def ollama_test(installer: Path, work: Path) -> None:
                 last = install_state.get("status")
                 print(f"  {last}", flush=True)
             if install_state.get("error"):
+                ollama_logs()
                 raise Failure(f"installing Ollama failed: {install_state['error']}")
             if now["installed"] and now["reachable"] and not install_state.get("active"):
                 print(f"after: installed, running, models {now['models']}")
@@ -175,6 +176,18 @@ def ollama_test(installer: Path, work: Path) -> None:
         raise Failure("Ollama wasn't installed and answering after 20 minutes")
     finally:
         end_install(install)
+
+
+def ollama_logs() -> None:
+    """What Ollama itself said, when it didn't start: its tray app's and server's logs, and what's running."""
+    folder = Path(os.environ.get("LOCALAPPDATA", "")) / "Ollama"
+    for name in ("app.log", "server.log"):
+        path = folder / name
+        print(f"-- {path} --")
+        print(path.read_text(errors="replace")[-3000:] if path.exists() else "(not there)")
+    running = subprocess.run(["powershell", "-NoProfile", "-Command", "Get-Process *ollama* | Format-Table Id, Path -AutoSize | Out-String"],
+                             capture_output=True, text=True)
+    print(f"-- running --\n{running.stdout or '(nothing)'}", flush=True)
 
 
 def end_install(install: Path) -> None:

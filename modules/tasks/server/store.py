@@ -1,7 +1,7 @@
 """The tasks module's tables, and the helpers every part of it shares: checking values, the search index, and
 saying that something changed.
 
-Since step 2 the module holds the whole of "work" (Traverse PLAN.md chunk 2, the Lodge blueprint §3-4): projects with
+Since step 2 the module holds the whole of "work" (the Lodge blueprint §3-4): projects with
 milestones, work items (the to-dos that came before, grown up) with subtasks and blockers, and updates. The functions
 live in items.py and projects.py; hooks.py is what the host calls (contracts, describe, search, export).
 

@@ -5,8 +5,9 @@
 //! version. Go back installs the version this one replaced the same checked way, and skips this one until a newer
 //! version is out. The data stays: migrations only add, so the older version opens it too.
 //!
-//! As on the Mac: beta updates (pre-releases) only when you turn them on, Skip this version, Lockdown keeps the
-//! automatic looks at home, and nothing installs while the server is in the middle of something.
+//! As on the Mac: beta updates (pre-releases) only when you turn them on, Skip this version, nothing looks or downloads
+//! under Lockdown (or while the server can't say whether it's on), and nothing installs while the server is in the
+//! middle of something.
 //!
 //! A release counts when it has this computer's installer, "<Slug>-<version>-windows-<arch>.exe", with its
 //! ".sha256" beside it (scripts/build-windows.py makes both). The installer is unsigned, so there's no Authenticode
@@ -65,6 +66,8 @@ pub enum State {
     UpToDate,
     /// Couldn't reach GitHub to check.
     Offline,
+    /// Lockdown is on: no looks, no downloads.
+    LockedDown,
     Available(String),
     Downloading(String, Option<f64>),
     Installing(String),
@@ -243,12 +246,31 @@ impl Updater {
         thread::spawn(move || updater.check(manual));
     }
 
-    /// Looks for a new version. `manual`: you asked (Check for updates…), so it shows "Checking…" meanwhile. Under
-    /// Lockdown only that goes out: the automatic looks stay home.
+    /// Looks for a new version. `manual`: you asked (Check for updates…), so it shows "Checking…" meanwhile. Nothing
+    /// goes out under Lockdown, or while the server can't say whether it's on.
     pub fn check(&self, manual: bool) {
         let Some(feed) = feed() else { return };
-        if self.working() || (!manual && lockdown_on()) {
+        if self.working() {
             return;
+        }
+        match lockdown_on() {
+            Some(true) => {
+                self.set_state(State::LockedDown);
+                return;
+            }
+            None => {
+                if manual {
+                    self.set_state(State::Failed(format!("Couldn't ask {} whether Lockdown is on, so it didn't check.", config::NAME)));
+                }
+                log("couldn't read Lockdown from the server, so didn't look for updates");
+                return;
+            }
+            Some(false) => {
+                if self.state() == State::LockedDown {
+                    let latest = self.lock().latest.as_ref().map(|l| l.version.clone());
+                    self.set_state(latest.map_or(State::Idle, State::Available));
+                }
+            }
         }
         if self.checking.swap(true, Ordering::SeqCst) {
             return; // one look at a time
@@ -360,6 +382,7 @@ impl Updater {
             State::Checking => ("checking", None, None),
             State::UpToDate => ("up-to-date", None, None),
             State::Offline => ("offline", None, None),
+            State::LockedDown => ("locked-down", None, None),
             State::Available(v) => ("available", Some(v), Some(("prerelease", json!(inner.latest.as_ref().map(|l| l.prerelease).unwrap_or(false))))),
             State::Downloading(v, p) => ("downloading", Some(v), Some(("progress", json!(p)))),
             State::Installing(v) => ("installing", Some(v), None),
@@ -414,6 +437,10 @@ impl Updater {
             return;
         }
         let doing = if going_back { "go back" } else { "update" };
+        if lockdown_on() != Some(false) {
+            self.set_state(State::Failed(format!("Lockdown is on, so {} didn't {doing}: that takes a download. Turn it off in Settings to go ahead.", config::NAME)));
+            return;
+        }
         if server_busy() {
             self.set_state(State::Failed(format!("{} is in the middle of something, so it didn't {doing}. Try again when it's done.", config::NAME)));
             return;
@@ -578,15 +605,19 @@ fn fetch_text(url: &str, current: &str) -> Option<String> {
     (response.status_code == 200).then(|| response.as_str().ok().map(String::from)).flatten()
 }
 
-/// Lockdown (the family's rule 9: nothing leaves this computer). The server reports it in /api/app.
-fn lockdown_on() -> bool {
-    minreq::get(format!("{}/api/app", config::server_url()))
-        .with_timeout(3)
-        .send()
-        .ok()
-        .and_then(|r| serde_json::from_str::<Value>(r.as_str().ok()?).ok())
-        .and_then(|v| v.get("lockdown").and_then(|l| l.as_bool()))
-        .unwrap_or(false)
+/// Lockdown (the family's rule 9: nothing leaves this computer): GET /api/lockdown. None when the server can't say,
+/// which the callers treat as on, so no look or download goes out on a guess.
+fn lockdown_on() -> Option<bool> {
+    let response = minreq::get(format!("{}/api/lockdown", config::server_url())).with_timeout(3).send().ok()?;
+    if response.status_code != 200 {
+        return None;
+    }
+    lockdown_from(response.as_str().ok()?)
+}
+
+/// What GET /api/lockdown says: {"on": true, ...}. None for anything else.
+pub fn lockdown_from(body: &str) -> Option<bool> {
+    serde_json::from_str::<Value>(body).ok()?.get("on")?.as_bool()
 }
 
 /// The server's GET /api/jobs/busy. Only a clear yes counts: a server that doesn't answer has no work to lose.
@@ -860,6 +891,14 @@ pub fn apply(_args: &[String]) -> i32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn lockdown_counts_only_a_clear_answer() {
+        assert_eq!(lockdown_from(r#"{"on": true, "parked": 2}"#), Some(true));
+        assert_eq!(lockdown_from(r#"{"on": false, "parked": 0}"#), Some(false));
+        assert_eq!(lockdown_from(r#"{"lockdown": true}"#), None);
+        assert_eq!(lockdown_from("<html>"), None);
+    }
 
     fn rel(version: &str, prerelease: bool, files: &[&str]) -> Value {
         let assets: Vec<Value> = files.iter().map(|f| json!({"name": f, "browser_download_url": format!("http://127.0.0.1:1/{f}")})).collect();
