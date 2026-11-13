@@ -5,7 +5,24 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>The Lodge · who you know, and how well</title>
   <meta name="description" content="The Lodge keeps the people you know, how well you know them and what you know about them, on your Mac. Free and open source." />
-  <link rel="icon" href="assets/logo.svg" />
+  <link rel="icon" href="assets/logo.svg" type="image/svg+xml" />
+  <link rel="apple-touch-icon" href="assets/apple-touch-icon.png" />
+  <link rel="canonical" href="https://therealeminem.github.io/TheLodge/" />
+  <meta name="theme-color" content="#1d4f8c" />
+  <!-- Link previews (Slack, iMessage, LinkedIn, X): they need an absolute image URL -->
+  <meta property="og:type" content="website" />
+  <meta property="og:site_name" content="The Lodge" />
+  <meta property="og:url" content="https://therealeminem.github.io/TheLodge/" />
+  <meta property="og:title" content="The Lodge · who you know, and how well" />
+  <meta property="og:description" content="The Lodge keeps the people you know, how well you know them and what you know about them, on your Mac. Free and open source." />
+  <meta property="og:image" content="https://therealeminem.github.io/TheLodge/assets/social.png" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+  <meta property="og:image:alt" content="The Lodge's logo and name beside its home screen" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="The Lodge · who you know, and how well" />
+  <meta name="twitter:description" content="The Lodge keeps the people you know, how well you know them and what you know about them, on your Mac. Free and open source." />
+  <meta name="twitter:image" content="https://therealeminem.github.io/TheLodge/assets/social.png" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600&family=Geist:wght@400;500;600&display=swap" rel="stylesheet" />
@@ -63,6 +80,10 @@
     .card { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 20px 22px; }
     .card h3 { margin: 0 0 6px; font-size: 17px; }
     .card p { margin: 0; color: var(--soft); font-size: 15.5px; }
+    .family { display: grid; grid-template-columns: repeat(auto-fit, minmax(270px, 1fr)); gap: 16px; }
+    .family a.card { text-decoration: none; color: inherit; display: block; transition: border-color .15s; }
+    .family a.card:hover { border-color: var(--lake); }
+    .family .go { color: var(--lake); font-weight: 600; font-size: 15px; margin-top: 10px; display: inline-block; }
     details { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 16px 20px; margin-bottom: 10px; }
     summary { cursor: pointer; font-weight: 600; }
     details p { color: var(--soft); margin: 10px 0 0; }
@@ -129,29 +150,50 @@
       <h2>What it does</h2>
       <p class="sub">A relationship CRM for one person: the people you know, and what you know about them.</p>
       <div class="grid">
-        <div class="card"><h3>How well, not just who</h3><p>Rate how close you are to each person. Their profile keeps what you know, where you met and every note, in order.</p></div>
-        <div class="card"><h3>See your network</h3><p>A map of your people, gathered around the groups they belong to. Ask who could introduce you to someone, and see the path.</p></div>
-        <div class="card"><h3>Notes that file themselves</h3><p>Paste notes or drop in documents. The AI picks out the people, organizations and facts, and puts them where they belong. You review anything it isn't sure of.</p></div>
-        <div class="card"><h3>Meetings come to you</h3><p>Connect Granola or a calendar and new meetings arrive on their own, matched to the people who were in them.</p></div>
-        <div class="card"><h3>Research someone</h3><p>Flag someone you'd like to know better, and The Lodge researches them with Gemini and Google Search, then files the brief on their profile.</p></div>
-        <div class="card"><h3>One of everyone</h3><p>It spots people who are probably the same person and says why. Merges can always be undone.</p></div>
-        <div class="card"><h3>Lists on request</h3><p>Ask a focused question, like “who do I know in climate tech?”, and get a list written from your own book.</p></div>
-        <div class="card"><h3>A sheet others can add to</h3><p>Share a Google Sheet so people without the app can read, correct and add to your people.</p></div>
+        <div class="card"><h3>How well, not just who</h3><p>Each person is a strong, working, light or indirect connection. Their profile keeps what you know, where you met, and every note and meeting, in order.</p></div>
+        <div class="card"><h3>Rings of closeness</h3><p>You in the middle and a ring for each tier, with people gathered by organization. Find the paths to someone you'd like to meet, and who could introduce you.</p></div>
+        <div class="card"><h3>Notes that file themselves</h3><p>Paste notes or drop in Word, PDF, PowerPoint and more. The AI picks out the people, organizations and facts and files them. Anything it isn't sure of waits for you.</p></div>
+        <div class="card"><h3>Meetings come to you</h3><p>Meetings you record with Trailmix come in on their own, with their notes. Granola and calendars work too, matched to your people. Any of it can be taken back in one step.</p></div>
+        <div class="card"><h3>Research on the plan you already pay for</h3><p>Flag people and The Lodge researches them through Claude Code, Codex or Gemini CLI, or Gemini with your own key. Run a batch now or overnight; the report lands on their profile.</p></div>
+        <div class="card"><h3>Sediment Analysis</h3><p>How someone seems to feel about you, your company or your product, with dated evidence from your records. Plus a portrait of each person, and a rehearsal of your next conversation.</p></div>
+        <div class="card"><h3>Roundups</h3><p>A packet about a set of people for someone to take to an event: an opening and a few lines on each person, as Word, PDF or Markdown.</p></div>
+        <div class="card"><h3>Ask your network</h3><p>Ask “who do I know in climate tech?” and get a list written from your own book, or use ready-made questions like who you know at a company.</p></div>
+        <div class="card"><h3>One of everyone</h3><p>It spots people who are probably the same person and says why. Merges move everything across, and every one can be undone.</p></div>
+        <div class="card"><h3>Quick export</h3><p>Any person or organization as Markdown to paste into an AI chat, or as a PDF. Email addresses and phone numbers are left out.</p></div>
+        <div class="card"><h3>A sheet others can add to</h3><p>Share a Google Sheet so people without the app can read, correct and add to your people. It stays in step both ways.</p></div>
+        <div class="card"><h3>Your AI, or none leaving at all</h3><p>Run AI on your Mac with Ollama, use a cloud AI with your own key, or mix the two. Turn on <b>Lockdown</b> and nothing leaves your Mac.</p></div>
       </div>
       <p class="sub" style="margin-top:22px">Want the details: how it's built, where data lives, how to run it as a server? <a href="https://github.com/TheRealEminem/TheLodge/blob/main/ARCHITECTURE.md">It's all on GitHub.</a></p>
     </section>
 
     <section>
       <h2>Questions</h2>
-      <details><summary>What do I need?</summary><p>A Mac with Apple silicon (M1 or newer) on macOS 14 or later. It runs on your Mac with no key at all, and a cloud AI (your own Claude or Gemini key) reads long notes more carefully if you want that.</p></details>
+      <details><summary>What do I need?</summary><p>A Mac with Apple silicon (M1 or newer) on macOS 14 or later. It runs on your Mac with no key at all, and a cloud AI (your own Claude, OpenAI, Gemini or DeepSeek key) reads long notes more carefully if you want that. Research can also go through Claude Code, Codex or Gemini CLI if one is signed in on your Mac.</p></details>
       <details><summary>Does anything leave my Mac?</summary><p>Your people and notes are stored on your Mac, in <code>~/Library/Application Support/The Lodge</code>, readable only by you.
-        Something leaves only when you ask for it: text you have a cloud AI read goes to the provider you chose, research sends a person's name and details to Gemini, and a shared Google Sheet holds what you share in it. Turn on <b>Lockdown</b> and nothing leaves at all.</p></details>
+        Something leaves only when you ask for it: text you have a cloud AI read goes to the provider you chose, research sends a person's name and details to Gemini or to the AI tool you signed in with, a shared Google Sheet holds what you share in it, and Gravatar pictures are looked up only if you turn them on. Turn on <b>Lockdown</b> and nothing leaves at all.</p></details>
       <details><summary>How do updates work?</summary><p>The Lodge checks for new versions and offers to install them from its menu bar or <b>Settings → Updates</b>.
-        Turn on <b>Beta updates</b> there to get new versions a few days early. If one lets you down, <b>Go back</b> returns to the version you had. Your data is backed up on your Mac once a day and kept for two weeks, and you can make a backup any time in <b>Settings → Your data</b>.</p></details>
+        Turn on <b>Beta updates</b> there to get new versions a few days early. If one lets you down, <b>Go back</b> returns to the version you had. Your data is backed up on your Mac every hour something changes, keeping the newest and one from about an hour, a day and a week ago. <b>Settings → Your data</b> makes a backup any time, and restores one.</p></details>
       <details><summary>Windows, Linux or an Intel Mac?</summary><p>Not as an app. The server also runs in Docker on Linux; ARCHITECTURE.md on GitHub says how.</p></details>
     </section>
 
-    <footer>The Lodge is free and open source (AGPL-3.0) · <a href="https://github.com/TheRealEminem/TheLodge">Source on GitHub</a> · <a href="https://github.com/TheRealEminem/TheLodge/releases">All releases</a> · A sibling of <a href="https://therealeminem.github.io/trailmix/">Trailmix</a></footer>
+    <section>
+      <h2>From the same trail</h2>
+      <p class="sub">The Lodge has two siblings, made the same way: free, open source, and your data stays on your computer.</p>
+      <div class="family">
+        <a class="card" href="https://therealeminem.github.io/trailmix/">
+          <h3>Trailmix</h3>
+          <p>Meeting notes that stay on your computer. Trailmix records your calls, transcribes them on your own machine (Mac, Windows or Linux) and writes the notes. Its meetings come into The Lodge on their own.</p>
+          <span class="go">Visit Trailmix →</span>
+        </a>
+        <a class="card" href="https://therealeminem.github.io/Traverse/">
+          <h3>Traverse</h3>
+          <p>What's next, and who's on it. Your own workspace for planning work: tasks, projects, a morning briefing, and an inbox where AI turns threads and meetings into tasks you approve.</p>
+          <span class="go">Visit Traverse →</span>
+        </a>
+      </div>
+    </section>
+
+    <footer>The Lodge is free and open source (AGPL-3.0) · <a href="https://github.com/TheRealEminem/TheLodge">Source on GitHub</a> · <a href="https://github.com/TheRealEminem/TheLodge/releases">All releases</a><br />Siblings: <a href="https://therealeminem.github.io/trailmix/">Trailmix</a> · <a href="https://therealeminem.github.io/Traverse/">Traverse</a></footer>
   </div>
   <script>
     // Growth rings, the same as the app's (identity/art.tsx): the end of a log top right and a smaller one bottom left.
