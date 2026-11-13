@@ -4,9 +4,10 @@ from typing import Literal
 
 from fastapi import APIRouter, HTTPException, Query
 
-from . import research, store, views
+from . import hats, people_net, research, store, views
+from .kinds import EVENT_KINDS
 from .connections import TIER_RANK, sort_key
-from .schemas import ConnectionOut, ConnectionUpdate, EntityContext, OrgPage, PeoplePage
+from .schemas import ConnectionUpdate, OrgPage, PeoplePage
 
 router = APIRouter()
 
@@ -26,11 +27,91 @@ def _match_rank(q: str, name: str, aliases: list[str]) -> int:
     return 2 if any(q in a.lower() for a in aliases) else 3
 
 
+def _meeting_tags(v) -> dict[str, set[str]]:
+    """Tag -> who was on a meeting or document with that tag. Kept apart from a person's own tags."""
+    out: dict[str, set[str]] = {}
+    for e in v.snap.of_kind(*EVENT_KINDS):
+        if not e.tags:
+            continue
+        people = {(r.target_id if r.source_id == e.id else r.source_id) for r in v.snap.by_entity.get(e.id, ())}
+        people &= set(v.conns)
+        for t in e.tags:
+            if people:
+                out.setdefault(t, set()).update(people)
+    return out
+
+
+def _topic_members(topic: str) -> set[str]:
+    g = people_net.get().every_group.get(f"topic:{topic}")
+    return set(g.members) if g else set()
+
+
+def _filtered(v, *, hat=None, org=None, tag=None, topic=None, mtag=None) -> list[str]:
+    ents = v.snap.entities
+    ids = list(v.conns)
+    only = hats.lens_people(hat)
+    if only is not None:
+        ids = [pid for pid in ids if pid in only]
+    if org:
+        s = v.orgs.get(org)
+        members = s.people if s else set()
+        ids = [pid for pid in ids if pid in members]
+    if tag:
+        ids = [pid for pid in ids if tag.lower() in (ents[pid].tags or [])]
+    if topic:
+        members = _topic_members(topic)
+        ids = [pid for pid in ids if pid in members]
+    if mtag:
+        members = _meeting_tags(v).get(mtag.lower(), set())
+        ids = [pid for pid in ids if pid in members]
+    return ids
+
+
+@router.get("/people/facets")
+def people_facets(hat: str | None = None, org: str | None = None, tag: str | None = None, topic: str | None = None, mtag: str | None = None):
+    """What the people in view can be filtered by, kept apart: their tags, organizations, topics and the tags on their
+    meetings, each counted with the other filters applied."""
+    v = views.get()
+    ents = v.snap.entities
+
+    def counted(items) -> list[dict]:
+        return sorted(items, key=lambda x: (-x["count"], x["name"].lower()))
+
+    tags: dict[str, int] = {}
+    for pid in _filtered(v, hat=hat, org=org, topic=topic, mtag=mtag):
+        for t in ents[pid].tags or []:
+            tags[t] = tags.get(t, 0) + 1
+    in_org = set(_filtered(v, hat=hat, tag=tag, topic=topic, mtag=mtag))
+    orgs = [{"id": oid, "name": ents[oid].name, "count": n} for oid, s in v.orgs.items() if (n := len(s.people & in_org))]
+    in_topic = set(_filtered(v, hat=hat, org=org, tag=tag, mtag=mtag))
+    topics = [{"id": g.ref, "name": g.name, "count": n} for g in people_net.get().every_group.values()
+              if g.kind == "topic" and g.ref and (n := len(in_topic & set(g.members)))]
+    in_mtag = set(_filtered(v, hat=hat, org=org, tag=tag, topic=topic))
+    mtags = [{"id": t, "name": t, "count": n} for t, people in _meeting_tags(v).items() if (n := len(people & in_mtag))]
+    return {"tags": counted({"id": t, "name": t, "count": n} for t, n in tags.items()), "orgs": counted(orgs),
+            "topics": counted(topics), "meeting_tags": counted(mtags)}
+
+
+@router.get("/organizations/facets")
+def org_facets(hat: str | None = None):
+    v = views.get()
+    only = hats.lens_orgs(hat)
+    tags: dict[str, int] = {}
+    for oid in v.orgs:
+        if only is None or oid in only:
+            for t in v.snap.entities[oid].tags or []:
+                tags[t] = tags.get(t, 0) + 1
+    return {"tags": sorted(({"id": t, "name": t, "count": n} for t, n in tags.items()), key=lambda x: (-x["count"], x["name"]))}
+
+
 @router.get("/people")
 def list_people(
     tier: str | None = Query(None, description="Comma-separated: strong,working,light,indirect,none"),
     org: str | None = None,
     tag: str | None = None,
+    topic: str | None = None,
+    mtag: str | None = None,
+    hat: str | None = None,
     q: str | None = None,
     needs_research: bool = False,
     sort: Literal["strength", "recent", "name", "added", "meetings", "match"] = "strength",
@@ -42,16 +123,13 @@ def list_people(
     flags = research.states(v)
     # Work with ids and the connection numbers, and build full rows only for the page asked for: at tens of thousands
     # of people, building a row for each is most of the time.
-    ids = list(conns)
+    ids = _filtered(v, hat=hat)
     book_needs = sum(1 for pid in ids if flags.get(pid) == research.NEEDED)
     if needs_research:
         ids = [pid for pid in ids if flags.get(pid) == research.NEEDED]
-    if org:
-        s = v.orgs.get(org)
-        members = s.people if s else set()
-        ids = [pid for pid in ids if pid in members]
-    if tag:
-        ids = [pid for pid in ids if tag.lower() in (ents[pid].tags or [])]
+    if org or tag or topic or mtag:
+        narrowed = set(_filtered(v, org=org, tag=tag, topic=topic, mtag=mtag))
+        ids = [pid for pid in ids if pid in narrowed]
     if q and q.strip():
         needle = q.strip().lower()
 
@@ -122,12 +200,14 @@ def list_organizations(
     scope: Literal["known", "connected", "mentioned", "all"] = "known",
     q: str | None = None,
     tag: str | None = None,
+    hat: str | None = None,
     sort: Literal["known", "people", "recent", "name"] = "known",
     limit: int = Query(50, ge=1, le=1000),
     offset: int = Query(0, ge=0)
 ):
     v = views.get()
-    rows = [v.org_row(oid) for oid in v.orgs]
+    only = hats.lens_orgs(hat)
+    rows = [v.org_row(oid) for oid in v.orgs if only is None or oid in only]
     if tag:
         rows = [r for r in rows if tag.lower() in r.tags]
     if q and q.strip():

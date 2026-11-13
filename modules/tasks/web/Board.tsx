@@ -12,6 +12,7 @@ import { tasksApi } from "./api";
 import type { Meta, ProjectDetail, Status, Task } from "./api";
 import { dueLabel } from "./dates";
 import { afterForStep, dragProps, useDragging, useDropZone } from "./dnd";
+import { ToSend } from "./TaskRow";
 
 const COLUMNS: Status[] = ["todo", "doing", "waiting", "done"];
 const isMine = (t: Task) => (!t.assignee_ref && !t.assignee_name) || t.assignee_ref === "core:me";
@@ -43,6 +44,7 @@ function Card({ task, milestone, drag, style, onKeyDown }: {
       <div className="mt-2 flex flex-wrap items-center gap-1.5 empty:hidden">
         {task.blocked && !task.done && <StatusChip tone="trail" label="Blocked" />}
         {task.priority === 4 && !task.done && <StatusChip tone="sun" label="Urgent" />}
+        <ToSend task={task} />
         {task.priority === 3 && !task.done && (
           <span className="inline-flex items-center gap-1 text-meta text-ink">
             <FlagIcon size={14} /> High

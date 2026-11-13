@@ -42,10 +42,10 @@ running() { pgrep -f "$TARGET/Contents/MacOS/" >/dev/null; }
 counts() {
   [ -f "$DB" ] || return 0
   local t
-  for t in $(sqlite3 "$DB" "select name from sqlite_master where type='table' order by name"); do
+  for t in $(sqlite3 -cmd ".timeout 10000" "$DB" "select name from sqlite_master where type='table' order by name"); do
     case "$t" in *_fts*) continue ;; esac
     for m in $MODULES; do
-      [[ "$t" == "${m}_"* ]] && echo "$t $(sqlite3 "$DB" "select count(*) from \"$t\"")"
+      [[ "$t" == "${m}_"* ]] && echo "$t $(sqlite3 -cmd ".timeout 10000" "$DB" "select count(*) from \"$t\"")"
     done
   done
   return 0
@@ -72,7 +72,7 @@ if up; then
 elif [ -f "$DB" ]; then
   mkdir -p "$DATA/backups" && chmod 700 "$DATA/backups"
   BACKUP="$APP_ID-$(date -u +%Y%m%d-%H%M%S)-manual.db"
-  sqlite3 "$DB" ".backup '$DATA/backups/$BACKUP'" && chmod 600 "$DATA/backups/$BACKUP" \
+  sqlite3 -cmd ".timeout 10000" "$DB" ".backup '$DATA/backups/$BACKUP'" && chmod 600 "$DATA/backups/$BACKUP" \
     || die "Couldn't back up the database, so nothing was installed."
 fi
 [ -n "$BACKUP" ] && say "Backed up: $BACKUP"
@@ -116,7 +116,7 @@ served="$(curl -sf -m 5 "http://127.0.0.1:$PORT/" | grep -o 'assets/index-[^"]*\
 built="$(grep -o 'assets/index-[^"]*\.js' "$ROOT/dist/index.html" | head -n 1)"
 [ -n "$served" ] && [ "$served" = "$built" ] || rollback "The app is serving a different web app ($served) from the one just built ($built)."
 
-[ "$(sqlite3 "$DB" 'pragma integrity_check')" = "ok" ] || rollback "The database failed SQLite's integrity check after the update."
+[ "$(sqlite3 -cmd ".timeout 10000" "$DB" 'pragma integrity_check')" = "ok" ] || rollback "The database failed SQLite's integrity check after the update."
 AFTER="$(counts)"
 lost="$(awk 'NF == 0 { next } NR == FNR { before[$1] = $2; next } { after[$1] = $2 }
   END { for (t in before) { n = (t in after) ? after[t] : 0; if (n + 0 < before[t] + 0) print "  " t ": " before[t] " → " n } }' \

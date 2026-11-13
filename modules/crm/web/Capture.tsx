@@ -139,21 +139,38 @@ function TrailmixChoices() {
     crmApi.trailmixFind().then(setFound, (e: Error) => setMissing(e.message));
   }, []);
   const skip = get<string[]>("crm.trailmix_skip_workspaces") ?? [];
+  const onlyTags = get<string[]>("crm.trailmix_only_tags") ?? [];
+  const spaces = found ? [...found.workspaces, ...(found.unsorted ? [{ id: 0, name: "No workspace", meetings: found.unsorted }] : [])] : [];
   if (missing) return <p className="flex items-start gap-1.5 py-3.5 text-hint leading-snug text-ink-soft"><AlertIcon size={16} className="mt-px shrink-0" />{missing}</p>;
   if (!found) return null;
   return (
     <>
       <p className="py-3.5 text-hint text-ink-soft">Trailmix is on {words.here}, with {plural(found.done, "finished meeting")}.</p>
       {found.workspaces.length > 0 && (
-        <ControlRow label="Workspaces to bring in" hint="Leave out any that aren't about people you want in your book, such as personal ones. Meetings in no workspace always come in." wrap>
+        <ControlRow label="Workspaces to bring in" hint="Each one is a hat here. Leave out any that aren't about people you want in your book, such as personal ones. What's already in stays, under its hat." wrap>
           <div className="flex flex-wrap gap-x-4 gap-y-2">
-            {found.workspaces.map((w) => (
+            {spaces.map((w) => (
               <label key={w.id} className="flex items-center gap-2 text-ui">
                 <input type="checkbox" className="accent-forest" checked={!skip.includes(String(w.id))}
                   onChange={(e) => void save({ "crm.trailmix_skip_workspaces": e.target.checked ? skip.filter((x) => x !== String(w.id)) : [...skip, String(w.id)] })} />
                 {w.name} <span className="text-ink-soft tabular-nums">{w.meetings}</span>
               </label>
             ))}
+          </div>
+        </ControlRow>
+      )}
+      {found.tags.length > 0 && (
+        <ControlRow label="Only meetings with these tags" hint={onlyTags.length ? "Only meetings with one of these come in." : "None chosen, so every meeting in those workspaces comes in. Meetings keep their tags here either way."} wrap>
+          <div className="flex max-h-40 flex-wrap gap-1 overflow-y-auto">
+            {found.tags.map((t) => {
+              const on = onlyTags.includes(t.name);
+              return (
+                <button key={t.name} className={on ? "chip bg-forest-soft text-forest-deep" : "chip bg-surface-subtle text-ink-soft hover:bg-forest/10"} aria-pressed={on}
+                  onClick={() => void save({ "crm.trailmix_only_tags": on ? onlyTags.filter((x) => x !== t.name) : [...onlyTags, t.name] })}>
+                  {t.name} <span className="tabular-nums">{t.meetings}</span>
+                </button>
+              );
+            })}
           </div>
         </ControlRow>
       )}

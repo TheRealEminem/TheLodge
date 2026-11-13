@@ -11,6 +11,8 @@ import { crmApi } from "./api";
 import AiSettings from "./AiSettings";
 import Duplicates from "./Duplicates";
 import Groups from "./GroupsPage";
+import HatsPage, { HatSwitcher } from "./hats";
+import LinkChecksPage from "./corrections";
 import HomeBlock from "./Home";
 import Library from "./Library";
 import Network from "./Network";
@@ -35,6 +37,7 @@ function InboxCount() {
 const crm: ModuleWeb = {
   id: "crm",
   name: "People",
+  sidebarTop: HatSwitcher,
   nav: [
     { label: "People", icon: <UsersIcon size={16} />, path: "crm/people" },
     { label: "Network", icon: <NetworkIcon size={16} />, path: "crm/network" },
@@ -55,6 +58,8 @@ const crm: ModuleWeb = {
     { path: "crm/inbox/:id", view: (p) => later(<InboxItem {...p} />) },
     { path: "crm/organizations", view: Organizations },
     { path: "crm/duplicates", view: Duplicates },
+    { path: "crm/hats", view: HatsPage },
+    { path: "crm/checks", view: LinkChecksPage },
     { path: "crm/network", view: Network, wide: true },
     { path: "crm/meetings", view: (p) => <Library {...p} params={{ kind: "meeting" }} /> },
     { path: "crm/documents", view: (p) => <Library {...p} params={{ kind: "document" }} /> },

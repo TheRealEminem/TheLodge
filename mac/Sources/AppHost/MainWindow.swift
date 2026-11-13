@@ -9,9 +9,11 @@ import WebKit
 /// The page talks to this window through window.webkit.messageHandlers.app (see core/web/api.ts):
 ///   "quit"            quit the app
 ///   "reveal:<path>"   show a file or folder in Finder
+///   "menu:<json>"     the sidebar's sections, [{"label", "path"}], for the menu bar menu
 ///   "updates:<what>"  Settings → Updates: get, check, install, skip, unskip, beta-on, beta-off, go-back, try-again.
 ///                     The window answers each, and every change after, with an "app-updates" event on the page
 ///                     whose detail is Updater.report.
+/// and asks your Mac's Calendar through window.webkit.messageHandlers.calendar, which answers (CalendarBridge.swift).
 @MainActor
 final class MainWindow: NSObject, NSWindowDelegate, WKUIDelegate, WKNavigationDelegate, WKScriptMessageHandler {
     static let shared = MainWindow()
@@ -42,6 +44,7 @@ final class MainWindow: NSObject, NSWindowDelegate, WKUIDelegate, WKNavigationDe
         let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "dev"
         config.applicationNameForUserAgent = "\(AppConfig.name.replacingOccurrences(of: " ", with: ""))App/\(version)"
         config.userContentController.add(self, name: "app")
+        config.userContentController.addScriptMessageHandler(CalendarBridge.shared, contentWorld: .page, name: "calendar")
         // objectWillChange fires before the change, so the report is read on the next turn of the main loop.
         updatesWatch = Updater.shared.objectWillChange.sink { [weak self] _ in
             Task { @MainActor in self?.sendUpdates() }
@@ -84,6 +87,7 @@ final class MainWindow: NSObject, NSWindowDelegate, WKUIDelegate, WKNavigationDe
             let url = URL(fileURLWithPath: String(body.dropFirst("reveal:".count)))
             if FileManager.default.fileExists(atPath: url.path) { NSWorkspace.shared.activateFileViewerSelecting([url]) }
         }
+        if body.hasPrefix("menu:") { Host.shared.setSections(fromJSON: Data(body.dropFirst("menu:".count).utf8)) }
         if body.hasPrefix("updates:") { updates(String(body.dropFirst("updates:".count))) }
     }
 

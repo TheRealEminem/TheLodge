@@ -72,3 +72,87 @@ def test_only_a_job_over_the_limit_is_big(monkeypatch):
 
 def test_the_limit_is_a_setting_with_a_default():
     assert "ai.warn_over" in settings.get_all() and settings.get_all()["ai.warn_over"] == 1
+
+
+# ── One table, whichever way an older copy of the app made it ───────────
+
+FAMILY_SHAPE = """CREATE TABLE core_ai_usage (id TEXT PRIMARY KEY, at TEXT NOT NULL, provider TEXT NOT NULL, model TEXT NOT NULL,
+    source TEXT NOT NULL, tokens_in INTEGER NOT NULL, tokens_out INTEGER NOT NULL, searches INTEGER NOT NULL DEFAULT 0,
+    cost REAL NOT NULL, local INTEGER NOT NULL, priced INTEGER NOT NULL);
+    CREATE INDEX core_ai_usage_at ON core_ai_usage(at);"""
+PRICING_SHAPE = """CREATE TABLE core_ai_usage (id TEXT PRIMARY KEY, at TEXT NOT NULL, module TEXT NOT NULL, job TEXT NOT NULL,
+    call TEXT NOT NULL, provider TEXT NOT NULL, model TEXT NOT NULL, input_tokens INTEGER, cached_tokens INTEGER,
+    output_tokens INTEGER, cost REAL, failed INTEGER NOT NULL DEFAULT 0, error TEXT);
+    CREATE INDEX core_ai_usage_at ON core_ai_usage(at);"""
+
+
+def _columns(conn):
+    return [r[1] for r in conn.execute("PRAGMA table_info(core_ai_usage)")]
+
+
+def test_a_table_made_by_the_counting_apps_becomes_the_one_table():
+    import sqlite3
+    conn = sqlite3.connect(":memory:")
+    conn.executescript(FAMILY_SHAPE)
+    conn.executemany("INSERT INTO core_ai_usage VALUES (?, '2026-10-01T00:00:00.000Z', ?, ?, ?, ?, ?, ?, ?, ?, ?)", [
+        ("a", "anthropic", "claude-opus-5-5", "Note summaries", 1000, 200, 0, 0.008, 0, 1),
+        ("b", "custom", "mystery-1", "Other", 10, 10, 0, 0.0, 0, 0),
+        ("c", "ollama", "qwen3:8b", "Other", 50, 5, 0, 0.0, 1, 1)])
+    db._one_ai_tally(conn)
+    rows = {r[0]: r for r in conn.execute("SELECT id, input_tokens, output_tokens, cost, source, local, failed FROM core_ai_usage")}
+    assert rows["a"][1:] == (1000, 200, 0.008, "Note summaries", 0, 0)
+    assert rows["b"][3] is None                       # it was never priced: the cost is not known, not nothing
+    assert rows["c"][3] == 0 and rows["c"][5] == 1    # a local model: free, and here
+    assert {"module", "job", "call", "cached_tokens", "error", "source", "searches", "local"} <= set(_columns(conn))
+    assert conn.execute("SELECT tokens_in, tokens_out FROM core_ai_usage WHERE id = 'a'").fetchone() == (1000, 200)
+
+
+def test_a_table_made_by_the_logging_app_gains_what_the_other_kind_has():
+    import sqlite3
+    conn = sqlite3.connect(":memory:")
+    conn.executescript(PRICING_SHAPE)
+    conn.execute("INSERT INTO core_ai_usage VALUES ('a', '2026-10-01T00:00:00.000Z', 'inbox', 'extract', 'structured', "
+                 "'ollama', 'qwen3:8b', 10, 0, 5, 0.0, 0, NULL)")
+    db._one_ai_tally(conn)
+    assert {"source", "searches", "local"} <= set(_columns(conn))
+    assert conn.execute("SELECT module, job, source, local, tokens_in, tokens_out FROM core_ai_usage").fetchone() == ("inbox", "extract", "", 1, 10, 5)
+
+
+@pytest.mark.parametrize("shape", [FAMILY_SHAPE, PRICING_SHAPE])
+def test_a_step_cut_off_before_its_version_was_noted_can_run_again(shape):
+    """The step's changes are committed before db.migrate notes the version, so a stop in between repeats it."""
+    import sqlite3
+    conn = sqlite3.connect(":memory:")
+    conn.executescript(shape)
+    db._one_ai_tally(conn)
+    db._one_ai_tally(conn)
+    assert {"input_tokens", "source", "local"} <= set(_columns(conn))
+    conn.execute("SELECT tokens_in, tokens_out, priced FROM core_ai_usage")
+
+
+@pytest.mark.parametrize("shape", [FAMILY_SHAPE, PRICING_SHAPE])
+def test_the_version_before_can_still_read_the_table_after_go_back(shape):
+    """Go back runs the older code on this table: its reports read tokens_in, tokens_out and priced."""
+    import sqlite3
+    conn = sqlite3.connect(":memory:")
+    conn.executescript(shape)
+    db._one_ai_tally(conn)
+    conn.execute("INSERT INTO core_ai_usage (id, at, module, job, call, provider, model, input_tokens, output_tokens, cost) "
+                 "VALUES ('known', 't', '', '', 'complete', 'openai', 'm', 10, 5, 0.1), "
+                 "('unknown', 't', '', '', 'complete', 'custom', 'm', 10, 5, NULL)")
+    assert conn.execute("SELECT id, tokens_in, tokens_out, priced FROM core_ai_usage ORDER BY id").fetchall() == [
+        ("known", 10, 5, 1), ("unknown", 10, 5, 0)]
+
+
+def test_the_two_views_read_the_same_rows(monkeypatch):
+    values = {**ai.DEFAULTS, "provider": "openai", "openai_api_key": "k"}
+    monkeypatch.setattr(ai.settings, "section", lambda namespace: values)
+    reply = SimpleNamespace(json=lambda: {"choices": [{"message": {"content": "hello"}}],
+                                          "usage": {"prompt_tokens": 2000, "completion_tokens": 500}})
+    monkeypatch.setattr(ai, "_post", lambda *a, **k: reply)
+    ai.complete("hi", purpose="People overviews")
+    usage.record("gemini", "gemini-3.8-flash", 100, 100, searches=3, cost=0.042, source="Researching people")
+    both = ai.usage_report()
+    assert both["this_month"]["calls"] == 2 == both["month"]["calls"] == both["last_30_days"]["calls"]
+    assert {r["name"] for r in both["by_source"]} == {"People overviews", "Researching people"}
+    assert [r["label"] for r in both["last_30_days"]["by_provider"] if r["id"] == "gemini"] == ["Google Gemini"]

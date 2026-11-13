@@ -102,9 +102,26 @@ export function OllamaSetup({ onReady }: { onReady?: () => void }) {
     );
   } else {
     body = (
-      <p className="flex items-center gap-1.5 text-label text-forest-deep">
-        <CheckIcon size={16} /> Ready: {s.using || s.models[0]} runs on {words.here}.
-      </p>
+      <>
+        <p className="flex items-center gap-1.5 text-label text-forest-deep">
+          <CheckIcon size={16} /> Ready: {s.using || s.models[0]} runs on {words.here}.
+        </p>
+        {s.suggestion && !s.pull?.active && (
+          <div className="mt-3">
+            <p className="text-hint text-ink-soft">
+              A newer model suits {words.here}: {s.suggestion.model}. It would be used instead of {s.suggestion.replaces}; the older one stays installed until you remove it from Ollama.
+            </p>
+            <div className="mt-2 flex gap-2">
+              <button className="btn btn-sm btn-soft" disabled={working || s.locked} onClick={() => void act(() => api.ollamaPull(s.suggestion!.model))}>
+                <DownloadIcon size={16} /> Download {s.suggestion.model}
+              </button>
+              <button className="btn btn-sm btn-ghost" disabled={working} onClick={() => void act(async () => { await api.ollamaDismissSuggestion(s.suggestion!.model); return { started: false }; })}>
+                Not now
+              </button>
+            </div>
+          </div>
+        )}
+      </>
     );
   }
 

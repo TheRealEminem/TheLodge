@@ -300,6 +300,7 @@ fn update_line(state: &UpdateState) -> (String, bool) {
         UpdateState::Checking => ("Checking for updates…".into(), false),
         UpdateState::UpToDate => ("Up to date · Check again".into(), true),
         UpdateState::Offline => ("Couldn't reach GitHub · Try again".into(), true),
+        UpdateState::LockedDown => ("Lockdown is on: no update checks".into(), false),
         UpdateState::Available(v) => (format!("Install version {v}…"), true),
         UpdateState::Downloading(v, p) => (format!("Downloading {v}…{}", p.map(|p| format!(" {:.0}%", p * 100.0)).unwrap_or_default()), false),
         UpdateState::Installing(v) => (format!("Installing {v}…"), false),

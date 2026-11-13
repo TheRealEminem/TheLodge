@@ -15,7 +15,7 @@ if [ ! -x .venv/bin/uvicorn ]; then
   done
   [ -n "$PYTHON" ] || { echo "Python 3.11 or newer is needed (brew install python@3.12)." >&2; exit 1; }
   "$PYTHON" -m venv .venv
-  .venv/bin/pip install -q -r requirements.txt pytest
+  .venv/bin/pip install -q -r requirements.txt pytest ruff
 fi
 [ -d node_modules ] || { echo "› Installing web packages (first run only)…"; npm install --silent; }
 

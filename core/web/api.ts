@@ -33,7 +33,7 @@ export interface AppInfo {
   name: string;
   tagline: string;
   version: string;
-  modules: { id: string; name: string }[];
+  modules: { id: string; name: string; /** A connection to an outside tool: off until it is set up. */ optional: boolean; active: boolean }[];
   auth_required: boolean;
   /** Lockdown is on: nothing leaves this computer (core/server/lockdown.py). */
   lockdown: boolean;
@@ -52,6 +52,18 @@ export interface Job {
   wait_reason: string | null;
   error: string | null;
   updated_at: string;
+}
+
+/** Lockdown (core/server/lockdown.py): nothing leaves this Mac. `parked`: jobs waiting for it to be off. */
+export interface LockdownStatus {
+  on: boolean;
+  parked: number;
+}
+export const LOCKDOWN = "Lockdown mode is on"; // lockdown.REASON
+
+/** The job is parked until Lockdown is off: it goes ahead by itself then, so there's nothing to press. */
+export function heldByLockdown(job: Job | null | undefined): boolean {
+  return job?.status === "waiting" && !!job.wait_reason?.startsWith(LOCKDOWN);
 }
 
 /** Something in another module, described by that module. */
@@ -84,6 +96,46 @@ export interface ProviderInfo {
   kind: "local" | "cloud" | "custom";
   ready: boolean; // keyed (or reachable, for Ollama) and configured
   reason: string;
+}
+
+/** What AI calls cost (core/server/pricing.py). Costs are US dollars; `unknown` counts calls at a price nobody
+ * published, which aren't in `cost`; `stopped` counts calls Lockdown stopped, which aren't in `failed`. */
+export interface UsageTotals {
+  calls: number;
+  cost: number;
+  failed: number;
+  stopped: number;
+  unknown: number;
+  input_tokens: number;
+  output_tokens: number;
+}
+export interface UsageGroup extends UsageTotals {
+  id: string; // a provider id, or a module id ("core" for Settings, "" for calls made outside a job)
+  label: string;
+}
+export interface UsageCall {
+  at: string;
+  module: string;
+  module_label: string;
+  job: string;
+  call: "complete" | "structured";
+  provider: string;
+  provider_label: string;
+  model: string;
+  input_tokens: number | null;
+  cached_tokens: number | null;
+  output_tokens: number | null;
+  cost: number | null; // null: unknown, or a failure that spent nothing
+  failed: boolean;
+  stopped: boolean; // Lockdown stopped it before anything was sent
+  unknown: boolean;
+  error: string | null;
+}
+export interface AIUsage {
+  month: UsageTotals & { start: string };
+  last_30_days: UsageTotals & { by_provider: UsageGroup[]; by_module: UsageGroup[] };
+  recent: UsageCall[];
+  prices_checked: string;
 }
 
 /** Running inside the app's own window (the Mac app, or the desktop app for Windows and Linux) rather than a
@@ -132,12 +184,13 @@ export const can = (what: ShellCan) => inApp && computer.can.includes(what);
 export const joinPath = (folder: string, name: string) => `${folder}${computer.os === "windows" ? "\\" : "/"}${name}`;
 /** "this Mac" → "This Mac", for the start of a sentence. */
 export const capital = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);
+export const showInAppMenu = (sections: { label: string; path: string }[]) => bridge?.postMessage(`menu:${JSON.stringify(sections)}`);
 
 /** Where the Mac app's updates stand (Updater.report in mac/), sent by its window as an "app-updates" event. */
 export interface UpdateReport {
   enabled: boolean;
   current: string;
-  state: "idle" | "checking" | "up-to-date" | "offline" | "available" | "downloading" | "installing" | "going-back" | "failed";
+  state: "idle" | "checking" | "up-to-date" | "offline" | "locked-down" | "available" | "downloading" | "installing" | "going-back" | "failed";
   version?: string;
   progress?: number | null;
   error?: string;
@@ -150,6 +203,36 @@ export interface UpdateReport {
 }
 export type UpdateCommand = "get" | "check" | "install" | "skip" | "unskip" | "beta-on" | "beta-off" | "go-back" | "try-again";
 export const sendUpdates = (what: UpdateCommand) => bridge?.postMessage(`updates:${what}`);
+
+/** Whether the Mac app may read your calendar: "unasked" until macOS has asked you, "unavailable" when this app
+ *  doesn't use it (mac/Sources/AppHost/CalendarBridge.swift). */
+export type CalendarAccess = "full" | "unasked" | "denied" | "restricted" | "write_only" | "unavailable";
+/** An event from your Mac's Calendar. start and end carry the Mac's offset; free: it doesn't block time. */
+export interface CalendarEvent {
+  id: string;
+  title: string;
+  start: string;
+  end: string;
+  all_day: boolean;
+  calendar: string;
+  free: boolean;
+}
+type CalendarBridge = { postMessage: (message: object) => Promise<unknown> };
+const calendarBridge = (window as unknown as { webkit?: { messageHandlers?: { calendar?: CalendarBridge } } }).webkit?.messageHandlers?.calendar;
+const askCalendar = <T>(message: object) => calendarBridge!.postMessage(message) as Promise<T>;
+
+/** Your Mac's Calendar, read-only, through the Mac app's window: every account the Calendar app has. null in a browser
+ *  (and in an app built before it could). Nothing is kept: each call reads it afresh. */
+export const macCalendar = calendarBridge
+  ? {
+      access: () => askCalendar<{ access: CalendarAccess }>({ ask: "access" }).then((r) => r.access),
+      /** macOS asks you, the first time; afterwards it answers for you (System Settings changes it). */
+      request: () => askCalendar<{ access: CalendarAccess }>({ ask: "request" }).then((r) => r.access),
+      events: (from: Date, to: Date) =>
+        askCalendar<{ access: CalendarAccess; events: CalendarEvent[] }>({ ask: "events", from: from.toISOString(), to: to.toISOString() }),
+      openSettings: () => askCalendar<unknown>({ ask: "settings" }),
+    }
+  : null;
 
 /** A family app installed on this Mac (core/server/family.py). */
 export interface FamilyApp {
@@ -205,6 +288,8 @@ export interface OllamaStatus {
   models: string[];
   using: string;
   recommended: string;
+  /** A newer model than the one in use, when the catalog has one that suits this computer; null otherwise. */
+  suggestion: { model: string; replaces: string } | null;
   locked: boolean;
   install: { active: boolean; status: string; progress: number | null; error: string | null } | null;
   pull: { model: string; active: boolean; status: string; progress: number | null; error: string | null } | null;
@@ -233,6 +318,18 @@ export interface SetupState {
   advice: SystemInfo["advice"];
   jobs: SetupJob[];
   providers: ProviderInfo[];
+}
+
+/** Claude's access through the MCP server (core/server/mcp.py). The token itself comes back only inside `setup`, once. */
+export interface McpStatus {
+  on: boolean;
+  hint: string | null;
+  url: string;
+  tools: { name: string; title: string; module: string; writes: boolean }[];
+}
+export interface McpSetup {
+  claude_code: string;
+  claude_desktop: string;
 }
 
 export type BackupKind = "auto" | "manual" | "before-restore" | "before-update";
@@ -281,11 +378,16 @@ export const api = {
   settings: () => request<SettingsState>("/settings"),
   putSettings: (changes: Record<string, SettingValue>) => request<SettingsState>("/settings", json("PUT", changes)),
   family: () => request<FamilyStatus>("/family"),
+  mcp: () => request<McpStatus>("/mcp"),
+  mcpToken: () => request<McpStatus & { setup: McpSetup }>("/mcp/token", json("POST")),
+  mcpOff: () => request<void>("/mcp/token", { method: "DELETE" }),
   providers: () => request<ProviderInfo[]>("/ai/providers"),
   providerModels: (id: ProviderId) => request<{ models: string[] }>(`/ai/providers/${id}/models`),
   usage: () => request<UsageSummary>("/ai/usage"),
   providerTest: (id: ProviderId, model = "") =>
     request<{ message: string }>(`/ai/providers/${id}/test${model ? `?model=${encodeURIComponent(model)}` : ""}`, json("POST")),
+  aiUsage: () => request<AIUsage>("/ai/usage"),
+  lockdown: () => request<LockdownStatus>("/lockdown"),
 
   setup: () => request<SetupState>("/setup"),
   setupPath: (path: AiPath, cloud = "") => request<SetupState>("/setup/path", json("PUT", { path, cloud })),
@@ -295,6 +397,7 @@ export const api = {
   ollama: () => request<OllamaStatus>("/ollama"),
   ollamaInstall: () => request<{ started: boolean }>("/ollama/install", json("POST")),
   ollamaPull: (model = "") => request<{ started: boolean }>("/ollama/pull", json("POST", { model })),
+  ollamaDismissSuggestion: (model: string) => request<{ ok: true }>("/ollama/dismiss-suggestion", json("POST", { model })),
 
   search: (q: string) => request<SearchGroup[]>(`/search?q=${encodeURIComponent(q)}`),
   people: (q: string, limit = 8) => request<PeopleResult>(`/people?q=${encodeURIComponent(q)}&limit=${limit}`),

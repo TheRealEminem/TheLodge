@@ -5,7 +5,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { words } from "@core/api";
 import { JobStatus } from "@core/components/blocks";
-import { AlertIcon, ArrowUpIcon, ChatIcon, RefreshIcon, SparkleIcon, TrashIcon } from "@core/components/icons";
+import { AlertIcon, ArrowUpIcon, ChatIcon, PencilIcon, RefreshIcon, SparkleIcon, TrashIcon } from "@core/components/icons";
 import { Skeleton, Spinner } from "@core/components/ui";
 import { useLive } from "@core/live";
 import { useShell } from "@core/shell";
@@ -57,13 +57,37 @@ export function Briefing({ person }: { person: Entity }) {
 }
 
 function OverviewCard({ person, state }: { person: Entity; state: OverviewState }) {
-  const { toast } = useShell();
+  const { toast, confirm } = useShell();
   const { overview, job, ready, reason, material, provider } = state;
   const working = !!job && (job.status === "queued" || job.status === "running");
-  const redo = () => crmApi.redoOverview(person.id).catch((e: Error) => toast(e.message, "error"));
+  const [draft, setDraft] = useState<string | null>(null);
+  const redo = async () => {
+    if (overview?.mine && !(await confirm({ title: "Let the AI write this again?", body: "Your own words are replaced by a new overview from what's on file.", confirmLabel: "Write it again" }))) return;
+    crmApi.redoOverview(person.id).catch((e: Error) => toast(e.message, "error"));
+  };
+  const save = async () => {
+    if (!draft?.trim()) return;
+    try {
+      await crmApi.setOverview(person.id, draft.trim());
+      setDraft(null);
+    } catch (e) {
+      toast((e as Error).message, "error");
+    }
+  };
 
   let body: ReactNode;
-  if (overview) body = <Markdown>{overview.body}</Markdown>;
+  if (draft !== null) {
+    body = (
+      <div className="space-y-2">
+        <textarea className="field min-h-48 w-full" aria-label={`Overview of ${person.name}`} value={draft} onChange={(e) => setDraft(e.target.value)} autoFocus />
+        <p className="text-hint text-ink-soft">These become your words: the AI leaves them alone until you ask it to write this again.</p>
+        <div className="flex justify-end gap-2">
+          <button className="btn btn-sm btn-ghost" onClick={() => setDraft(null)}>Cancel</button>
+          <button className="btn btn-sm btn-primary" disabled={!draft.trim()} onClick={() => void save()}>Save</button>
+        </div>
+      </div>
+    );
+  } else if (overview) body = <Markdown>{overview.body}</Markdown>;
   else if (!material) body = <p className="text-ui text-ink-soft">Not much on file about {firstName(person.name)} yet. Add a note, a meeting or their role, and an overview will follow.</p>;
   else if (!ready) body = <NotSetUp reason={reason} doing="get an overview of everyone" />;
   else if (job?.status === "error" || job?.status === "waiting") body = null;
@@ -82,10 +106,15 @@ function OverviewCard({ person, state }: { person: Entity; state: OverviewState 
     <Panel
       icon={<SparkleIcon size={16} />}
       title="Overview"
-      action={overview && ready && (
-        <button className="btn btn-sm btn-ghost" disabled={working} onClick={() => void redo()} data-tip="Write it again from what's on file now">
-          <RefreshIcon size={16} /> Redo
-        </button>
+      action={draft === null && (
+        <span className="flex gap-1">
+          <button className="btn btn-sm btn-ghost" onClick={() => setDraft(overview?.body ?? "")} data-tip="Correct it, or write your own"><PencilIcon size={16} /> Edit</button>
+          {overview && ready && (
+            <button className="btn btn-sm btn-ghost" disabled={working} onClick={() => void redo()} data-tip="Write it again from what's on file now">
+              <RefreshIcon size={16} /> Redo
+            </button>
+          )}
+        </span>
       )}
     >
       {body}

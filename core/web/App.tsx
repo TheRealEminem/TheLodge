@@ -1,13 +1,13 @@
 // The host app: sign-in, the shell (sidebar, top bar on narrow windows, content column), and routing to the
 // host's own views and every enabled module's views.
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { AUTH_EVENT, api, setSystem } from "./api";
+import { AUTH_EVENT, api, setSystem, showInAppMenu } from "./api";
 import type { AppInfo } from "./api";
 import { BackIcon, ForwardIcon, MenuIcon } from "./components/icons";
 import { Ambient, Logo } from "./components/illustrations";
 import { Toast, TooltipLayer, useConfirm } from "./components/ui";
 import type { ToastState } from "./components/ui";
-import { startChangeFeed } from "./live";
+import { startChangeFeed, useChanges } from "./live";
 import { modulesFor } from "./registry";
 import type { ModuleWeb, RouteProps } from "./registry";
 import { match, navigate, useHistoryPlace, useRoute } from "./router";
@@ -16,6 +16,7 @@ import type { Shell } from "./shell";
 import Sidebar from "./Sidebar";
 import { useTheme } from "./theme";
 import Home from "./views/Home";
+import { LockdownSign } from "./views/Lockdown";
 import Login from "./views/Login";
 import NotFound from "./views/NotFound";
 import Settings from "./views/Settings";
@@ -34,6 +35,37 @@ function useWide() {
     return () => mq.removeEventListener("change", on);
   }, []);
   return wide;
+}
+
+/**
+ * The first page of the day: when the app opens at Home, a module may show something else first (registry.start).
+ * Asked once when the app loads, and again when the window comes back on a new day while it's still at Home; never
+ * when the app opened somewhere else, or after you've moved on.
+ */
+function useStartPage(modules: ModuleWeb[]) {
+  const askedOn = useRef<string | null>(null);
+  useEffect(() => {
+    const starters = modules.filter((m) => m.start);
+    if (!starters.length) return;
+    const atHome = () => location.hash.replace(/^#\/?/, "").split("?")[0] === "";
+    const ask = async () => {
+      const day = new Date().toDateString();
+      if (askedOn.current === day) return;
+      askedOn.current = day;
+      if (!atHome()) return;
+      for (const m of starters) {
+        const to = await m.start!().catch(() => null);
+        if (to) {
+          if (atHome()) navigate(to);
+          return;
+        }
+      }
+    };
+    void ask();
+    const onShow = () => document.visibilityState === "visible" && void ask();
+    document.addEventListener("visibilitychange", onShow);
+    return () => document.removeEventListener("visibilitychange", onShow);
+  }, [modules]);
 }
 
 const MAC = navigator.platform.toLowerCase().includes("mac");
@@ -157,20 +189,43 @@ export default function App() {
     };
   }, [auth]);
 
-  const modules = useMemo(() => modulesFor(info?.modules.map((m) => m.id) ?? []), [info]);
+  // What's on can change while the app is open (a connection gets set up), so the app info is read again whenever
+  // anything changes on the server. Only the latest answer counts, and none from before a change made here.
+  const changes = useChanges();
+  const asked = useRef(0);
+  const setInfoHere = useCallback((change: (i: AppInfo) => AppInfo) => {
+    asked.current += 1;
+    setInfo((i) => (i ? change(i) : i));
+  }, []);
+  useEffect(() => {
+    if (!changes) return;
+    const mine = ++asked.current;
+    api.app().then((a) => mine === asked.current && setInfo(a), () => undefined);
+  }, [changes]);
+
+  // Pages, the sidebar and the Mac menu show the modules that are on; Settings lists every one (a connection that
+  // isn't set up yet is how you set it up).
+  const modules = useMemo(() => modulesFor(info?.modules.filter((m) => m.active).map((m) => m.id) ?? []), [info]);
+
+  // The Mac app's menu bar menu lists the same sections as the sidebar (it keeps them for when no window is open).
+  useEffect(() => {
+    if (info) showInAppMenu(modules.flatMap((m) => (m.nav ?? []).map(({ label, path }) => ({ label, path }))));
+  }, [info, modules]);
 
   // A single-module app with nothing for Home opens straight into that module.
   useEffect(() => {
     if (path === "" && modules.length === 1 && !modules[0].home && modules[0].nav?.[0]) navigate(modules[0].nav[0].path);
   }, [path, modules]);
 
+  useStartPage(modules);
+
   useEffect(() => setDrawer(false), [path]);
 
   const toastFn = useCallback((text: string, tone: "success" | "error" = "success") => setToast({ text, tone }), []);
   const reopenSetup = useCallback(async () => {
     await api.setupReopen();
-    setInfo((i) => (i ? { ...i, setup_done: false } : i));
-  }, []);
+    setInfoHere((i) => ({ ...i, setup_done: false }));
+  }, [setInfoHere]);
   const shell: Shell | null = useMemo(() => (info ? { app: info, toast: toastFn, confirm, theme, reopenSetup } : null), [info, toastFn, confirm, theme, reopenSetup]);
 
   if (auth === "needed") return <Login onDone={() => setAuth("ok")} dusk={theme.dusk} />;
@@ -189,7 +244,7 @@ export default function App() {
   if (!info!.setup_done) {
     return (
       <ShellProvider value={shell}>
-        <Welcome dusk={theme.dusk} onDone={() => setInfo({ ...info!, setup_done: true })} />
+        <Welcome dusk={theme.dusk} onDone={() => setInfoHere((i) => ({ ...i, setup_done: true }))} />
         <TooltipLayer />
         <Toast toast={toast} onClose={() => setToast(null)} />
       </ShellProvider>
@@ -220,6 +275,7 @@ export default function App() {
             <span className="contents lg:hidden">
               <Logo size={26} />
               <span className="min-w-0 truncate font-display text-lead font-semibold tracking-[-0.02em]">{info!.name}</span>
+              <LockdownSign compact />
             </span>
           </div>
           <div key={path} className={`relative mx-auto w-full px-5 pb-24 pt-7 sm:px-8 lg:pt-9 ${fullWidth ? "max-w-[1400px] lg:px-8" : "max-w-[872px] lg:px-10"}`}>
@@ -227,6 +283,10 @@ export default function App() {
           </div>
         </main>
       </div>
+      {modules.map((m) => {
+        const Background = m.background;
+        return Background ? <Background key={m.id} /> : null;
+      })}
       <TooltipLayer />
       <Toast toast={toast} onClose={() => setToast(null)} />
       {confirmDialog}

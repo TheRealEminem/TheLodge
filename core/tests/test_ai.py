@@ -3,8 +3,9 @@
 What these pin down (each cost a debugging round in DynaCRM): Claude gets a flat strict schema, a streamed call, the
 refusal-fallback beta and thinking left alone; failures that say nothing about the text are provider-down, and
 failures about the text (refusal, out of output space, wrong shape) are not; OpenAI-compatible servers are tried
-from strict to plain and get one repair retry.
+from strict to plain and get one repair retry. And every adapter reports the tokens each request used.
 """
+from datetime import datetime
 from types import SimpleNamespace
 
 import anthropic
@@ -12,7 +13,7 @@ import httpx
 import pytest
 from pydantic import BaseModel
 
-from core.server import ai, ai_adapters, ai_schema
+from core.server import ai, ai_adapters, ai_schema, db, pricing
 
 
 class Person(BaseModel):
@@ -73,10 +74,10 @@ def test_json_is_found_inside_fences_and_prose():
 
 # ── Claude ─────────────────────────────────────────────────────────────
 
-def message(text=GOOD, stop="end_turn", blocks=None):
+def message(text=GOOD, stop="end_turn", blocks=None, usage=None, **extra):
     content = blocks if blocks is not None else [SimpleNamespace(type="text", text=text)]
     return SimpleNamespace(content=content, stop_reason=stop, id="msg_1",
-                           usage=SimpleNamespace(input_tokens=10, output_tokens=5))
+                           usage=usage or SimpleNamespace(input_tokens=10, output_tokens=5), **extra)
 
 
 def status_error(cls, status, text):
@@ -109,12 +110,18 @@ def claude(monkeypatch, cfg):
     class Client:
         def __init__(self, **kw):
             fake.client_args = kw
-            self.beta = SimpleNamespace(messages=SimpleNamespace(stream=lambda **kw: self._stream("beta", kw)))
-            self.messages = SimpleNamespace(stream=lambda **kw: self._stream("plain", kw))
+            self.beta = SimpleNamespace(messages=SimpleNamespace(stream=lambda **kw: self._stream("beta", kw),
+                                                                 create=lambda **kw: self._create("beta", kw)))
+            self.messages = SimpleNamespace(stream=lambda **kw: self._stream("plain", kw),
+                                            create=lambda **kw: self._create("plain", kw))
 
         def _stream(self, which, kw):
             fake.calls.append({"which": which, **kw})
             return Stream()
+
+        def _create(self, which, kw):
+            fake.calls.append({"which": which, **kw})
+            return Stream().get_final_message()
 
     monkeypatch.setattr(anthropic, "Anthropic", Client)
     cfg(provider="anthropic", anthropic_api_key="sk-test")
@@ -215,7 +222,7 @@ def http(monkeypatch):
 
 @pytest.fixture
 def ollama(monkeypatch, cfg):
-    monkeypatch.setattr(ai, "_ollama_tags", lambda c: [{"name": "qwen3:8b", "details": {"parameter_size": "8B"}}])
+    monkeypatch.setattr(ai, "_ollama_tags", lambda c, fresh=False: [{"name": "qwen3:8b", "details": {"parameter_size": "8B"}}])
     cfg(provider="ollama")
 
 
@@ -231,6 +238,7 @@ def test_ollama_gets_the_portable_schema_a_right_sized_context_and_its_own_model
     body = call["json"]
     assert call["url"].endswith("/api/chat") and body["model"] == "qwen3:8b" and body["stream"] is False
     assert body["format"]["required"] == ["summary"]
+    assert body["think"] is False    # qwen3 thinks by default; that would use up the output budget
     assert body["options"]["num_ctx"] == 32768 and body["messages"][0] == {"role": "system", "content": "sys"}
 
 
@@ -264,8 +272,8 @@ def test_ollama_content_failures_are_not_provider_down(ollama, http):
 
 # ── OpenAI-compatible (OpenAI, Gemini, DeepSeek, custom) ───────────────
 
-def completion(content, finish="stop"):
-    return 200, {"choices": [{"message": {"content": content}, "finish_reason": finish}]}
+def completion(content, finish="stop", **extra):
+    return 200, {"choices": [{"message": {"content": content}, "finish_reason": finish}], **extra}
 
 
 def test_gemini_goes_through_the_compatibility_endpoint_with_a_strict_schema_first(http, cfg):
@@ -421,3 +429,126 @@ def test_the_test_button_does_a_real_structured_round_trip(http, cfg):
     assert "structured output works" in ai.test("gemini")
     http.replies = [completion('{"answer": "OK", "number": 3}')]
     assert "not exactly as asked" in ai.test("gemini")
+
+
+# ── What each call used ────────────────────────────────────────────────
+
+@pytest.fixture
+def usage():
+    """The usage log, emptied first. usage() gives its rows, oldest first."""
+    db.execute("DELETE FROM core_ai_usage")
+    return lambda: db.query("SELECT * FROM core_ai_usage ORDER BY at")
+
+
+def at(row) -> datetime:
+    return datetime.fromisoformat(row["at"].replace("Z", "+00:00"))
+
+
+def test_claude_reports_its_tokens_and_is_priced_by_the_model_that_answered(claude, usage):
+    claude.reply = message(model="claude-opus-5-5", usage=SimpleNamespace(input_tokens=1200, output_tokens=300))
+    ai.structured("x", "s", Extraction)
+    claude.reply = message(text="Hello", model="claude-opus-5-5", usage=SimpleNamespace(input_tokens=50, output_tokens=8))
+    ai.complete("hi")
+    structured, complete = usage()
+    assert (structured["call"], structured["provider"], structured["model"]) == ("structured", "anthropic", "claude-opus-5-5")
+    assert (structured["input_tokens"], structured["output_tokens"], structured["failed"]) == (1200, 300, 0)
+    assert structured["cost"] == pytest.approx((1200 * 4 + 300 * 20) / 1e6)
+    assert (complete["call"], complete["input_tokens"], complete["output_tokens"]) == ("complete", 50, 8)
+
+
+def test_after_claude_falls_back_each_model_is_billed_at_its_own_price(claude, usage):
+    tries = [SimpleNamespace(type="message", input_tokens=1000, output_tokens=50),          # declined part way
+             SimpleNamespace(type="fallback_message", input_tokens=1000, output_tokens=300)]
+    claude.reply = message(model="claude-opus-4-8", blocks=[SimpleNamespace(type="text", text="I can't"),
+                                                             SimpleNamespace(type="fallback"),
+                                                             SimpleNamespace(type="text", text=GOOD)],
+                           usage=SimpleNamespace(input_tokens=1000, output_tokens=300, iterations=tries))
+    ai.structured("x", "s", Extraction)
+    [row] = usage()
+    assert (row["model"], row["input_tokens"], row["output_tokens"]) == ("claude-opus-4-8", 2000, 350)
+    assert row["cost"] == pytest.approx((1000 * 4 + 50 * 20) / 1e6 + (1000 * 5 + 300 * 25) / 1e6)
+
+
+def test_a_claude_answer_that_failed_was_still_billed(claude, usage):
+    claude.reply = message(stop="max_tokens", text='{"summary": "cut o',
+                           usage=SimpleNamespace(input_tokens=500, output_tokens=32000))
+    with pytest.raises(ai.AIError):
+        ai.structured("x", "s", Extraction)
+    [row] = usage()
+    assert row["failed"] == 1 and "ran out" in row["error"] and row["cost"] == pytest.approx((500 * 4 + 32000 * 20) / 1e6)
+
+
+def test_ollama_reports_its_tokens_and_costs_nothing(ollama, http, usage):
+    http.replies = [chat(GOOD, prompt_eval_count=900, eval_count=120),
+                    (200, {"response": "Hello", "prompt_eval_count": 40, "eval_count": 6})]
+    ai.structured("x", "s", Extraction)
+    ai.complete("hi")
+    structured, complete = usage()
+    assert (structured["model"], structured["input_tokens"], structured["output_tokens"], structured["cost"]) == ("qwen3:8b", 900, 120, 0.0)
+    assert (complete["input_tokens"], complete["output_tokens"], complete["cost"]) == (40, 6, 0.0)
+
+
+def test_an_openai_compatible_call_counts_every_request_its_thinking_and_its_cache(http, cfg, usage):
+    cfg(provider="gemini", gemini_api_key="k")
+    first = {"prompt_tokens": 1000, "completion_tokens": 20, "total_tokens": 1520,    # 500 thinking, only in the total
+             "prompt_tokens_details": {"cached_tokens": 0}}
+    repair = {"prompt_tokens": 1100, "completion_tokens": 40, "total_tokens": 1140,
+              "prompt_tokens_details": {"cached_tokens": 1000}}
+    http.replies = [completion('{"people": []}', usage=first, model="gemini-3.8-flash"),
+                    completion(GOOD, usage=repair, model="gemini-3.8-flash")]
+    ai.structured("x", "s", Extraction)
+    [row] = usage()
+    assert (row["model"], row["input_tokens"], row["cached_tokens"], row["output_tokens"]) == ("gemini-3.8-flash", 2100, 1000, 560)
+    assert row["cost"] == pytest.approx(pricing.cost("gemini", "gemini-3.8-flash", 1000, 520, 0, at(row))
+                                        + pricing.cost("gemini", "gemini-3.8-flash", 1100, 40, 1000, at(row)))
+
+
+def test_deepseek_cache_hits_are_counted_at_their_price(http, cfg, usage):
+    cfg(provider="deepseek", deepseek_api_key="k", deepseek_model="deepseek-v4-pro")
+    http.replies = [completion(GOOD, model="deepseek-v4-pro", usage={
+        "prompt_tokens": 1000, "completion_tokens": 100, "total_tokens": 1100, "prompt_cache_hit_tokens": 800})]
+    ai.structured("x", "s", Extraction)
+    [row] = usage()
+    assert row["cached_tokens"] == 800
+    assert row["cost"] == pytest.approx(pricing.cost("deepseek", "deepseek-v4-pro", 1000, 100, 800, at(row)))
+
+
+def test_a_server_that_reports_no_usage_leaves_the_cost_unknown(http, cfg, usage):
+    cfg(provider="openai", openai_api_key="k")
+    http.replies = [completion(GOOD)]
+    ai.structured("x", "s", Extraction)
+    [row] = usage()
+    assert row["input_tokens"] is None and row["cost"] is None and row["failed"] == 0
+
+
+def test_geminis_own_api_counts_thinking_as_output(http, cfg, usage):
+    cfg(provider="gemini", gemini_api_key="k")
+    http.replies = [(200, {"modelVersion": "gemini-3.8-flash", "candidates": [{"content": {"parts": [{"text": "Hi"}]}}],
+                           "usageMetadata": {"promptTokenCount": 30, "candidatesTokenCount": 2, "thoughtsTokenCount": 90}})]
+    assert ai.complete("hi") == ("Hi", "gemini")
+    [row] = usage()
+    assert (row["model"], row["input_tokens"], row["output_tokens"]) == ("gemini-3.8-flash", 30, 92)
+    assert row["cost"] == pytest.approx(pricing.cost("gemini", "gemini-3.8-flash", 30, 92, 0, at(row)))
+
+
+def test_a_provider_failure_then_a_fallback_logs_both_attempts(http, claude, cfg, usage):
+    cfg(provider="anthropic", fallback="gemini", gemini_api_key="g")
+    claude.reply = status_error(anthropic.APIStatusError, 400, "Your credit balance is too low")
+    http.replies = [completion(GOOD, model="gemini-3.8-flash",
+                               usage={"prompt_tokens": 100, "completion_tokens": 10, "total_tokens": 110})]
+    ai.structured("x", "s", Extraction)
+    claude_try, gemini_try = usage()
+    assert (claude_try["provider"], claude_try["failed"], claude_try["cost"]) == ("anthropic", 1, None)
+    assert "out of credit" in claude_try["error"]
+    assert (gemini_try["provider"], gemini_try["failed"], gemini_try["input_tokens"]) == ("gemini", 0, 100)
+
+
+def test_token_counts_that_cant_be_read_leave_the_cost_unknown_and_the_answer_stands(claude, http, cfg, usage):
+    claude.reply = message(usage=SimpleNamespace(iterations=[SimpleNamespace(type="message")]))   # no counts at all
+    assert ai.structured("x", "s", Extraction)[0].summary == "Met Ana"
+    cfg(provider="gemini", gemini_api_key="k")
+    http.replies = [completion(GOOD, usage={"prompt_tokens": "lots", "total_tokens": None})]
+    assert ai.structured("x", "s", Extraction)[0].summary == "Met Ana"
+    claude_row, gemini_row = usage()
+    assert claude_row["cost"] is None and claude_row["input_tokens"] is None and not claude_row["failed"]
+    assert gemini_row["cost"] is None and gemini_row["input_tokens"] is None and not gemini_row["failed"]

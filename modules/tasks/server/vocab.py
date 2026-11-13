@@ -1,7 +1,7 @@
 """The tasks module's vocabularies: plain strings (and one integer scale) stored in its tables, with the label and
 tone each shows as. Served at GET /api/tasks/meta so the web app never hard-codes them.
 
-Priorities follow Plane's five levels (Traverse PLAN.md D7), so nothing is lost going to and from Plane.
+Priorities follow Plane's five levels, so nothing is lost going to and from Plane.
 """
 
 ITEM_STATUSES = {

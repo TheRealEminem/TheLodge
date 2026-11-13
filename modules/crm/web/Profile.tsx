@@ -12,7 +12,9 @@ import type { Entity, EntityContext, PersonLink, RelationshipView } from "./api"
 import { AboutCard, AffiliationsCard, ConnectionCard, EventList, MiniNetwork, NotesCard, PathsCard, PeopleList, RelationshipsCard, TimelineCard, WayInCard } from "./cards";
 import { Avatar, Card, EntityLink, KIND_LABEL } from "./bits";
 import { Briefing } from "./Briefing";
+import { CorrectionsCard, NotThisButton } from "./corrections";
 import { DuplicatesCard, MergedCard } from "./Duplicates";
+import { HatChips } from "./hats";
 import { EntityFormDialog, MergeDialog } from "./forms";
 import { formatDate } from "./format";
 import { PictureDialog } from "./PictureDialog";
@@ -121,6 +123,7 @@ function Header({ entity, ctx }: { entity: Entity; ctx?: EntityContext }) {
           </div>
           {entity.subtitle && <p className="mt-1 text-body text-ink-soft">{entity.subtitle}</p>}
           <div className="mt-1.5 text-hint text-ink-soft"><HeaderLine entity={entity} ctx={ctx} /></div>
+          {entity.kind !== "topic" && !entity.is_self && <HatChips entityId={entity.id} />}
           {entity.tags.length > 0 && (
             <div className="mt-2.5 flex flex-wrap gap-1">
               {entity.tags.map((t) => (
@@ -206,21 +209,22 @@ function PersonTabs({ entity, relationships, ctx }: { entity: Entity; relationsh
         <Stack>
           <DuplicatesCard entity={entity} />
           <MergedCard entity={entity} />
+          <CorrectionsCard entity={entity} />
           {!entity.is_self && <Briefing person={entity} />}
           {!entity.is_self && <ResearchCard person={entity} />}
           {!entity.is_self && ctx.connection && <ConnectionCard personId={entity.id} name={entity.name} connection={ctx.connection} />}
           <AboutCard entity={entity} />
           <AffiliationsCard affiliations={ctx.affiliations} />
-          {flush("Recent meetings", <EventList events={ctx.meetings.slice(0, 3)} compact empty="No meetings with or about them yet." />,
+          {flush("Recent meetings", <EventList events={ctx.meetings.slice(0, 3)} compact subject={entity} empty="No meetings with or about them yet." />,
             ctx.meetings.length > 3 && <button className="btn btn-sm btn-ghost" onClick={() => setTab("meetings")}>All {ctx.meetings.length}</button>)}
           {!entity.is_self && ctx.connection && ["indirect", "none"].includes(ctx.connection.tier) && <PathsCard entity={entity} />}
           <MiniNetwork entity={entity} />
         </Stack>
-      ) : tab === "meetings" ? flush("Meetings", <EventList events={ctx.meetings} empty="No meetings with or about them yet." />)
+      ) : tab === "meetings" ? flush("Meetings", <EventList events={ctx.meetings} subject={entity} empty="No meetings with or about them yet." />)
         : tab === "documents" ? (
           <Stack>
-            {flush("Documents", <EventList events={ctx.documents} empty="No documents by or about them yet." />)}
-            {!!research?.reports.length && flush("Research reports", <div className="px-5 sm:px-6"><ReportList reports={research.reports} first={entity.name.split(" ")[0]} /></div>)}
+            {flush("Documents", <EventList events={ctx.documents} subject={entity} empty="No documents by or about them yet." />)}
+            {!!research?.reports.length && flush("Research reports", <div className="px-5 sm:px-6"><ReportList reports={research.reports} first={entity.name.split(" ")[0]} personId={entity.id} personName={entity.name} /></div>)}
           </Stack>
         )
         : tab === "people" ? (
@@ -310,14 +314,17 @@ function TopicTabs({ entity, relationships, ctx }: { entity: Entity; relationshi
 
 // ── Meetings and documents ────────────────────────────────────────────
 
-function PeopleWithTier({ people, empty }: { people: PersonLink[]; empty: string }) {
+function PeopleWithTier({ people, empty, event }: { people: PersonLink[]; empty: string; event: Entity }) {
   if (!people.length) return <p className="text-ui text-ink-soft">{empty}</p>;
   return (
     <ul className="space-y-2 text-ui">
       {people.map((l) => (
-        <li key={l.person.id} className="flex items-center justify-between gap-2">
+        <li key={l.person.id} className="group flex items-center justify-between gap-2">
           <EntityLink entity={l.person} showSubtitle />
-          {!l.person.is_self && <TierBadge tier={l.tier} />}
+          <span className="flex shrink-0 items-center gap-1">
+            {!l.person.is_self && <NotThisButton who={l.person} evidence={event} />}
+            {!l.person.is_self && <TierBadge tier={l.tier} />}
+          </span>
         </li>
       ))}
     </ul>
@@ -344,10 +351,10 @@ function EventPage({ entity, relationships, ctx }: { entity: Entity; relationshi
       </Card>
       <div className="grid gap-5 sm:grid-cols-2">
         <Card title={entity.kind === "meeting" ? `Attendees (${present.length})` : `Authors and subject (${present.length})`}>
-          <PeopleWithTier people={present} empty="None recorded." />
+          <PeopleWithTier people={present} event={entity} empty="None recorded." />
         </Card>
         <Card title={`${entity.kind === "meeting" ? "People who came up" : "People mentioned"} (${named.length})`}>
-          <PeopleWithTier people={named} empty="No one else mentioned." />
+          <PeopleWithTier people={named} event={entity} empty="No one else mentioned." />
         </Card>
       </div>
       {ctx && (ctx.orgs.length > 0 || ctx.topics.length > 0) && (

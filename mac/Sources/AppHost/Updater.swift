@@ -14,6 +14,8 @@ import UpdateRules
 /// - **Skip this version:** it isn't offered again; a newer one is.
 /// - **Not while the app is busy** (GET /api/jobs/busy: background work is queued or running). Jobs would pick
 ///   up again after the restart, but a long one would start over.
+/// - **Not in Lockdown** (GET /api/lockdown): nothing leaves this Mac, so it neither checks nor downloads while
+///   Lockdown is on, or while the server can't say. Going back needs no download, so it still works.
 ///
 /// Which version to offer, skipping and going back are decided in UpdateRules, checked by
 /// `swift run --package-path mac UpdateChecks`.
@@ -30,6 +32,7 @@ final class Updater: ObservableObject {
         case checking
         case upToDate
         case offline  // couldn't reach GitHub to check
+        case lockedDown  // Lockdown is on: no checks, no downloads
         case available(String)
         case downloading(String, Double?)
         case installing(String)
@@ -97,19 +100,21 @@ final class Updater: ObservableObject {
     }
 
     /// Lockdown (the family's rule 9: nothing leaves this computer). The server reports it in /api/app.
-    private func lockdownOn() async -> Bool {
-        var request = URLRequest(url: AppConfig.serverURL.appendingPathComponent("api/app"))
-        request.timeoutInterval = 3
-        guard let (data, _) = try? await URLSession.shared.data(for: request),
-              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return false }
-        return json["lockdown"] as? Bool ?? false
-    }
 
     /// Looks for a new version. `manual`: you asked (Check for updates…), so show "Checking…" meanwhile. Under
     /// Lockdown only that goes out: the automatic checks stay home.
     func check(manual: Bool = false) async {
         guard let feed = Self.feed, !working else { return }
-        if !manual, await lockdownOn() { return }
+        switch await Self.lockedDown() {
+        case true?:
+            state = .lockedDown
+            return
+        case nil:
+            if manual { state = .failed("Couldn’t ask \(AppConfig.name) whether Lockdown is on, so it didn’t check.") }
+            return
+        case false?:
+            if state == .lockedDown { state = latest.map { .available($0.version) } ?? .idle }
+        }
         if manual, latest == nil { state = .checking }
         var request = URLRequest(url: feed)
         request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
@@ -169,6 +174,9 @@ final class Updater: ObservableObject {
         Task {
             do {
                 let app = try await Self.preflight("update")
+                if await Self.lockedDown() != false {
+                    throw UpdateError("Lockdown is on, so the update wasn’t downloaded. Turn it off in Settings to install it.")
+                }
                 let image = try await download(release)
                 state = .installing(release.version)
                 let fresh = try await Self.unpack(image, next: app)
@@ -214,6 +222,7 @@ final class Updater: ObservableObject {
         case .checking: out["state"] = "checking"
         case .upToDate: out["state"] = "up-to-date"
         case .offline: out["state"] = "offline"
+        case .lockedDown: out["state"] = "locked-down"
         case .available(let v): out["state"] = "available"; out["version"] = v
         case .downloading(let v, let p): out["state"] = "downloading"; out["version"] = v; out["progress"] = p
         case .installing(let v): out["state"] = "installing"; out["version"] = v
@@ -255,6 +264,15 @@ final class Updater: ObservableObject {
             }
             try? await Task.sleep(for: .seconds(1))
         }
+    }
+
+    /// Whether Lockdown is on (UpdateRules.lockedDown): nil when the server couldn't say.
+    private static func lockedDown() async -> Bool? {
+        var request = URLRequest(url: AppConfig.serverURL.appendingPathComponent("api/lockdown"))
+        request.timeoutInterval = 3
+        request.cachePolicy = .reloadIgnoringLocalCacheData
+        guard let (data, response) = try? await URLSession.shared.data(for: request) else { return nil }
+        return UpdateRules.lockedDown(status: (response as? HTTPURLResponse)?.statusCode ?? 0, body: data)
     }
 
     private static func serverBusy() async -> Bool {

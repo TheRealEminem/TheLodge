@@ -15,3 +15,6 @@ PLAN.md
 modules/crm/tests/fixtures/real_names.json
 desktop/src-tauri/target/
 desktop/src-tauri/gen/
+
+# Local editor and agent settings
+.claude/

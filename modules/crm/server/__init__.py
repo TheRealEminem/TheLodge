@@ -16,7 +16,7 @@ def on_settings_changed(payload: dict) -> None:
         jobs.enqueue("crm", "granola_sync", schedule.TARGET)
     if "crm.trailmix_days" in keys:
         capture.set_state("trailmix", window_from=None)   # how far back is worked out again at the next run
-    if {"crm.trailmix_sync", "crm.trailmix_url", "crm.trailmix_days", "crm.trailmix_skip_workspaces"} & set(keys) and trailmix.configured():
+    if {"crm.trailmix_sync", "crm.trailmix_url", "crm.trailmix_days", "crm.trailmix_skip_workspaces", "crm.trailmix_only_tags"} & set(keys) and trailmix.configured():
         jobs.enqueue("crm", "trailmix_sync", schedule.TARGET)
     if "crm.calendar_secret" in keys and calendar_sync.configured():
         jobs.enqueue("crm", "calendar_sync", schedule.TARGET)
@@ -35,7 +35,7 @@ MODULE = Module(
               "research_deep_via": "claude", "research_auto_add": True, "research_depth": "standard",
               "research_when": "now", "research_night_from": 1, "research_night_to": 6,
               "trailmix_sync": False, "trailmix_url": "http://127.0.0.1:8765", "trailmix_days": 90,
-              "trailmix_auto_apply": True, "trailmix_skip_workspaces": [],
+              "trailmix_auto_apply": True, "trailmix_skip_workspaces": [], "trailmix_only_tags": [], "active_hat": "",
               "research_ask_model": "", "research_write_model": "", "gravatar": False},
     choices={**roles.CHOICES, "research_level": tuple(gemini_research.LEVELS),
              "research_via": ("api", *cli_research.TOOLS), "research_deep_via": tuple(cli_research.TOOLS),
