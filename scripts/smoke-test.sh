@@ -7,12 +7,14 @@
 # A copy of the app relabelled as an older version (0.0.1) plays the installed app, and must:
 #   1. not offer a version that's only out as a beta while beta updates are off;
 #   2. not update while the app says it's busy (GET /api/jobs/busy);
-#   3. with beta updates on, install the beta from the disk image (checksum, bundle ID and signature checked),
+#   3. not look for updates at all while Lockdown is on (GET /api/lockdown);
+#   4. with beta updates on, install the beta from the disk image (checksum, bundle ID and signature checked),
 #      keeping the version it replaced;
-#   4. go back to that version, skipping the one it left;
-#   5. then not offer the skipped version again.
+#   5. go back to that version, skipping the one it left;
+#   6. then not offer the skipped version again.
 # Each step runs the app itself with <PREFIX>_UPDATE_TEST, which installs or goes back after its first check and
-# logs each state to stderr ("update: …"). A stand-in answers for the app's server (/api/app, /api/jobs/busy),
+# logs each state to stderr ("update: …"). A stand-in answers for the app's server (/api/app, /api/jobs/busy,
+# /api/lockdown),
 # so the bundled server never starts here; scripts/check-app.py tries that part.
 set -euo pipefail
 
@@ -69,9 +71,11 @@ publish() {  # publish true|false: the new version, as a pre-release or a full r
 EOF
 }
 busy() { echo "{\"busy\": $1}" >"$FEED/api/jobs/busy"; }
+lockdown() { echo "{\"on\": $1, \"parked\": 0}" >"$FEED/api/lockdown"; }
 echo "{\"id\": \"$APP_ID\"}" >"$FEED/api/app"
 publish true
 busy false
+lockdown false
 python3 -m http.server "$PORT" --bind 127.0.0.1 --directory "$FEED" >/dev/null 2>&1 &
 PIDS+=($!)
 for _ in $(seq 1 50); do curl -s -o /dev/null -m 1 "$STAND_IN/api/app" && break; sleep 0.2; done
@@ -79,7 +83,7 @@ for _ in $(seq 1 50); do curl -s -o /dev/null -m 1 "$STAND_IN/api/app" && break;
 # Runs the installed app with UPDATE_TEST=$1 until it quits (it updated or went back) or settles where it is; the
 # log is in app.log. Going back settles only by failing: its first check says "up to date" before it starts.
 run_app() {
-  local settled='^update: (upToDate|offline|failed)'
+  local settled='^update: (upToDate|offline|lockedDown|failed)'
   [ "$1" = go-back ] && settled='^update: failed'
   env -i HOME="$T/home" PATH=/usr/bin:/bin:/usr/sbin:/sbin \
     "${PREFIX}_DATA_DIR=$DATA" "${PREFIX}_SERVER_URL=$STAND_IN" "${PREFIX}_NO_OPEN=1" \
@@ -115,8 +119,17 @@ grep -q '^update: failed(.*in the middle of something' "$T/app.log" || fail "exp
 [ "$(version_of "$INSTALLED")" = "$OLD" ] || fail "it updated while busy"
 echo "refused: $(grep -o 'failed(.*' "$T/app.log" | head -n 1)"
 
-step "3. Beta updates on: the beta installs, and the version it replaced is kept"
+step "3. Lockdown: it doesn't look for updates while Lockdown is on"
 busy false
+lockdown true
+run_app install
+grep -q '^update: lockedDown' "$T/app.log" || fail "expected it to say Lockdown is on"
+! grep -q '^update: available' "$T/app.log" || fail "it looked for updates while Lockdown was on"
+[ "$(version_of "$INSTALLED")" = "$OLD" ] || fail "it updated while Lockdown was on"
+lockdown false
+echo "no check"
+
+step "4. Beta updates on: the beta installs, and the version it replaced is kept"
 run_app install
 [ "$(version_of "$INSTALLED")" = "$NEW" ] || fail "after updating, the app is $(version_of "$INSTALLED"), not $NEW"
 codesign --verify --strict "$INSTALLED" || fail "the updated app's signature doesn't verify"
@@ -125,7 +138,7 @@ leftovers="$(find "$T/Applications" -mindepth 1 -maxdepth 1 ! -name "$NAME.app")
 [ -z "$leftovers" ] || fail "it left things beside the app: $leftovers"
 echo "updated $OLD -> $NEW, $OLD kept"
 
-step "4. Go back: the kept version returns, and the one it left is skipped"
+step "5. Go back: the kept version returns, and the one it left is skipped"
 run_app go-back
 [ "$(version_of "$INSTALLED")" = "$OLD" ] || fail "after going back, the app is $(version_of "$INSTALLED"), not $OLD"
 codesign --verify --strict "$INSTALLED" || fail "the version it went back to doesn't verify"
@@ -133,11 +146,11 @@ codesign --verify --strict "$INSTALLED" || fail "the version it went back to doe
 [ "$(choice skipped)" = "$NEW" ] || fail "$NEW wasn't skipped after going back from it (choices: $(cat "$DATA/updates.noindex/choices.json"))"
 echo "went back $NEW -> $OLD, skipping $NEW"
 
-step "5. The version you went back from isn't offered again"
+step "6. The version you went back from isn't offered again"
 run_app install
 grep -q '^update: upToDate' "$T/app.log" || fail "expected it to say it's up to date"
 [ "$(version_of "$INSTALLED")" = "$OLD" ] || fail "it installed the skipped version"
 echo "not offered"
 
 echo
-echo "SMOKE TEST PASSED ($OLD -> $NEW and back, beta updates, busy, skip)"
+echo "SMOKE TEST PASSED ($OLD -> $NEW and back, beta updates, busy, Lockdown, skip)"

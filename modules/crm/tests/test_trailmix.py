@@ -8,8 +8,8 @@ import pytest
 from crm_helpers import entity, extraction
 from test_capture import fake_granola, me, meetings, run_granola  # noqa: F401 - fixtures and helpers
 
-from core.server import jobs, settings
-from modules.crm.server import trailmix
+from core.server import db, jobs, settings
+from modules.crm.server import hats, trailmix
 
 NOW = datetime.now(UTC).replace(microsecond=0)
 
@@ -121,3 +121,66 @@ def test_a_trailmix_that_isnt_running_is_said_for_settings_and_nothing_else_happ
 def test_it_is_off_until_you_turn_it_on(client):
     assert trailmix.seconds() == 0 and trailmix.sync() == {"skipped": "off"}
     assert not client.get("/api/crm/capture").json()["trailmix"]["configured"]
+
+
+def test_a_workspace_is_a_hat_and_a_meeting_wears_it_with_its_tags(client, fake_trailmix, fake_structured, me):  # noqa: F811
+    fake_trailmix.add()
+    fake_trailmix.meetings[1]["tags"] = ["Cold Chain", "pilot"]
+    fake_structured.reply = extraction([entity("p1", "Priya Nair", role="attendee")], title="Helio pilot sync")
+    run()
+    [m] = meetings(client)
+    work = next(h for h in client.get("/api/crm/hats").json()["hats"] if h["name"] == "Work")
+    assert work["workspace"] == 1 and hats.source_hat(m["id"]) == work["id"]
+    assert set(m["tags"]) >= {"cold-chain", "pilot"}
+    assert [r["person"]["name"] for r in client.get("/api/crm/people", params={"hat": work["id"]}).json()["items"]] == ["Priya Nair"]
+
+    # Filed elsewhere and retagged in Trailmix: it follows, with no second copy.
+    fake_trailmix.meetings[1].update(workspace_id=3, tags=["pilot", "renewal"])
+    run()
+    [m] = meetings(client)
+    personal = next(h for h in client.get("/api/crm/hats").json()["hats"] if h["name"] == "Personal")
+    assert hats.source_hat(m["id"]) == personal["id"]
+    assert "cold-chain" not in m["tags"] and {"pilot", "renewal"} <= set(m["tags"])
+
+
+def test_a_meeting_moved_to_no_workspace_leaves_its_old_hat(client, fake_trailmix, fake_structured, me):  # noqa: F811
+    fake_trailmix.add()
+    fake_structured.reply = extraction([entity("p1", "Priya Nair", role="attendee")], title="Helio pilot sync")
+    run()
+    [m] = meetings(client)
+    assert hats.source_hat(m["id"])
+    fake_trailmix.meetings[1].update(workspace_id=None)
+    run()
+    assert hats.source_hat(m["id"]) is None
+
+
+def test_only_the_tags_and_workspaces_you_chose_come_in(client, fake_trailmix, fake_structured, me):  # noqa: F811
+    fake_trailmix.add(1, title="Tagged")
+    fake_trailmix.meetings[1]["tags"] = ["parks"]
+    fake_trailmix.add(2, title="Not tagged")
+    fake_trailmix.add(3, title="No workspace", workspace=None)
+    fake_structured.reply = extraction([entity("p1", "Priya Nair", role="attendee")])
+    settings.update({"crm.trailmix_only_tags": ["Parks"]})
+    try:
+        assert run()["imported"] == 1
+        settings.update({"crm.trailmix_only_tags": [], "crm.trailmix_skip_workspaces": ["0", "1"]})
+        counts = run()
+        assert counts["imported"] == 0 and counts["left_out"] == 3
+    finally:
+        settings.update({"crm.trailmix_only_tags": []})
+
+
+def test_a_meeting_waiting_for_review_stops_waiting_once_it_is_left_out_and_can_come_back(client, fake_trailmix, fake_structured, me):  # noqa: F811
+    fake_trailmix.add()
+    fake_structured.reply = extraction([entity("p1", "Priya Nair", role="attendee")])
+    settings.update({"crm.trailmix_auto_apply": False})
+    try:
+        run()
+        assert db.one("SELECT status FROM crm_inbox WHERE source = 'meeting'")["status"] == "review"
+        settings.update({"crm.trailmix_skip_workspaces": ["1"]})
+        run()
+        assert db.one("SELECT status FROM crm_inbox WHERE source = 'meeting'")["status"] == "skipped"
+        settings.update({"crm.trailmix_skip_workspaces": []})
+        assert run()["imported"] == 1
+    finally:
+        settings.update({"crm.trailmix_auto_apply": True})

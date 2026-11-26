@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field
 
 from core.server import db
 
-from . import people_net, presets, store
+from . import hats, people_net, presets, store
 
 router = APIRouter(prefix="/network")
 
@@ -16,11 +16,11 @@ def _missing(e: store.NotFound) -> HTTPException:
 
 
 @router.get("")
-def get_network(focus: str | None = None, depth: int = Query(2, ge=1, le=3), max_nodes: int = Query(400, ge=10, le=2000)):
+def get_network(focus: str | None = None, depth: int = Query(2, ge=1, le=3), max_nodes: int = Query(400, ge=10, le=2000), hat: str | None = None):
     """People and the lines between them, with every group (organizations, topics, tags). `focus` limits it to
     one person's neighborhood."""
     try:
-        return people_net.network(focus, depth, max_nodes)
+        return people_net.network(focus, depth, max_nodes, hats.lens_people(hat))
     except store.NotFound as e:
         raise _missing(e) from e
 

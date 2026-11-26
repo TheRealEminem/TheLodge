@@ -1,24 +1,38 @@
-# Runs on every push and pull request: server tests, type checks, the web build and the style rules.
+# Runs on every push and pull request: Python style, server tests, type checks, the web build and the style rules.
+# The same file runs in TrailmixFamily (where a small stand-in app, see its README, gives it something to run) and in
+# every app, so what passes here passes the same way there.
 name: Tests
 
 on:
   push:
     branches: ["**"]
+    paths-ignore: ["**.md", "docs/**"]
   pull_request:
+    paths-ignore: ["**.md", "docs/**"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   check:
     runs-on: ubuntu-latest
+    timeout-minutes: 6
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
           cache: pip
-      - uses: actions/setup-node@v4
+          cache-dependency-path: requirements.txt
+      - uses: actions/setup-node@v7
         with:
           node-version: 20
           cache: npm
-      - run: pip install -r requirements.txt pytest
+          cache-dependency-path: package-lock.json
+      - run: pip install -r requirements.txt pytest ruff
       - run: npm ci
       - run: scripts/check

@@ -116,7 +116,7 @@ function Onboarding() {
 }
 
 export default function HomeBlock() {
-  const { data } = useLive(crmApi.dashboard);
+  const { data } = useLive(() => crmApi.dashboard({ hat: "active" }));
   if (!data) return <Skeleton className="h-64 w-full rounded-xl" />;
   const total = Object.values(data.counts).reduce((a, b) => a + (b ?? 0), 0);
   if (total === 0 || (total === 1 && data.me)) return <Onboarding />;

@@ -25,11 +25,14 @@ interface Groups {
   unfiled: Task[];
 }
 
+/** An action item (from a meeting or the inbox) that hasn't been put in a project yet. */
+const unfiled = (t: Task) => t.source === "action-item" && !t.project_id;
+
 function group(tasks: Task[], today: string): Groups {
   const weekEnd = addDays(today, 7);
   const g: Groups = { late: [], today: [], week: [], later: [], nodate: [], unfiled: [] };
   for (const t of tasks) {
-    if (t.source === "action-item" && !t.project_id) g.unfiled.push(t);
+    if (!t.due_on && unfiled(t)) g.unfiled.push(t);
     else if (!t.due_on) g.nodate.push(t);
     else if (t.due_on < today) g.late.push(t);
     else if (t.due_on === today) g.today.push(t);
@@ -163,7 +166,8 @@ export default function MyTasks() {
     ) : null;
 
   const sections: ReactNode[] = [];
-  const add = (key: string, title: string, tasks: Task[], hint?: string, extra?: (t: Task) => ReactNode) => {
+  // Any unfiled action item, wherever its date puts it, can be moved into a project from its row.
+  const add = (key: string, title: string, tasks: Task[], hint?: string, extra: (t: Task) => ReactNode = (t) => (unfiled(t) ? moveTo(t) : null)) => {
     if (tasks.length) sections.push(<Group key={key} title={title} hint={hint}>{list(tasks, title, extra)}</Group>);
   };
   if (when === "waiting") {
@@ -175,7 +179,7 @@ export default function MyTasks() {
     if (when === "all") {
       add("later", "Later", g.later);
       add("nodate", "No date", g.nodate);
-      add("unfiled", "Not in a project yet", g.unfiled, "action items from your meetings", moveTo);
+      add("unfiled", "Not in a project yet", g.unfiled, "undated action items from your meetings");
     }
   }
   const loading = !mine || !waiting;

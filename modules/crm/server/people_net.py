@@ -153,7 +153,7 @@ def _build() -> PeopleNet:
         link(a.id, b.id).add("direct", weight, text)
 
     # lines from shared meetings and documents
-    for ev_id, ev in events.items():
+    for ev in events.values():
         e = ev["entity"]
         ref = {"id": e.id, "kind": e.kind, "name": e.name}
         took = [p for p, role in ev["people"].items() if role == "took part"]
@@ -255,7 +255,8 @@ def group_list(net: PeopleNet) -> list[dict]:
             for g in sorted(net.groups.values(), key=lambda g: (-len(g.members), g.name.lower()))]
 
 
-def network(focus: str | None = None, depth: int = 2, max_nodes: int = 400) -> dict:
+def network(focus: str | None = None, depth: int = 2, max_nodes: int = 400, only: set[str] | None = None) -> dict:
+    """`only`: the people a hat lets through (and you, who are the middle of every picture)."""
     net = get()
     keep: dict[str, int | None]
     truncated = False
@@ -279,15 +280,19 @@ def network(focus: str | None = None, depth: int = 2, max_nodes: int = 400) -> d
             if not frontier:
                 break
     else:
-        ids = list(net.people)
+        ids = [p for p in net.people if only is None or p in only or p == net.me]
         if len(ids) > max_nodes:
             truncated = True
             ids.sort(key=lambda p: (not net.people[p].is_self, -net.degree(p)))
             ids = ids[:max_nodes]
         keep = dict.fromkeys(ids)
     nodes = [_node(net, pid, d) for pid, d in sorted(keep.items(), key=lambda kv: net.people[kv[0]].name.lower())]
-    lids = [lid for lid, l in net.links.items() if l.a in keep and l.b in keep]
-    return {"nodes": nodes, "links": [_link(net, lid) for lid in lids], "groups": group_list(net), "truncated": truncated}
+    lids = [lid for lid, link in net.links.items() if link.a in keep and link.b in keep]
+    groups = group_list(net) if only is None else [
+        {**g, "size": size} for g in group_list(net)
+        if (size := sum(1 for p in net.groups[g["id"]].members if p in only)) >= 2]
+    groups.sort(key=lambda g: (-g["size"], g["name"].lower()))
+    return {"nodes": nodes, "links": [_link(net, lid) for lid in lids], "groups": groups, "truncated": truncated}
 
 
 def group_detail(gid: str) -> dict:
@@ -306,7 +311,7 @@ def evidence(pid: str) -> list[dict]:
     if pid not in net.people:
         raise store.NotFound("Person not found")
     out = []
-    for ev_id, ev in net.events.items():
+    for ev in net.events.values():
         if pid not in ev["people"]:
             continue
         e = ev["entity"]

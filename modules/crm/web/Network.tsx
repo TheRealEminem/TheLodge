@@ -61,7 +61,7 @@ export default function Network() {
   const wide = useWide();
 
   // The rings are always drawn from you, so a focus only narrows the graph.
-  const { data: net, error } = useLive(() => crmApi.network({ focus: view === "graph" ? focus ?? undefined : undefined, depth, max_nodes: 600 }), [focus, depth, view === "graph"]);
+  const { data: net, error } = useLive(() => crmApi.network({ focus: view === "graph" ? focus ?? undefined : undefined, depth, max_nodes: 600, hat: "active" }), [focus, depth, view === "graph"]);
   const { data: me } = useLive(crmApi.me);
   const { data: paths } = useLive(() => (pathTo && me ? crmApi.netPaths({ target: pathTo }) : Promise.resolve(null)), [pathTo, me?.id]);
   const { data: focusEntity } = useLive(() => (focus ? crmApi.entity(focus) : Promise.resolve(null)), [focus]);

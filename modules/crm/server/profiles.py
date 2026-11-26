@@ -242,7 +242,7 @@ def fingerprint(v: views.Views, p: Entity, local: bool) -> tuple[str, str, bool]
 # ── Overviews ─────────────────────────────────────────────────────────
 
 def _overview_row(person_id: str) -> dict | None:
-    return db.one("SELECT body, fingerprint, written_by, created_at FROM crm_overviews WHERE entity_id = ?", (person_id,))
+    return db.one("SELECT body, fingerprint, written_by, created_at, mine FROM crm_overviews WHERE entity_id = ?", (person_id,))
 
 
 def _overview_job(person_id: str) -> dict | None:
@@ -260,13 +260,14 @@ def overview_state(person_id: str) -> dict:
     fp, _, material = fingerprint(v, p, prov["local"])
     row = _overview_row(p.id)
     job = _overview_job(p.id)
-    current = bool(row and row["fingerprint"] == fp)
+    mine = bool(row and row["mine"])
+    current = mine or bool(row and row["fingerprint"] == fp)
     unfinished = job and job["status"] in jobs.UNFINISHED
     if prov["ready"] and material and not current and not unfinished and not (job and job["status"] == "error"):
         jobs.enqueue("crm", "overview_now", p.id)
         job = _overview_job(p.id)
     return {
-        "overview": {"body": row["body"], "written_by": row["written_by"], "created_at": row["created_at"], "current": current} if row else None,
+        "overview": {"body": row["body"], "written_by": row["written_by"], "created_at": row["created_at"], "current": current, "mine": mine} if row else None,
         "job": job, "material": material,
         "ready": prov["ready"], "reason": prov["reason"], "provider": prov["label"], "local": prov["local"],
     }
@@ -275,8 +276,22 @@ def overview_state(person_id: str) -> dict:
 def redo_overview(person_id: str) -> dict:
     v = views.get()
     p = _person(v, person_id)
-    db.execute("UPDATE crm_overviews SET fingerprint = '' WHERE entity_id = ?", (p.id,))
+    db.execute("UPDATE crm_overviews SET fingerprint = '', mine = 0 WHERE entity_id = ?", (p.id,))
     jobs.enqueue("crm", "overview_now", p.id)
+    _changed(p.id)
+    return overview_state(p.id)
+
+
+def set_overview(person_id: str, body: str) -> dict:
+    """Your own words. The AI leaves them alone until you ask it to write one again (redo_overview)."""
+    v = views.get()
+    p = _person(v, person_id)
+    db.execute(
+        "INSERT INTO crm_overviews (id, entity_id, body, fingerprint, written_by, created_at, mine) VALUES (?, ?, ?, '', 'You', ?, 1) "
+        "ON CONFLICT(entity_id) DO UPDATE SET body = excluded.body, fingerprint = '', written_by = 'You', "
+        "created_at = excluded.created_at, mine = 1",
+        (db.new_id(), p.id, body.strip(), _now()),
+    )
     _changed(p.id)
     return overview_state(p.id)
 
@@ -290,7 +305,7 @@ def write_overview(job: jobs.Job) -> None:
     prov = provider()
     fp, text, material = fingerprint(v, p, prov["local"])
     row = _overview_row(p.id)
-    if row and row["fingerprint"] == fp:
+    if row and (row["fingerprint"] == fp or row["mine"]):
         return
     if not material:
         return
@@ -315,7 +330,7 @@ def write_overview(job: jobs.Job) -> None:
     db.execute(
         "INSERT INTO crm_overviews (id, entity_id, body, fingerprint, written_by, created_at) VALUES (?, ?, ?, ?, ?, ?) "
         "ON CONFLICT(entity_id) DO UPDATE SET body = excluded.body, fingerprint = excluded.fingerprint, "
-        "written_by = excluded.written_by, created_at = excluded.created_at",
+        "written_by = excluded.written_by, created_at = excluded.created_at WHERE crm_overviews.mine = 0",   # saved while this one was written: theirs stays
         (db.new_id(), p.id, body.strip(), fp, _written_by(pid), now),
     )
     _changed(p.id)
@@ -336,10 +351,11 @@ def sweep(job: jobs.Job) -> None:
     if db.one(f"SELECT 1 AS x FROM core_jobs WHERE module = 'crm' AND kind IN {OVERVIEW_KINDS} AND status IN ('waiting', 'queued', 'running')"):
         return  # the last batch is still going, or is parked until the AI works again
     v = views.get()
-    have = {r["entity_id"]: r["fingerprint"] for r in db.query("SELECT entity_id, fingerprint FROM crm_overviews")}
+    have = {r["entity_id"]: r["fingerprint"] for r in db.query("SELECT entity_id, fingerprint FROM crm_overviews WHERE mine = 0")}
+    mine = {r["entity_id"] for r in db.query("SELECT entity_id FROM crm_overviews WHERE mine = 1")}
     failed = {r["target"] for r in db.query(
         f"SELECT target FROM core_jobs WHERE module = 'crm' AND kind IN {OVERVIEW_KINDS} AND status = 'error'")}
-    people = [p for p in v.snap.of_kind("person") if not p.is_self and p.id in v.conns and p.id not in failed]
+    people = [p for p in v.snap.of_kind("person") if not p.is_self and p.id in v.conns and p.id not in failed and p.id not in mine]
     people.sort(key=lambda p: sort_key(v.conns[p.id], p.name))
     limit, queued = PER_SWEEP[_scale(prov["local"])], 0
     for p in people:

@@ -1,9 +1,10 @@
 import { useState } from "react";
-import { CloseIcon, OrgIcon, PlusIcon, SearchIcon } from "@core/components/icons";
+import { OrgIcon, PlusIcon, SearchIcon } from "@core/components/icons";
 import { PageHeader, Segmented, Select, Skeleton } from "@core/components/ui";
 import { useLive } from "@core/live";
 import { keepFilters, navigate, useQueryLimit, useQueryParams, useQueryText } from "@core/router";
 import { crmApi } from "./api";
+import { FacetPicker } from "./hats";
 import { EntityFormDialog } from "./forms";
 import type { OrgRow, OrgScope } from "./api";
 import { Avatar, Empty, Tags, useDebounced } from "./bits";
@@ -82,7 +83,8 @@ export default function Organizations() {
   const sort = params.get("sort") ?? "known";
   const tag = params.get("tag") ?? undefined;
 
-  const { data, error } = useLive(() => crmApi.organizations({ q: dq, scope, sort, tag, limit }), [dq, scope, sort, tag, limit]);
+  const { data, error } = useLive(() => crmApi.organizations({ q: dq, scope, sort, tag, limit, hat: "active" }), [dq, scope, sort, tag, limit]);
+  const { data: facets } = useLive(() => crmApi.orgFacets({ hat: "active" }));
   const s = data?.scopes;
   const active = SCOPES.find((x) => x.id === scope)!;
 
@@ -105,11 +107,7 @@ export default function Organizations() {
             <input className="field h-10 w-full pl-9" placeholder="Search organizations" aria-label="Search organizations" value={q} onChange={(e) => setQ(e.target.value)} />
           </div>
           <Select label="Sort by" value={sort} onChange={(v) => setParams({ sort: v === "known" ? null : v })} options={SORTS} />
-          {tag && (
-            <button className="chip bg-forest-soft text-forest-deep" onClick={() => setParams({ tag: null })} aria-label={`Remove the ${tag} filter`}>
-              #{tag} <CloseIcon size={12} />
-            </button>
-          )}
+          <FacetPicker label="Tag" value={tag} options={facets?.tags} onChange={(v) => setParams({ tag: v })} />
         </div>
         <p className="text-hint text-ink-soft">{active.blurb}</p>
 

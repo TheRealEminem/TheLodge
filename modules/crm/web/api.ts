@@ -75,6 +75,64 @@ export interface TrailmixFound {
   done: number;
   workspaces: { id: number; name: string; meetings: number }[];
   unsorted: number;
+  tags: { name: string; meetings: number }[];
+}
+
+export interface Hat {
+  id: string;
+  name: string;
+  title: string | null;
+  org_id: string | null;
+  org_name: string | null;
+  workspace: number | null;
+  people: number;
+  orgs: number;
+  events: number;
+}
+
+export interface HatList {
+  hats: Hat[];
+  active: string | null;
+  unhatted: number;
+}
+
+export interface Facet {
+  id: string;
+  name: string;
+  count: number;
+}
+
+export interface PeopleFacets {
+  tags: Facet[];
+  orgs: Facet[];
+  topics: Facet[];
+  meeting_tags: Facet[];
+}
+
+export interface SourcePreview {
+  entity: { id: string; name: string };
+  evidence: { id: string; name: string; kind: string };
+  written: string | null;
+  links: { id: string; label: string; other: string }[];
+  notes: { id: string; body: string }[];
+  fields: { label: string; value: string }[];
+}
+
+export interface Correction {
+  id: string;
+  evidence_id: string;
+  to_id: string | null;
+  to_name: string | null;
+  name: string;
+  created_at: string;
+}
+
+export interface LinkCheck {
+  entity: EntitySummary;
+  evidence: EntitySummary;
+  written: string;
+  why: string;
+  firm: boolean;
 }
 
 export interface CaptureOverview {
@@ -564,7 +622,7 @@ export interface AiRole {
 // ---- Overviews and questions about a person ----
 
 export interface OverviewState {
-  overview: { body: string; written_by: string; created_at: string; current: boolean } | null;
+  overview: { body: string; written_by: string; created_at: string; current: boolean; mine: boolean } | null;
   job: Job | null; // the latest work on it
   material: boolean; // false: nothing on file beyond a name
   ready: boolean; // an AI is set up for this job
@@ -808,8 +866,32 @@ export const crmApi = {
   },
   resume: () => request<{ resumed: number }>("/crm/ingest/resume", json("POST")),
   aiRoles: () => request<AiRole[]>("/crm/ai"),
-  dashboard: () => request<Dashboard>("/crm/dashboard"),
-  people: (p: { tier?: string; org?: string; tag?: string; q?: string; sort?: string; limit?: number; needs_research?: string }) =>
+  dashboard: (p: { hat?: string } = {}) => request<Dashboard>(`/crm/dashboard${qs(p)}`),
+
+  hats: () => request<HatList>("/crm/hats"),
+  createHat: (b: { name: string; title?: string | null; org_id?: string | null }) => request<HatList>("/crm/hats", json("POST", b)),
+  changeHat: (id: string, b: { name?: string; title?: string | null; org_id?: string | null }) => request<HatList>(`/crm/hats/${id}`, json("PATCH", b)),
+  deleteHat: (id: string) => request<HatList>(`/crm/hats/${id}`, { method: "DELETE" }),
+  wearHat: (id: string | null) => request<HatList>("/crm/hats/active", json("PUT", { id })),
+  placeInHat: (id: string, ids: string[], how: "you" | "no" | null) => request<{ changed: number }>(`/crm/hats/${id}/place`, json("POST", { ids, how })),
+  hatsOf: (entityId: string) => request<{ id: string; name: string; in: boolean; how: string | null }[]>(`/crm/entities/${entityId}/hats`),
+  peopleFacets: (p: { hat?: string; org?: string; tag?: string; topic?: string; mtag?: string }) => request<PeopleFacets>(`/crm/people/facets${qs(p)}`),
+  orgFacets: (p: { hat?: string }) => request<{ tags: Facet[] }>(`/crm/organizations/facets${qs(p)}`),
+
+  sourcePreview: (entityId: string, evidenceId: string) => request<SourcePreview>(`/crm/entities/${entityId}/sources/${evidenceId}`),
+  detachSource: (entityId: string, evidenceId: string, b: { to_id?: string; new_name?: string }) =>
+    request<{ id: string; to: { id: string; name: string } | null; links: number; notes: number }>(`/crm/entities/${entityId}/sources/${evidenceId}/detach`, json("POST", b)),
+  moveReport: (entityId: string, inboxId: string, b: { to_id?: string; new_name?: string }) =>
+    request<{ id: string; to: { id: string; name: string } | null; links: number; notes: number }>(`/crm/entities/${entityId}/reports/${inboxId}/move`, json("POST", b)),
+  unlinkReport: (entityId: string, inboxId: string) => request<void>(`/crm/entities/${entityId}/reports/${inboxId}/unlink`, json("POST")),
+  corrections: (entityId: string) => request<Correction[]>(`/crm/entities/${entityId}/corrections`),
+  undoCorrection: (id: string) => request<{ id: string }>(`/crm/corrections/${id}/undo`, json("POST")),
+  renameText: (entityId: string, old: string, next: string) => request<{ changed: number }>(`/crm/entities/${entityId}/rename-text`, json("POST", { old, new: next })),
+  linkChecks: () => request<{ total: number; items: LinkCheck[] }>("/crm/link-checks"),
+  linkIsRight: (entity_id: string, evidence_id: string) => request<void>("/crm/link-checks/right", json("POST", { entity_id, evidence_id })),
+  setOverview: (personId: string, body: string) => request<OverviewState>(`/crm/people/${personId}/overview`, json("PUT", { body })),
+  updateNote: (id: string, body: string) => request(`/crm/notes/${id}`, json("PATCH", { body })),
+  people: (p: { tier?: string; org?: string; tag?: string; topic?: string; mtag?: string; hat?: string; q?: string; sort?: string; limit?: number; needs_research?: string }) =>
     request<PeoplePage>(`/crm/people${qs(p)}`),
   capture: () => request<CaptureOverview>("/crm/capture"),
   captureTest: (which: "trailmix" | "granola" | "calendar") =>
@@ -838,7 +920,7 @@ export const crmApi = {
   quickExport: (id: string) => request<QuickExport>(`/crm/entities/${id}/export`),
   saveExport: (id: string, format: "md" | "pdf") => request<SavedExport>(`/crm/entities/${id}/export`, json("POST", { format })),
   exportFileUrl: (name: string) => `/api/crm/exports/${encodeURIComponent(name)}`,
-  organizations: (p: { scope?: string; q?: string; tag?: string; sort?: string; limit?: number }) =>
+  organizations: (p: { scope?: string; q?: string; tag?: string; hat?: string; sort?: string; limit?: number }) =>
     request<OrgPage>(`/crm/organizations${qs(p)}`),
   entity: (id: string) => request<{ entity: Entity }>(`/crm/entities/${id}`),
   detail: (id: string) => request<{ entity: Entity; relationships: RelationshipView[] }>(`/crm/entities/${id}`),
@@ -847,7 +929,7 @@ export const crmApi = {
   notes: (id: string) => request<Note[]>(`/crm/entities/${id}/notes`),
   addNote: (id: string, body: string) => request<Note>(`/crm/entities/${id}/notes`, json("POST", { body })),
   deleteNote: (id: string) => request<void>(`/crm/notes/${id}`, { method: "DELETE" }),
-  entities: (p: { kind?: string; q?: string; sort?: string; limit?: number; tag?: string }) =>
+  entities: (p: { kind?: string; q?: string; sort?: string; limit?: number; tag?: string; hat?: string }) =>
     request<{ items: Entity[]; total: number }>(`/crm/entities${qs(p)}`),
   createEntity: (body: EntityInput) => request<Entity>("/crm/entities", json("POST", body)),
   updateEntity: (id: string, body: Partial<EntityInput>) => request<Entity>(`/crm/entities/${id}`, json("PATCH", body)),
@@ -862,13 +944,13 @@ export const crmApi = {
   mergeEntity: (id: string, intoId: string) => request<Entity>(`/crm/entities/${id}/merge`, json("POST", { into_id: intoId })),
   createRelationship: (body: { source_id: string; target_id: string; kind: string; strength?: number; started_at?: string | null }) =>
     request(`/crm/relationships`, json("POST", body)),
-  updateRelationship: (id: string, body: { strength?: number }) => request(`/crm/relationships/${id}`, json("PATCH", body)),
+  updateRelationship: (id: string, body: { strength?: number; properties?: Record<string, unknown>; started_at?: string | null; ended_at?: string | null }) => request(`/crm/relationships/${id}`, json("PATCH", body)),
   deleteRelationship: (id: string) => request<void>(`/crm/relationships/${id}`, { method: "DELETE" }),
   setConnection: (personId: string, strength: number | null) =>
     request<Connection>(`/crm/people/${personId}/connection`, json("PUT", { strength })),
   paths: (p: { target: string; through?: string }) =>
     request<{ target: GraphNode; paths: GraphPath[] }>(`/crm/graph/paths${qs(p)}`),
-  network: (p: { focus?: string; depth?: number; max_nodes?: number }) => request<Network>(`/crm/network${qs(p)}`),
+  network: (p: { focus?: string; depth?: number; max_nodes?: number; hat?: string }) => request<Network>(`/crm/network${qs(p)}`),
   group: (id: string) => request<GroupDetail>(`/crm/network/groups/${id}`),
   evidence: (id: string) => request<Evidence[]>(`/crm/network/evidence/${id}`),
   netPaths: (p: { target: string }) => request<{ source: GraphNode; target: GraphNode; paths: GraphPath[] }>(`/crm/network/paths${qs(p)}`),

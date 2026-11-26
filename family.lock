@@ -1,6 +1,6 @@
 {
-  "commit": "94bbdfde568b09243412f984cefc617cbabfc55f",
-  "subject": "Settings: Run setup again, to reopen the first-run screens on an existing install",
-  "synced_on": "2026-10-24",
+  "commit": "95d9da5d7adb95fdaf93adea36aaf036d73c48fe",
+  "subject": "AI usage table: its step can run twice, and the version before can still read it after Go back",
+  "synced_on": "2026-11-05",
   "note": "The TrailmixFamily commit this app's shared code comes from. Change it with scripts/sync-family."
 }

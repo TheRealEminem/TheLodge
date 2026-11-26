@@ -8,7 +8,7 @@ from crm_helpers import make
 
 from core.server import jobs, lockdown, schedule, settings
 
-from modules.crm.server import calendar_sync, cli_research, gemini_research, granola, ingest, pictures, sheet_sync, store
+from modules.crm.server import calendar_sync, cli_research, gemini_research, granola, pictures, sheet_sync
 
 
 @pytest.fixture

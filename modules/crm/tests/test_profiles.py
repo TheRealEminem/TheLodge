@@ -202,3 +202,17 @@ def test_the_home_finder_puts_names_that_match_first(client, book):
     found = client.get("/api/crm/people", params={"q": "eri", "sort": "match"}).json()["items"]
     # Erik's first name and Ana's surname start with it; Jon only has it in his title, so he comes last
     assert [r["person"]["name"] for r in found] == ["Erik Pruitt", "Ana Erikson", "Jon Sandoval"]
+
+
+def test_an_overview_you_save_while_one_is_being_written_is_not_overwritten(client, book, ready, fake_ai, monkeypatch):
+    real = ai.complete
+
+    def saved_meanwhile(*args, **kwargs):
+        client.put(f"/api/crm/people/{book['priya']['id']}/overview", json={"body": "My own words."})
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(ai, "complete", saved_meanwhile)
+    overview(client, book["priya"])
+    jobs.drain()
+    after = overview(client, book["priya"])
+    assert after["overview"]["body"] == "My own words." and after["overview"]["mine"]

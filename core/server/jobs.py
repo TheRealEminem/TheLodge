@@ -13,6 +13,7 @@ it, else "default".
                     -> waiting  (the handler raised Wait: e.g. not enough free memory; "go" with force; a job
                                  waiting for memory goes again by itself once there's room: resume_when_room)
   waiting <- enqueue(..., approve=True): parked until you press the button ("Needs you"; POST /api/jobs/<id>/go)
+  waiting -> queued by itself (release) when what it waited for has passed: Lockdown turned off (lockdown.py)
 
 State lives in the database, so after a restart unfinished jobs simply run again: write handlers so that
 running twice is harmless (check what's already done, then do the rest).
@@ -20,6 +21,7 @@ running twice is harmless (check what's already done, then do the rest).
 import logging
 import threading
 from concurrent.futures import Future, ThreadPoolExecutor
+from contextvars import ContextVar
 from dataclasses import dataclass
 from typing import Callable
 
@@ -33,6 +35,7 @@ _executors = {name: ThreadPoolExecutor(max_workers=n, thread_name_prefix=f"jobs-
 _handlers: dict[tuple[str, str], tuple[Callable, "str | Callable[[str], str]"]] = {}
 _pending: list[Future] = []
 _pending_lock = threading.Lock()
+_current: ContextVar["Job | None"] = ContextVar("job", default=None)
 
 
 class Wait(Exception):
@@ -86,6 +89,7 @@ def enqueue(module: str, kind: str, target: str, approve: bool = False, reason: 
 
 def go(job_id: str, force: bool = False) -> None:
     """Starts a waiting job (you approved it, or chose to go ahead despite its warning)."""
+    _yours_only("start work that waits for you")
     changed = db.execute(
         "UPDATE core_jobs SET status = 'queued', approved = 1, forced = forced OR ?, wait_reason = NULL, updated_at = ? "
         "WHERE id = ? AND status = 'waiting'",
@@ -110,10 +114,27 @@ def resume_when_room() -> list[str]:
 
 
 def retry(job_id: str) -> None:
+    _yours_only("try failed work again")
     if db.execute("UPDATE core_jobs SET status = 'queued', error = NULL, updated_at = ? WHERE id = ? AND status = 'error'",
                   (db.now(), job_id)):
         _notify(job_id)
         _submit(job_id)
+
+
+def release(job_id: str) -> None:
+    """Starts a waiting job again because what it waited for has passed by itself (Lockdown turned off). Not an
+    approval: only work that was already going parks that way, so Claude's tools don't stop it."""
+    if db.execute("UPDATE core_jobs SET status = 'queued', wait_reason = NULL, updated_at = ? WHERE id = ? AND status = 'waiting'",
+                  (db.now(), job_id)):
+        _notify(job_id)
+        _submit(job_id)
+
+
+def _yours_only(what: str) -> None:
+    """Approving is yours: Claude's tools (mcp.py) may queue work and park it for you, never start what waits."""
+    from . import mcp   # here rather than at the top: mcp loads the modules, which load this
+    if mcp.calling():
+        raise PermissionError(f"Claude can't {what}. Only you can, in the app.")
 
 
 def cancel_for(module: str, target: str) -> None:
@@ -138,6 +159,11 @@ def waiting(module: str, kind: str) -> list[str]:
     """Ids of this kind of job that are parked (for "resume everything")."""
     return [r["id"] for r in db.query("SELECT id FROM core_jobs WHERE module = ? AND kind = ? AND status = 'waiting' ORDER BY created_at",
                                       (module, kind))]
+
+
+def current() -> Job | None:
+    """The job this thread is running, if any (the AI usage log names the module and job that asked)."""
+    return _current.get()
 
 
 def busy() -> bool:
@@ -206,6 +232,7 @@ def _run(job_id: str) -> None:
         return
     job = Job(row["id"], row["module"], row["kind"], row["target"], bool(row["approved"]), bool(row["forced"]))
     _set(job_id, status="running", stage=None, error=None)
+    running = _current.set(job)
     try:
         if job.forced:                      # "Proceed anyway": the memory gate stands aside for this one
             with resources.proceed_anyway():
@@ -219,3 +246,5 @@ def _run(job_id: str) -> None:
         _set(job_id, status="error", error=str(e) or type(e).__name__, stage=None)
     else:
         _set(job_id, status="done", stage=None)
+    finally:
+        _current.reset(running)

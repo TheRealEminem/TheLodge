@@ -1,15 +1,14 @@
 """Granola and calendar sync: new meetings arrive on their own, are stamped with where they came from, join the
 calendar's meeting, and can be taken back. Granola and the calendar are fakes (httpx's MockTransport); the AI is
 conftest's fake_structured."""
-import json
 from datetime import UTC, datetime, timedelta
 
 import httpx
 import pytest
-from crm_helpers import entity, extraction, link, make
+from crm_helpers import entity, extraction, make
 
 from core.server import jobs, settings
-from modules.crm.server import calendar_sync, capture, granola, ingest
+from modules.crm.server import calendar_sync, granola
 
 NOW = datetime.now(UTC).replace(microsecond=0)
 

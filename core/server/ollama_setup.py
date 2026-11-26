@@ -17,16 +17,17 @@ from pathlib import Path
 
 import httpx
 
-from . import ai, computer, hardware, lockdown, resources, settings
+from . import ai, computer, hardware, lockdown, model_catalog, resources, settings
 
 log = logging.getLogger("core.ollama")
 
-# Good at following instructions and structure. 16 GB Macs and up get the 7B; smaller ones the 3B. (The Lodge's own
-# measurements, 2026-10-23: neither reads a long note as well as a cloud model; the 7B is the one that can do the lighter jobs.)
-RECOMMENDED_BIG = "qwen2.5:7b"
-RECOMMENDED_SMALL = "qwen2.5:3b"
+# Which models to offer is the model catalog's call (model_catalog.py), so a newer release is a table change, not a code
+# change. 16 GB Macs and up get the big one; smaller ones the small one. (The Lodge's own measurements, 2026-10-23, of
+# the 7B and 3B then on offer: neither reads a long note as well as a cloud model; the 7B could do the lighter jobs.)
+RECOMMENDED_BIG = model_catalog.recommended("big")
+RECOMMENDED_SMALL = model_catalog.recommended("small")
 BIG_FROM_GB = 15
-BIG_FROM_CARD_GB = 6      # a graphics card's own memory: the 7B takes about 4.7 GB of it
+BIG_FROM_CARD_GB = 8      # a graphics card's own memory: the big model takes about 6.6 GB of it
 
 # The official Mac app, signed and notarized by Ollama (Infra Technologies, Inc). Only a download that carries that
 # signature is installed.
@@ -38,6 +39,9 @@ INSTALL_DIRS = [Path("/Applications"), Path.home() / "Applications"]   # the fir
 # %LOCALAPPDATA%\Programs\Ollama. Only a download whose signature is valid and Ollama's is run.
 OLLAMA_SETUP_EXE = "https://ollama.com/download/OllamaSetup.exe"
 OLLAMA_WINDOWS_SIGNER = "ollama"  # must be in the signer certificate's subject
+
+START_SECONDS = 60          # how long Ollama gets to answer after it's opened
+SERVE_AFTER_SECONDS = 30    # Windows: then its server is started directly
 
 LINUX_INSTALL_COMMAND = "curl -fsSL https://ollama.com/install.sh | sh"
 LINUX_INSTALL_PAGE = "https://ollama.com/download/linux"
@@ -85,6 +89,29 @@ def recommended() -> str:
     return RECOMMENDED_BIG if resources.snapshot()["ram_total_gb"] >= BIG_FROM_GB else RECOMMENDED_SMALL
 
 
+def suggestion(cfg: dict, tags: list[dict]) -> dict | None:
+    """A newer model to offer someone who already has one: {"model": what to get, "replaces": what they use now}, or None.
+    Only for a model the catalog lists whose family a better one has replaced. Never when they've chosen a model
+    themselves, or brought one the catalog doesn't know, or already said "not now" to this suggestion, or when they
+    have the model already."""
+    if cfg.get("ollama_model"):
+        return None
+    using = ai.preferred_ollama_model(tags)
+    wanted = recommended()
+    if not using or model_catalog.family_of(using) is None or cfg.get("model_suggestion_dismissed") == wanted:
+        return None
+    if any(m["name"] in (wanted, f"{wanted}:latest") for m in tags):
+        return None
+    if model_catalog.rank(wanted) >= model_catalog.rank(using):
+        return None
+    return {"model": wanted, "replaces": using}
+
+
+def dismiss_suggestion(model: str) -> None:
+    """"Not now": don't offer this model again. A later catalog that recommends a different one offers that."""
+    settings.update({"ai.model_suggestion_dismissed": model})
+
+
 def _linux_commands(installed: bool) -> dict:
     """On Linux, what to run yourself (the app runs nothing as root): the install command and Ollama's page for it, or,
     once installed, how to start it. None elsewhere."""
@@ -99,6 +126,8 @@ def _linux_commands(installed: bool) -> dict:
 
 
 def _reachable(url: str) -> bool:
+    if not lockdown.may_reach(url):     # asking another machine's Ollama leaves this computer too
+        return False
     try:
         return httpx.get(f"{url}/api/version", timeout=2).status_code == 200
     except httpx.HTTPError:
@@ -108,7 +137,7 @@ def _reachable(url: str) -> bool:
 def status() -> dict:
     """Everything the setup card shows: installed, running, which models, what to get, and any work in progress."""
     cfg = settings.section("ai")
-    tags = ai._ollama_tags(cfg)
+    tags = ai._ollama_tags(cfg, fresh=True)     # a model that just finished downloading must show, or the card stops looking
     with _lock:
         pull, install = dict(_pull), dict(_install)
     installed = app_path() is not None
@@ -121,6 +150,7 @@ def status() -> dict:
         "models": [m["name"] for m in tags],
         "using": ai.model_for("ollama", cfg) if tags else "",
         "recommended": recommended(),
+        "suggestion": suggestion(cfg, tags) if tags else None,
         "pull": pull or None,
         "locked": lockdown.on(),
     }
@@ -194,10 +224,12 @@ def _run_install(url: str) -> None:
             app = _download_and_install_windows() if sys.platform == "win32" else _download_and_install()
         _set(status="Starting Ollama", progress=None)
         _open(app)
-        for _ in range(60):
+        for second in range(START_SECONDS):
             if _reachable(url):
                 _set(active=False, status="ready", progress=1.0)
                 return
+            if second == SERVE_AFTER_SECONDS and sys.platform == "win32":
+                _serve(app)
             time.sleep(1)
         raise RuntimeError(f"Ollama was installed but didn't start. Open it from {computer.word('apps')}.")
     except Exception as e:  # noqa: BLE001 - shown on the card
@@ -211,8 +243,23 @@ def _open(app: Path) -> None:
         flags = getattr(subprocess, "DETACHED_PROCESS", 0) | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
         subprocess.Popen([str(app)], creationflags=flags, close_fds=True, stdin=subprocess.DEVNULL,
                          stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    elif sys.platform.startswith("linux"):
+        subprocess.Popen([str(app), "serve"], start_new_session=True, close_fds=True, stdin=subprocess.DEVNULL,
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     else:
         subprocess.run(["/usr/bin/open", "-g", str(app)], check=True, timeout=20)   # -g: don't steal focus
+
+
+def _serve(app: Path) -> None:
+    """On Windows the tray app runs the server. When it hasn't after a while (on GitHub's Windows on ARM machines it
+    never did), run the server itself."""
+    server = app.with_name("ollama.exe")
+    if not server.exists():
+        return
+    log.info("Ollama's tray app hasn't started its server, so starting %s serve", server)
+    flags = getattr(subprocess, "CREATE_NO_WINDOW", 0) | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
+    subprocess.Popen([str(server), "serve"], creationflags=flags, close_fds=True, stdin=subprocess.DEVNULL,
+                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 
 def _download(url: str, target: Path) -> None:
@@ -297,11 +344,18 @@ def _verify_windows(setup: Path) -> None:
     path = str(setup).replace("'", "''")
     script = (f"$s = Get-AuthenticodeSignature -LiteralPath '{path}'; $s.Status.ToString(); "
               "if ($s.SignerCertificate) { $s.SignerCertificate.Subject } else { '' }")
+    # Windows' own PowerShell looks for its modules in PSModulePath. An app started from PowerShell 7 inherits PowerShell
+    # 7's value, whose copy of the Security module Windows PowerShell can't load: the check then prints nothing at all,
+    # which read as a bad signature on a good download. Without the variable it uses its own folders.
+    env = {name: value for name, value in os.environ.items() if name.upper() != "PSMODULEPATH"}
     done = subprocess.run([_powershell(), "-NoProfile", "-NonInteractive", "-Command", script],
-                          capture_output=True, text=True, timeout=120)
+                          capture_output=True, text=True, timeout=120, env=env)
     lines = [line.strip() for line in done.stdout.splitlines() if line.strip()]
-    problem = signature_problem(lines[0] if lines else "", lines[1] if len(lines) > 1 else "")
+    status, subject = lines[0] if lines else "", lines[1] if len(lines) > 1 else ""
+    problem = signature_problem(status, subject)
     if problem:
+        log.warning("Ollama's signature: status %r, signer %r, exit %s, PowerShell said: %s",
+                    status, subject, done.returncode, (done.stderr or "").strip()[:500])
         raise RuntimeError(problem)
 
 

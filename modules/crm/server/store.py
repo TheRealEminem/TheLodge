@@ -250,6 +250,54 @@ MIGRATIONS = [
     ALTER TABLE crm_research_runs ADD COLUMN depth TEXT NOT NULL DEFAULT 'standard';   -- light | standard | deep
     ALTER TABLE crm_research_runs ADD COLUMN night INTEGER NOT NULL DEFAULT 0;
     """,
+    # Putting things right (corrections.py): a source taken off a record, names a record isn't, and a checked link.
+    # An overview you wrote yourself is yours (mine = 1): the AI leaves it alone.
+    """
+    CREATE TABLE crm_corrections (
+        id          TEXT PRIMARY KEY,
+        entity_id   TEXT NOT NULL,      -- the record it was taken off (no foreign key: the record of what happened stays)
+        evidence_id TEXT NOT NULL,      -- the meeting or document
+        to_id       TEXT,               -- who it belongs to instead, if anyone
+        name        TEXT NOT NULL,      -- the meeting or document's name, for the page
+        snapshot    TEXT NOT NULL,      -- JSON: what moved, to put it back
+        created_at  TEXT NOT NULL,
+        undone_at   TEXT
+    );
+    CREATE INDEX crm_corrections_entity ON crm_corrections(entity_id);
+    CREATE TABLE crm_name_blocks (
+        entity_id  TEXT NOT NULL REFERENCES crm_entities(id) ON DELETE CASCADE,
+        name       TEXT NOT NULL,       -- lower case
+        created_at TEXT NOT NULL,
+        PRIMARY KEY (entity_id, name)
+    );
+    CREATE TABLE crm_link_checks (
+        entity_id   TEXT NOT NULL,
+        evidence_id TEXT NOT NULL,
+        created_at  TEXT NOT NULL,
+        PRIMARY KEY (entity_id, evidence_id)
+    );
+    ALTER TABLE crm_overviews ADD COLUMN mine INTEGER NOT NULL DEFAULT 0;
+    """,
+    # Hats (hats.py): the parts of your life, and what belongs to each.
+    """
+    CREATE TABLE crm_hats (
+        id         TEXT PRIMARY KEY,
+        name       TEXT NOT NULL,
+        title      TEXT,                -- what you are in this hat ("Chair")
+        org_id     TEXT REFERENCES crm_entities(id) ON DELETE SET NULL,   -- where
+        workspace  INTEGER,             -- the Trailmix workspace it follows
+        position   INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL
+    );
+    CREATE TABLE crm_hat_links (
+        hat_id     TEXT NOT NULL REFERENCES crm_hats(id) ON DELETE CASCADE,
+        entity_id  TEXT NOT NULL REFERENCES crm_entities(id) ON DELETE CASCADE,
+        how        TEXT NOT NULL,       -- source (a meeting or document's hat) | you (you put it there) | no (you took it out)
+        created_at TEXT NOT NULL,
+        PRIMARY KEY (hat_id, entity_id)
+    );
+    CREATE INDEX crm_hat_links_entity ON crm_hat_links(entity_id);
+    """,
 ]
 
 _version = 0
@@ -610,6 +658,15 @@ def all_notes(conn: sqlite3.Connection | None = None) -> list[Note]:
         return [_note(r) for r in c.execute("SELECT * FROM crm_notes").fetchall()]
 
 
+def update_note(note_id: str, body: str) -> Note:
+    with db.connect() as c:
+        if not c.execute("UPDATE crm_notes SET body = ? WHERE id = ?", (body, note_id)).rowcount:
+            raise NotFound("Note not found")
+        note = _note(c.execute("SELECT * FROM crm_notes WHERE id = ?", (note_id,)).fetchone())
+    _touch()
+    return note
+
+
 def delete_note(note_id: str) -> None:
     if not db.execute("DELETE FROM crm_notes WHERE id = ?", (note_id,)):
         raise NotFound("Note not found")
@@ -645,6 +702,9 @@ def merge_entities(source_id: str, target_id: str) -> Entity:
             "edge_evidence": [r["id"] for r in c.execute("SELECT id FROM crm_relationships WHERE evidence_id = ?", (source_id,))],
             "questions": [r["id"] for r in c.execute("SELECT id FROM crm_questions WHERE entity_id = ?", (source_id,))],
             "overview": _row(c.execute("SELECT * FROM crm_overviews WHERE entity_id = ?", (source_id,)).fetchone()),
+            "hat_links": [dict(r) for r in c.execute("SELECT * FROM crm_hat_links WHERE entity_id = ?", (source_id,))],
+            "name_blocks": [dict(r) for r in c.execute("SELECT * FROM crm_name_blocks WHERE entity_id = ?", (source_id,))],
+            "hat_orgs": [r["id"] for r in c.execute("SELECT id FROM crm_hats WHERE org_id = ?", (source_id,))],
         }
 
         for row in c.execute("SELECT * FROM crm_relationships WHERE source_id = ? OR target_id = ?", (source_id, source_id)).fetchall():
@@ -671,6 +731,13 @@ def merge_entities(source_id: str, target_id: str) -> Entity:
         c.execute("UPDATE crm_notes SET evidence_id = ? WHERE evidence_id = ?", (target_id, source_id))
         c.execute("UPDATE crm_relationships SET evidence_id = ? WHERE evidence_id = ?", (target_id, source_id))
         c.execute("UPDATE crm_questions SET entity_id = ? WHERE entity_id = ?", (target_id, source_id))
+        # Hat placements and the names it isn't go with it (the kept record's own say wins), or deleting the source drops them.
+        snap["hat_links_moved"] = [r for r in snap["hat_links"] if c.execute(
+            "INSERT OR IGNORE INTO crm_hat_links (hat_id, entity_id, how, created_at) VALUES (?, ?, ?, ?)",
+            (r["hat_id"], target_id, r["how"], r["created_at"])).rowcount]
+        snap["name_blocks_moved"] = [r for r in snap["name_blocks"] if c.execute(
+            "INSERT OR IGNORE INTO crm_name_blocks (entity_id, name, created_at) VALUES (?, ?, ?)", (target_id, r["name"], r["created_at"])).rowcount]
+        c.execute("UPDATE crm_hats SET org_id = ? WHERE org_id = ?", (target_id, source_id))
         # The kept record takes the other's picture if it has none of its own (a copy: the other record is deleted below).
         c.execute("INSERT OR IGNORE INTO crm_pictures (entity_id, mime, data, source, updated_at) "
                   "SELECT ?, mime, data, source, updated_at FROM crm_pictures WHERE entity_id = ?", (target_id, source_id))
@@ -765,6 +832,15 @@ def unmerge(merge_id: str) -> Entity:
         back("crm_notes", "evidence_id", snap["note_evidence"])
         back("crm_relationships", "evidence_id", snap["edge_evidence"])
         back("crm_questions", "entity_id", snap["questions"])
+        for r in snap.get("hat_links_moved") or []:   # what the merge copied onto the kept record goes again; the source's own come back
+            c.execute("DELETE FROM crm_hat_links WHERE hat_id = ? AND entity_id = ? AND how = ?", (r["hat_id"], tid, r["how"]))
+        for r in snap.get("name_blocks_moved") or []:
+            c.execute("DELETE FROM crm_name_blocks WHERE entity_id = ? AND name = ?", (tid, r["name"]))
+        for r in snap.get("hat_links") or []:
+            c.execute("INSERT OR IGNORE INTO crm_hat_links (hat_id, entity_id, how, created_at) VALUES (?, ?, ?, ?)", (r["hat_id"], sid, r["how"], r["created_at"]))
+        for r in snap.get("name_blocks") or []:
+            c.execute("INSERT OR IGNORE INTO crm_name_blocks (entity_id, name, created_at) VALUES (?, ?, ?)", (sid, r["name"], r["created_at"]))
+        back("crm_hats", "org_id", snap.get("hat_orgs") or [])
         if (ov := snap.get("overview")) and not c.execute("SELECT 1 FROM crm_overviews WHERE entity_id = ?", (sid,)).fetchone():
             cols = list(ov)
             c.execute(f"INSERT OR IGNORE INTO crm_overviews ({', '.join(cols)}) VALUES ({', '.join('?' for _ in cols)})", [ov[k] for k in cols])
@@ -794,6 +870,12 @@ def unmerge(merge_id: str) -> Entity:
         restored = get_entity(sid, c)
     _touch()
     return restored  # type: ignore[return-value]
+
+
+def blocked_for(name: str, conn: sqlite3.Connection | None = None) -> set[str]:
+    """Records you've said this name isn't."""
+    with _use(conn) as c:
+        return {r["entity_id"] for r in c.execute("SELECT entity_id FROM crm_name_blocks WHERE name = ?", ((name or "").strip().lower(),))}
 
 
 # ── For the host: search and links ────────────────────────────────────

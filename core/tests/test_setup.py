@@ -56,7 +56,7 @@ def test_a_path_needs_a_real_cloud_provider_when_it_uses_one(client, body):
 
 def test_setup_lists_every_modules_jobs_and_where_each_runs(client, jobs_module, monkeypatch):
     settings.update({"ai.anthropic_api_key": "sk-ant-test-1234567890"})
-    monkeypatch.setattr(ai, "_ollama_tags", lambda c: [{"name": "qwen2.5:7b", "details": {"parameter_size": "7B"}}])
+    monkeypatch.setattr(ai, "_ollama_tags", lambda c, fresh=False: [{"name": "qwen2.5:7b", "details": {"parameter_size": "7B"}}])
     client.put("/api/setup/path", json={"path": "mixed", "cloud": "anthropic"})
     mine = {j["job"]: j for j in client.get("/api/setup").json()["jobs"] if j["module"] == "setupprobe"}
     assert mine["read"]["provider"] == "anthropic" and mine["read"]["ready"] and mine["read"]["weight"] == "heavy"

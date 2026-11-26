@@ -187,3 +187,12 @@ def test_when_a_person_or_source_is_deleted_the_names_stay():
     got = items.get(item)
     assert (got["assignee_ref"], got["assignee_name"], got["source_ref"]) == (None, "Ana Ruiz", "crm:meeting1")
     assert projects.get(p)["owner_ref"] is None and projects.get(p)["owner_name"] == "Ana Ruiz"
+
+
+def test_action_items_announced_again_keep_their_ids():
+    events.publish(contracts.ACTIONS_FOUND, {"source_ref": "notes:n2", "items": ["Send the outline"]})
+    first = {i["text"]: i["id"] for i in items.query() if i["source_ref"] == "notes:n2"}
+    events.publish(contracts.ACTIONS_FOUND, {"source_ref": "notes:n2", "items": ["Send the outline", "Book the venue"]})
+    again = {i["text"]: i["id"] for i in items.query() if i["source_ref"] == "notes:n2"}
+    assert again["Send the outline"] == first["Send the outline"]          # the same task, not a remade one
+    assert set(again) == {"Send the outline", "Book the venue"}

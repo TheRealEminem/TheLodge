@@ -3,7 +3,7 @@ and whether they've declined, including repeating events within a window. No all
 meetings), and nothing is written back."""
 import re
 from dataclasses import dataclass, field
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from dateutil import rrule
@@ -111,7 +111,7 @@ def parse(text: str, window_start: datetime, window_end: datetime) -> tuple[str 
     masters: list[tuple[Event, str | None, list[datetime], timedelta | None]] = []   # event, rrule, exdates, length
     overrides: dict[tuple[str, datetime], Event] = {}
     for props in _components(lines):
-        get = lambda name: next(((p, v) for n, p, v in props if n == name), None)  # noqa: E731
+        get = lambda name, props=props: next(((p, v) for n, p, v in props if n == name), None)  # noqa: E731
         start_prop = get("DTSTART")
         if not start_prop:
             continue

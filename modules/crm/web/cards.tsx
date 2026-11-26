@@ -1,13 +1,14 @@
 // The cards a profile is made of.
 import { Suspense, lazy, useMemo, useState } from "react";
-import { CalendarIcon, ChevronRightIcon, NetworkIcon, CloseIcon, DocIcon, ExternalIcon, MailIcon, MapPinIcon, PhoneIcon, PlusIcon, TrashIcon } from "@core/components/icons";
+import { CalendarIcon, ChevronRightIcon, NetworkIcon, CloseIcon, DocIcon, ExternalIcon, MailIcon, MapPinIcon, PencilIcon, PhoneIcon, PlusIcon, TrashIcon } from "@core/components/icons";
 import { Segmented, Skeleton } from "@core/components/ui";
 import { navigate } from "@core/router";
 import { useLive } from "@core/live";
 import { useShell } from "@core/shell";
 import { crmApi } from "./api";
 import type { Affiliation, Connection, Entity, EventRef, GraphPath, OrgRow, PersonLink, RelationshipView, TimelineEvent } from "./api";
-import { AddRelationship } from "./forms";
+import { NotThisButton } from "./corrections";
+import { AddRelationship, RelationshipDialog } from "./forms";
 import { groupMap } from "./groups";
 import { Avatar, Card, EntityLink, StrengthDots } from "./bits";
 import { formatDate, monthKey, relativeTime } from "./format";
@@ -170,15 +171,16 @@ const ROLE_LABEL: Record<string, string> = {
   attended: "attended", discussed: "came up", authored: "author", mentioned: "mentioned", "about them": "about them", "by their people": "by their people",
 };
 
-export function EventList({ events, empty, compact }: { events: EventRef[]; empty: string; compact?: boolean }) {
+export function EventList({ events, empty, compact, subject }: { events: EventRef[]; empty: string; compact?: boolean; subject?: Entity }) {
   if (!events.length) return <p className="px-5 pb-4 text-ui text-ink-soft">{empty}</p>;
   return (
     <ul className="divide-y divide-line">
       {events.map((ev) => {
         const others = ev.people.filter((p) => !p.is_self);
         return (
-          <li key={ev.event.id}>
-            <a href={`#/crm/e/${ev.event.id}`} className="flex gap-3.5 px-5 py-3 transition-colors duration-150 hover:bg-forest/[.05]">
+          <li key={ev.event.id} className="group relative">
+            {subject && <span className="absolute right-3 top-2.5 z-10"><NotThisButton who={subject} evidence={ev.event} /></span>}
+            <a href={`#/crm/e/${ev.event.id}`} className={`flex gap-3.5 px-5 py-3 transition-colors duration-150 hover:bg-forest/[.05] ${subject ? "pr-12" : ""}`}>
               <span className="well">{ev.event.kind === "meeting" ? <CalendarIcon size={16} /> : <DocIcon size={16} />}</span>
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-baseline justify-between gap-x-3">
@@ -445,6 +447,16 @@ export function TimelineCard({ entityId }: { entityId: string }) {
 export function NotesCard({ entityId }: { entityId: string }) {
   const { toast, confirm } = useShell();
   const { data } = useLive(() => crmApi.notes(entityId), [entityId]);
+  const [editing, setEditing] = useState<{ id: string; body: string } | null>(null);
+  const save = async () => {
+    if (!editing?.body.trim()) return;
+    try {
+      await crmApi.updateNote(editing.id, editing.body.trim());
+      setEditing(null);
+    } catch (e) {
+      toast((e as Error).message, "error");
+    }
+  };
   const remove = async (id: string) => {
     if (!(await confirm({ title: "Delete this note?", body: "It can’t be brought back.", confirmLabel: "Delete", tone: "danger" }))) return;
     try {
@@ -461,9 +473,20 @@ export function NotesCard({ entityId }: { entityId: string }) {
           <li key={n.id} className="inset-surface group p-3.5">
             <div className="mb-1 flex items-center justify-between text-meta text-ink-soft">
               <span>{formatDate(n.occurred_at)} · {n.source === "ingest" ? "original notes" : n.source}</span>
-              <button className="icon-btn h-7 w-7 opacity-0 group-hover:opacity-100 focus:opacity-100" aria-label="Delete note" onClick={() => void remove(n.id)}><TrashIcon size={14} /></button>
+              <span className="flex gap-1">
+                <button className="icon-btn h-7 w-7 opacity-0 group-hover:opacity-100 focus:opacity-100" aria-label="Edit note" onClick={() => setEditing({ id: n.id, body: n.body })}><PencilIcon size={14} /></button>
+                <button className="icon-btn h-7 w-7 opacity-0 group-hover:opacity-100 focus:opacity-100" aria-label="Delete note" onClick={() => void remove(n.id)}><TrashIcon size={14} /></button>
+              </span>
             </div>
-            <p className="max-h-80 overflow-y-auto whitespace-pre-wrap text-label">{n.body}</p>
+            {editing?.id === n.id ? (
+              <div className="space-y-2">
+                <textarea className="field min-h-24 w-full" aria-label="The note" value={editing.body} onChange={(e) => setEditing({ id: n.id, body: e.target.value })} autoFocus />
+                <div className="flex justify-end gap-2">
+                  <button className="btn btn-sm btn-ghost" onClick={() => setEditing(null)}>Cancel</button>
+                  <button className="btn btn-sm btn-primary" disabled={!editing.body.trim()} onClick={() => void save()}>Save</button>
+                </div>
+              </div>
+            ) : <p className="max-h-80 overflow-y-auto whitespace-pre-wrap text-label">{n.body}</p>}
           </li>
         ))}
       </ul>
@@ -473,6 +496,7 @@ export function NotesCard({ entityId }: { entityId: string }) {
 
 export function RelationshipsCard({ entity, relationships }: { entity: Entity; relationships: RelationshipView[] }) {
   const { toast } = useShell();
+  const [changing, setChanging] = useState<RelationshipView | null>(null);
   const [adding, setAdding] = useState(false);
   const groups = new Map<string, RelationshipView[]>();
   for (const r of relationships) groups.set(r.label, [...(groups.get(r.label) ?? []), r]);
@@ -502,6 +526,9 @@ export function RelationshipsCard({ entity, relationships }: { entity: Entity; r
                       {detail && <div className="truncate text-hint text-ink-soft">{detail}</div>}
                     </div>
                     <StrengthDots value={r.strength} onChange={(strength) => void act(() => crmApi.updateRelationship(r.id, { strength }))} />
+                    <button className="icon-btn h-7 w-7 opacity-0 group-hover:opacity-100 focus:opacity-100" aria-label={`Change ${label} ${r.other.name}`} onClick={() => setChanging(r)}>
+                      <PencilIcon size={14} />
+                    </button>
                     <button className="icon-btn h-7 w-7 opacity-0 group-hover:opacity-100 focus:opacity-100" aria-label={`Remove ${label} ${r.other.name}`} onClick={() => void act(() => crmApi.deleteRelationship(r.id))}>
                       <CloseIcon size={14} />
                     </button>
@@ -512,6 +539,7 @@ export function RelationshipsCard({ entity, relationships }: { entity: Entity; r
           </div>
         ))}
       </div>
+      {changing && <RelationshipDialog relationship={changing} onClose={() => setChanging(null)} />}
     </Card>
   );
 }

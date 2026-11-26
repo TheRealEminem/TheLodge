@@ -85,6 +85,7 @@ export function TaskRow({
       {task.blocked && !done && <StatusChip tone="trail" label="Blocked" />}
       {task.synced?.conflicts.length ? <StatusChip tone="sun" label={`Changed in ${task.synced.source}`} /> : null}
       {task.synced?.removed_at && <StatusChip tone="neutral" label={`Removed in ${task.synced.source}`} />}
+      <ToSend task={task} />
       {task.priority === 4 && !done && <StatusChip tone="sun" label="Urgent" />}
       {task.priority === 3 && !done && (
         <span className="inline-flex items-center gap-1 text-meta text-ink">
@@ -277,4 +278,11 @@ export function TaskList({
       ))}
     </div>
   );
+}
+
+/** A linked task's changes not sent yet: how many, or that they wait for you to send them. */
+export function ToSend({ task }: { task: Task }) {
+  if (task.sharing?.length) return <StatusChip tone="sun" label="Waiting to send" />;
+  const n = task.synced && !task.synced.removed_at ? task.synced.edited.length : 0;
+  return n ? <StatusChip tone="neutral" label={`${n} ${n === 1 ? "change" : "changes"} to send`} /> : null;
 }
